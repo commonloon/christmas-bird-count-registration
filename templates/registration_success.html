@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="alert alert-success">
+            <h2>Registration Successful!</h2>
+            <p class="mb-0">You have been registered for <strong>{{ area_info.name }}</strong>.</p>
+        </div>
+        
+        <div class="card">
+            <div class="card-header">
+                <h3>Area {{ area }} Details</h3>
+            </div>
+            <div class="card-body">
+                <p><strong>Description:</strong> {{ area_info.description }}</p>
+                <p><strong>Terrain:</strong> {{ area_info.terrain }}</p>
+                <p><strong>Difficulty:</strong> {{ area_info.difficulty }}</p>
+                
+                <hr>
+                
+                <h4>What's Next?</h4>
+                <ul>
+                    <li>You will receive a confirmation email within 24 hours</li>
+                    <li>Your area leader will contact you with meeting details</li>
+                    <li>The count typically begins early in the morning</li>
+                    <li>Bring warm clothes, binoculars, and a sense of adventure!</li>
+                </ul>
+                
+                <div class="alert alert-info">
+                    <strong>Important:</strong> Please check your email regularly as your area leader will send count day details closer to the event.
+                </div>
+            </div>
+        </div>
+        
+        <div class="mt-4 text-center">
+            <a href="{{ url_for('main.index') }}" class="btn btn-secondary">Register Another Participant</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

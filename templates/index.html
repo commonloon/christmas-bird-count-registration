@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-6">
+        <h1>Register for Vancouver Christmas Bird Count</h1>
+        <p class="lead">Join Nature Vancouver's annual Christmas Bird Count and help us track bird populations in the Vancouver area.</p>
+        
+        <form method="POST" action="{{ url_for('main.register') }}">
+            <div class="mb-3">
+                <label for="first_name" class="form-label">First Name *</label>
+                <input type="text" class="form-control" id="first_name" name="first_name" required>
+            </div>
+            
+            <div class="mb-3">
+                <label for="last_name" class="form-label">Last Name *</label>
+                <input type="text" class="form-control" id="last_name" name="last_name" required>
+            </div>
+            
+            <div class="mb-3">
+                <label for="email" class="form-label">Email Address *</label>
+                <input type="email" class="form-control" id="email" name="email" required>
+            </div>
+            
+            <div class="mb-3">
+                <label for="phone" class="form-label">Phone Number</label>
+                <input type="tel" class="form-control" id="phone" name="phone">
+            </div>
+            
+            <div class="mb-3">
+                <label for="skill_level" class="form-label">Birding Skill Level *</label>
+                <select class="form-select" id="skill_level" name="skill_level" required>
+                    <option value="">Choose...</option>
+                    <option value="Newbie">Newbie - I'm new to birding</option>
+                    <option value="Beginner">Beginner - I know some common birds</option>
+                    <option value="Intermediate">Intermediate - I can identify many species</option>
+                    <option value="Expert">Expert - I'm experienced with identification</option>
+                </select>
+            </div>
+            
+            <div class="mb-3">
+                <label for="experience" class="form-label">CBC Experience *</label>
+                <select class="form-select" id="experience" name="experience" required>
+                    <option value="">Choose...</option>
+                    <option value="None">This is my first Christmas Bird Count</option>
+                    <option value="1-2 counts">I've done 1-2 Christmas Bird Counts</option>
+                    <option value="3+ counts">I've done 3 or more Christmas Bird Counts</option>
+                </select>
+            </div>
+            
+            <div class="mb-3">
+                <label for="preferred_area" class="form-label">Preferred Count Area *</label>
+                <select class="form-select" id="preferred_area" name="preferred_area" required>
+                    <option value="">Choose your preferred area...</option>
+                    <option value="ANYWHERE">Wherever I'm needed most (recommended for new volunteers)</option>
+                    <optgroup label="Count Areas">
+                        <option value="A">A - North Shore West</option>
+                        <option value="B">B - North Shore Coastal</option>
+                        <option value="C">C - Lynn Valley</option>
+                        <option value="D">D - North Vancouver East</option>
+                        <option value="E">E - Burnaby Heights</option>
+                        <option value="F">F - Burnaby Mountain</option>
+                        <option value="G">G - Burnaby South</option>
+                        <option value="H">H - New Westminster</option>
+                        <option value="I">I - South Vancouver East</option>
+                        <option value="J">J - Riley Park/Kensington</option>
+                        <option value="K">K - Mount Pleasant/Grandview</option>
+                        <option value="L">L - Downtown Vancouver</option>
+                        <option value="M">M - Cambie Corridor</option>
+                        <option value="N">N - South Vancouver Central</option>
+                        <option value="O">O - Marpole</option>
+                        <option value="P">P - Kitsilano/Fairview</option>
+                        <option value="Q">Q - Point Grey</option>
+                        <option value="R">R - UBC/Musqueam</option>
+                        <option value="S">S - Fraser River South</option>
+                        <option value="T">T - Richmond East</option>
+                        <option value="U">U - Richmond Central</option>
+                        <option value="V">V - Richmond West</option>
+                        <option value="W">W - Stanley Park</option>
+                        <option value="X">X - Coal Harbour</option>
+                    </optgroup>
+                </select>
+            </div>
+            
+            <div class="mb-3 form-check">
+                <input type="checkbox" class="form-check-input" id="is_leader" name="is_leader">
+                <label class="form-check-label" for="is_leader">
+                    I am interested in being an area leader
+                </label>
+            </div>
+            
+            <button type="submit" class="btn btn-primary btn-lg">Register</button>
+        </form>
+    </div>
+    
+    <div class="col-lg-6">
+        <h3>Select Area on Map</h3>
+        <p>Click on an area below to select it automatically:</p>
+        <div id="count-area-map" style="height: 400px; border: 1px solid #ccc;"></div>
+        <div class="mt-2">
+            <small class="text-muted">
+                <span class="badge bg-success">●</span> Available areas
+                <span class="badge bg-warning">●</span> Nearly full
+                <span class="badge bg-danger">●</span> Full teams
+            </small>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/map.js') }}"></script>
+<script src="{{ url_for('static', filename='js/registration.js') }}"></script>
+{% endblock %}
