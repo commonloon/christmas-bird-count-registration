@@ -68,6 +68,8 @@ def register():
     if preferred_area == 'ANYWHERE':
         preferred_area = assign_area_automatically()
 
+    interested_in_leadership = request.form.get('interested_in_leadership') == 'on'
+
     # Create participant record
     participant_data = {
         'first_name': first_name,
@@ -77,7 +79,9 @@ def register():
         'skill_level': skill_level,
         'experience': experience,
         'preferred_area': preferred_area,
-        'is_leader': is_leader,
+        'interested_in_leadership': interested_in_leadership,
+        'is_leader': False,           # Always false initially
+        'assigned_area_leader': None, # Admin sets this later
         'auto_assigned': request.form.get('preferred_area') == 'ANYWHERE'
     }
 
