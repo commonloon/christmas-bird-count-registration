@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+
+{% block title %}Admin Dashboard - Vancouver Christmas Bird Count{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Admin Dashboard</h1>
+    <div>
+        <span class="badge bg-info">{{ selected_year }}</span>
+        {% if current_user.email %}
+        <span class="text-muted">{{ current_user.email }}</span>
+        <a href="{{ url_for('auth.logout') }}" class="btn btn-sm btn-outline-secondary ms-2">Logout</a>
+        {% endif %}
+    </div>
+</div>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% else %}
+
+<!-- Year selector -->
+{% if available_years and available_years|length > 1 %}
+<div class="card mb-4">
+    <div class="card-body">
+        <h5 class="card-title">Year Selection</h5>
+        <form method="GET" class="d-inline-block">
+            <select name="year" class="form-select d-inline-block w-auto" onchange="this.form.submit()">
+                {% for year in available_years %}
+                <option value="{{ year }}" {% if year == selected_year %}selected{% endif %}>{{ year }}</option>
+                {% endfor %}
+            </select>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<!-- Statistics overview -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h2 class="text-primary">{{ total_participants|default(0) }}</h2>
+                <p class="card-text">Total Participants</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h2 class="text-success">{{ total_assigned|default(0) }}</h2>
+                <p class="card-text">Assigned</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h2 class="text-warning">{{ total_unassigned|default(0) }}</h2>
+                <p class="card-text">Unassigned</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h2 class="text-info">{{ areas_without_leaders|length|default(0) }}</h2>
+                <p class="card-text">Areas Need Leaders</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick actions -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <a href="{{ url_for('admin.participants', year=selected_year) }}" class="btn btn-primary me-2">View All Participants</a>
+                <a href="{{ url_for('admin.unassigned', year=selected_year) }}" class="btn btn-warning me-2">Manage Unassigned ({{ total_unassigned|default(0) }})</a>
+                <a href="{{ url_for('admin.leaders', year=selected_year) }}" class="btn btn-info me-2">Manage Leaders</a>
+                <a href="{{ url_for('admin.export_csv', year=selected_year) }}" class="btn btn-success">Export CSV</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recent participants preview -->
+{% if participants %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">Recent Registrations</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Area</th>
+                        <th>Skill</th>
+                        <th>Date</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for participant in participants %}
+                    <tr>
+                        <td>{{ participant.first_name }} {{ participant.last_name }}</td>
+                        <td>{{ participant.email }}</td>
+                        <td>
+                            {% if participant.preferred_area == 'ANYWHERE' %}
+                                <span class="badge bg-secondary">ANYWHERE</span>
+                            {% else %}
+                                {{ participant.preferred_area }}
+                            {% endif %}
+                        </td>
+                        <td>{{ participant.skill_level }}</td>
+                        <td>
+                            {% if participant.created_at %}
+                                {{ participant.created_at.strftime('%m/%d %H:%M') }}
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <a href="{{ url_for('admin.participants', year=selected_year) }}" class="btn btn-sm btn-outline-primary">View All →</a>
+    </div>
+</div>
+{% endif %}
+
+<!-- Unassigned participants alert -->
+{% if unassigned_participants %}
+<div class="card border-warning mb-4">
+    <div class="card-header bg-warning">
+        <h5 class="mb-0">⚠️ Unassigned Participants ({{ unassigned_participants|length }})</h5>
+    </div>
+    <div class="card-body">
+        <p>These participants need area assignments:</p>
+        <div class="row">
+            {% for participant in unassigned_participants[:6] %}
+            <div class="col-md-4 mb-2">
+                <small>{{ participant.first_name }} {{ participant.last_name }} ({{ participant.skill_level }})</small>
+            </div>
+            {% endfor %}
+            {% if unassigned_participants|length > 6 %}
+            <div class="col-md-12">
+                <small class="text-muted">... and {{ unassigned_participants|length - 6 }} more</small>
+            </div>
+            {% endif %}
+        </div>
+        <a href="{{ url_for('admin.unassigned', year=selected_year) }}" class="btn btn-warning">Manage Assignments →</a>
+    </div>
+</div>
+{% endif %}
+
+<!-- Areas without leaders -->
+{% if areas_without_leaders %}
+<div class="card border-info">
+    <div class="card-header bg-info">
+        <h5 class="mb-0">Areas Needing Leaders</h5>
+    </div>
+    <div class="card-body">
+        {% for area in areas_without_leaders %}
+        <span class="badge bg-secondary me-1 mb-1">{{ area }}</span>
+        {% endfor %}
+        <div class="mt-2">
+            <a href="{{ url_for('admin.leaders', year=selected_year) }}" class="btn btn-info">Manage Leaders →</a>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% endif %}
+{% endblock %}

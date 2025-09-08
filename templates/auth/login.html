@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Login - Vancouver Christmas Bird Count{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">Admin Login Required</h4>
+            </div>
+            <div class="card-body">
+                <p>You need to sign in with your Google account to access the admin area.</p>
+                
+                {% if google_client_id %}
+                <div id="g_id_onload"
+                     data-client_id="{{ google_client_id.strip() }}"
+                     data-login_uri="{{ url_for('auth.oauth_callback', _external=True, _scheme='https') }}"
+                     data-auto_prompt="false">
+                </div>
+                <div class="g_id_signin"
+                     data-type="standard"
+                     data-size="large"
+                     data-theme="outline"
+                     data-text="sign_in_with"
+                     data-shape="rectangular"
+                     data-logo_alignment="left">
+                </div>
+                
+                <form id="google-signin-form" method="POST" action="{{ url_for('auth.oauth_callback') }}" style="display: none;">
+                    <input type="hidden" name="credential" id="credential">
+                    <input type="hidden" name="next" value="{{ next_url }}">
+                </form>
+                {% else %}
+                <div class="alert alert-warning">
+                    <strong>Google OAuth not configured.</strong> Please contact the system administrator.
+                </div>
+                {% endif %}
+                
+                <div class="mt-3">
+                    <a href="{{ url_for('main.index') }}" class="btn btn-secondary">Back to Registration</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if google_client_id %}
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+// Handle credential response from Google
+function handleCredentialResponse(response) {
+    document.getElementById('credential').value = response.credential;
+    document.getElementById('google-signin-form').submit();
+}
+
+// Initialize Google Sign-In when page loads
+window.onload = function() {
+    google.accounts.id.initialize({
+        client_id: '{{ google_client_id.strip()|safe }}',
+        callback: handleCredentialResponse
+    });
+}
+</script>
+{% endif %}
+{% endblock %}

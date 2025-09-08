@@ -12,8 +12,8 @@ auth_bp = Blueprint('auth', __name__)
 logger = logging.getLogger(__name__)
 
 # Google OAuth configuration
-GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
-GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '').strip()
+GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '').strip()
 
 
 def get_user_role(email, db_client, year=None):
@@ -42,7 +42,9 @@ def require_auth(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_email' not in session:
-            return redirect(url_for('auth.login', next=request.url))
+            # Force HTTPS in next URL for OAuth security
+            next_url = request.url.replace('http://', 'https://')
+            return redirect(url_for('auth.login', next=next_url))
         return f(*args, **kwargs)
 
     return decorated_function
@@ -117,8 +119,14 @@ def oauth_callback():
             return redirect(url_for('main.index'))
 
         # Determine user role
-        from flask import g
-        user_role = get_user_role(email, g.db)
+        from google.cloud import firestore
+        try:
+            db_client = firestore.Client()
+            user_role = get_user_role(email, db_client)
+        except Exception as e:
+            logger.error(f"Database connection error: {e}")
+            # Default to public role if database unavailable
+            user_role = 'public'
 
         # Store in session
         session['user_email'] = email
@@ -128,7 +136,7 @@ def oauth_callback():
         logger.info(f"User {email} logged in with role: {user_role}")
 
         # Redirect based on role and next parameter
-        next_url = request.form.get('next') or session.pop('next_url', None)
+        next_url = request.form.get('next') or request.args.get('next') or session.pop('next_url', None)
 
         if user_role == 'admin':
             return redirect(next_url or url_for('admin.dashboard'))

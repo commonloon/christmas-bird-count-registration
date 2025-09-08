@@ -37,14 +37,29 @@ python -c "from google.cloud import firestore; print('Firestore OK' if firestore
 
 ### Deployment
 ```bash
-# Deploy to test environment
-gcloud run deploy cbc-test --source . --platform managed --region us-west1 --allow-unauthenticated --set-env-vars GOOGLE_CLOUD_PROJECT=vancouver-cbc-registration
+# Deploy to test environment only
+./deploy.sh test
 
-# Deploy to production
-gcloud run deploy cbc-registration --source . --platform managed --region us-west1 --allow-unauthenticated --set-env-vars GOOGLE_CLOUD_PROJECT=vancouver-cbc-registration
+# Deploy to production only  
+./deploy.sh production
+
+# Deploy to both environments (default)
+./deploy.sh both
 
 # View logs
 gcloud run services logs read cbc-test --region=us-west1 --limit=50
+gcloud run services logs read cbc-registration --region=us-west1 --limit=50
+```
+
+### OAuth Setup (First-time only)
+```bash
+# 1. Create OAuth client in Google Console (see OAUTH-SETUP.md)
+# 2. Download client_secret.json to project root
+# 3. Run setup script
+./utils/setup_oauth_secrets.sh
+
+# 4. Delete client_secret.json after setup completes
+rm client_secret.json
 ```
 
 ## Project Structure
@@ -77,9 +92,14 @@ gcloud run services logs read cbc-test --region=us-west1 --limit=50
 - `static/data/area_boundaries.json` - GeoJSON area polygons for map
 
 ### Templates
-- `templates/base.html` - Base template with auth status
-- `templates/index.html` - Registration form with map
-- `templates/admin/` - Admin interface templates
+- `templates/base.html` - Base template with conditional navigation (no public admin links)
+- `templates/index.html` - Registration form with interactive map
+- `templates/auth/login.html` - Google OAuth login page
+- `templates/admin/dashboard.html` - Admin overview with statistics and year selection
+- `templates/admin/leaders.html` - Leader management interface
+- `templates/admin/participants.html` - Participant management (to be implemented)
+- `templates/admin/unassigned.html` - Unassigned participant management (to be implemented)
+- `templates/admin/area_detail.html` - Area-specific views (to be implemented)
 - `templates/errors/` - 404/500 error pages
 
 ## Key Implementation Patterns
@@ -95,11 +115,16 @@ historical_participants = participant_model.get_historical_participants('A', yea
 ```
 
 ### Authentication Flow
-1. Google OAuth for protected routes
-2. Role determination:
-   - Admin: Email in `config/admins.py` → full access
-   - Area Leader: Email in `area_leaders_YYYY` → area-specific access
+1. **Google Identity Services OAuth** for protected routes using client credentials stored in Google Secret Manager
+2. **Role determination**:
+   - Admin: Email in `config/admins.py` → full access to all years and functions
+   - Area Leader: Email in `area_leaders_YYYY` → area-specific access for assigned areas
    - Public: Unauthenticated → registration only
+3. **OAuth implementation**:
+   - Login via `/auth/login` with Google Sign-In button
+   - Token verification and session creation in `/auth/oauth/callback`
+   - Role-based redirects: admins → `/admin/dashboard`, leaders → `/leader/dashboard`
+   - Authentication required decorators: `@require_admin`, `@require_leader`, `@require_auth`
 
 ### Area Management
 - 24 count areas (A-X, no Y) with static configuration
@@ -116,10 +141,14 @@ historical_participants = participant_model.get_historical_participants('A', yea
 - Explicit year field in all records for data integrity
 
 ### Security
-- Admin whitelist in version control (`config/admins.py`)
-- Area leaders scoped to assigned areas only
-- Historical data protection (read-only)
-- CSRF protection on authenticated forms
+- **OAuth credentials** stored in Google Secret Manager (never in version control)
+- **Admin whitelist** in version control (`config/admins.py`)
+- **No public admin links** - admins access `/admin` directly or via login redirect
+- **Role-based access control** with authentication decorators
+- **Area leaders** scoped to assigned areas only
+- **Historical data protection** (read-only via UI, enforced by validation)
+- **HTTPS enforcement** for all OAuth callbacks and sensitive operations
+- **CSRF protection** on authenticated forms
 
 ### Mobile-First Design
 - Primary usage via mobile devices
@@ -147,23 +176,46 @@ The application uses production Firestore - test carefully:
 
 ## Common Development Tasks
 
+### OAuth Authentication Issues
+1. **"OAuth client not found" errors**:
+   - Check client ID for trailing newlines: `gcloud secrets versions access latest --secret="google-oauth-client-id"`
+   - Verify OAuth consent screen is **published** (not in testing mode)
+   - Ensure JavaScript origins configured correctly (no redirect URIs needed)
+
+2. **"Google OAuth not configured" errors**:
+   - Verify `init_auth(app)` is called in `app.py`
+   - Check Secret Manager permissions: `gcloud projects get-iam-policy PROJECT_ID`
+   - Confirm secrets are mounted in Cloud Run deployment
+
+3. **Database connection errors in OAuth callback**:
+   - Ensure Firestore client initialization in auth routes
+   - Verify `GOOGLE_CLOUD_PROJECT` environment variable
+   - Check Firestore indexes (click URL in error logs to create)
+
 ### Adding New Areas
 1. Update `config/areas.py` with new area definition
-2. Update `static/data/area_boundaries.json` with polygon coordinates
+2. Update `static/data/area_boundaries.json` with polygon coordinates  
 3. Test map rendering and form dropdown
 
 ### Managing Admin Access
 1. Edit `config/admins.py` email list
-2. Redeploy application
-3. Test authentication with new admin account
+2. Redeploy application: `./deploy.sh both`
+3. Test authentication with new admin account at `/admin`
 
 ### Year Transition Setup
 1. Models automatically create new year collections
 2. Admin interface includes year selector
 3. Historical data remains accessible read-only
+4. Update admin whitelist if coordinators change
 
-### Debugging Firestore Issues
-1. Check service account permissions
-2. Verify `GOOGLE_CLOUD_PROJECT` environment variable
-3. Monitor Cloud Run logs for connection errors
-4. Test with: `gcloud firestore databases list`
+### Creating Missing Admin Templates
+Missing templates will cause 500 errors. Implement in order of importance:
+1. `templates/admin/participants.html` - View all participants  
+2. `templates/admin/unassigned.html` - Manage unassigned participants
+3. `templates/admin/area_detail.html` - Area-specific participant views
+
+### Debugging Deployment Issues
+1. **Check service configuration**: `gcloud run services describe SERVICE --region=us-west1`
+2. **Monitor logs in real-time**: `gcloud run services logs tail SERVICE --region=us-west1`
+3. **Verify secrets access**: Check that service account has `secretmanager.secretAccessor` role
+4. **Test Firestore connection**: Verify `GOOGLE_CLOUD_PROJECT` and service account permissions

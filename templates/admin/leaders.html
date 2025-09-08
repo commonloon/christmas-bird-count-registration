@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Leaders - Vancouver Christmas Bird Count{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Manage Area Leaders</h1>
+    <div>
+        <span class="badge bg-info">{{ selected_year }}</span>
+        {% if current_user.email %}
+        <span class="text-muted">{{ current_user.email }}</span>
+        <a href="{{ url_for('auth.logout') }}" class="btn btn-sm btn-outline-secondary ms-2">Logout</a>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Navigation breadcrumb -->
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('admin.dashboard', year=selected_year) }}">Dashboard</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Leaders</li>
+    </ol>
+</nav>
+
+<!-- Year selector -->
+{% if available_years and available_years|length > 1 %}
+<div class="card mb-4">
+    <div class="card-body">
+        <h5 class="card-title">Year Selection</h5>
+        <form method="GET" class="d-inline-block">
+            <select name="year" class="form-select d-inline-block w-auto" onchange="this.form.submit()">
+                {% for year in available_years %}
+                <option value="{{ year }}" {% if year == selected_year %}selected{% endif %}>{{ year }}</option>
+                {% endfor %}
+            </select>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<!-- Current Leaders -->
+{% if all_leaders %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">Current Area Leaders ({{ all_leaders|length }})</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Area</th>
+                        <th>Leader</th>
+                        <th>Email</th>
+                        <th>Phone</th>
+                        <th>Assigned</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for leader in all_leaders %}
+                    <tr>
+                        <td><strong>{{ leader.area_code }}</strong></td>
+                        <td>{{ leader.leader_name }}</td>
+                        <td><a href="mailto:{{ leader.leader_email }}">{{ leader.leader_email }}</a></td>
+                        <td>{{ leader.leader_phone or 'N/A' }}</td>
+                        <td>
+                            {% if leader.assigned_at %}
+                                {{ leader.assigned_at.strftime('%m/%d/%y') }}
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Areas Without Leaders -->
+{% if areas_without_leaders %}
+<div class="card border-warning mb-4">
+    <div class="card-header bg-warning">
+        <h5 class="mb-0">⚠️ Areas Needing Leaders ({{ areas_without_leaders|length }})</h5>
+    </div>
+    <div class="card-body">
+        <p>These areas currently have no assigned leaders:</p>
+        <div class="row">
+            {% for area in areas_without_leaders %}
+            <div class="col-md-2 mb-2">
+                <span class="badge bg-secondary">{{ area }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Participants Interested in Leadership -->
+{% if leadership_interested %}
+<div class="card border-info mb-4">
+    <div class="card-header bg-info">
+        <h5 class="mb-0">Potential Leaders ({{ leadership_interested|length }})</h5>
+    </div>
+    <div class="card-body">
+        <p>These participants expressed interest in leadership roles:</p>
+        <div class="table-responsive">
+            <table class="table table-sm">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Skill Level</th>
+                        <th>Preferred Area</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for participant in leadership_interested %}
+                    <tr>
+                        <td>{{ participant.first_name }} {{ participant.last_name }}</td>
+                        <td>{{ participant.email }}</td>
+                        <td>{{ participant.skill_level }}</td>
+                        <td>
+                            {% if participant.preferred_area == 'ANYWHERE' %}
+                                <span class="badge bg-secondary">ANYWHERE</span>
+                            {% else %}
+                                {{ participant.preferred_area }}
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if areas_without_leaders %}
+                            <form method="POST" action="{{ url_for('admin.assign_leader') }}" class="d-inline">
+                                <input type="hidden" name="participant_id" value="{{ participant.id }}">
+                                <input type="hidden" name="year" value="{{ selected_year }}">
+                                <select name="area_code" class="form-select form-select-sm d-inline w-auto" required>
+                                    <option value="">Select area...</option>
+                                    {% for area in all_areas %}
+                                        {% if area.code in areas_without_leaders %}
+                                        <option value="{{ area.code }}">{{ area.code }} - {{ area.name }}</option>
+                                        {% endif %}
+                                    {% endfor %}
+                                </select>
+                                <button type="submit" class="btn btn-sm btn-success ms-1">Assign</button>
+                            </form>
+                            {% else %}
+                            <small class="text-muted">All areas have leaders</small>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- No Data State -->
+{% if not all_leaders and not areas_without_leaders and not leadership_interested %}
+<div class="card">
+    <div class="card-body text-center">
+        <h5>No Leadership Data</h5>
+        <p class="text-muted">No leaders assigned and no participants interested in leadership for {{ selected_year }}.</p>
+        <a href="{{ url_for('admin.participants', year=selected_year) }}" class="btn btn-primary">View All Participants</a>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

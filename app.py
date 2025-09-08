@@ -33,7 +33,10 @@ from routes.main import main_bp
 from routes.admin import admin_bp
 from routes.leader import leader_bp
 from routes.api import api_bp
-from routes.auth import auth_bp
+from routes.auth import auth_bp, init_auth
+
+# Initialize authentication
+init_auth(app)
 
 # Register blueprints
 app.register_blueprint(main_bp)
