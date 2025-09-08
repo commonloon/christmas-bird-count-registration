@@ -67,7 +67,7 @@ ADMIN_EMAILS = [
 - Collect: name, email, phone, birding skill level, CBC experience, area preference
 - Leadership interest tracking (separate from actual leadership assignment)
 - Dual area selection: interactive map clicking OR dropdown menu
-- Auto-assignment option: "Wherever I'm needed most" assigns to area with fewest volunteers
+- Manual assignment option: "Wherever I'm needed most" creates participants with preferred_area="UNASSIGNED" for admin review
 - Email validation and duplicate registration prevention (per year)
 - Mobile-responsive design (primary usage)
 
@@ -81,12 +81,13 @@ ADMIN_EMAILS = [
 ### Admin Interface
 - Year selector (defaults to current year)
 - View all participants and area assignments by year
+- Unassigned participant management with assignment tools
 - Assign area leaders to specific areas
 - Export participant data as CSV (current or historical)
 - Manual participant management (add/edit/delete for current year only)
 - Area-specific participant lists
 - Track participant removals for email notifications
-- Manage admin access list
+- Daily email digest of unassigned participants
 
 ### Area Leader Interface
 - View own area's participant lists (current + historical years)
@@ -113,11 +114,12 @@ ADMIN_EMAILS = [
   phone: string,
   skill_level: "Newbie|Beginner|Intermediate|Expert",
   experience: "None|1-2 counts|3+ counts",
-  preferred_area: "A-X|ANYWHERE",
+  preferred_area: "A-X|UNASSIGNED",
   interested_in_leadership: boolean,  // From form
   is_leader: boolean,                 // Admin-assigned only
   assigned_area_leader: string,       // Which area they lead, if any
-  auto_assigned: boolean,
+  assigned_by: string,               // Admin who assigned (if assigned)
+  assigned_at: timestamp,            // When assigned (if assigned)
   created_at: timestamp,
   updated_at: timestamp,
   year: integer                       // Explicit year field for data integrity
@@ -189,6 +191,8 @@ class ParticipantModel:
 - Compare with participant last_modified timestamps
 - Log removals separately since they're admin-only events
 - Atomic timestamp capture prevents race conditions
+- Test mode (TEST_MODE=true): All emails redirect to birdcount@naturevancouver.ca with modified subject/body indicating intended recipients
+- Production mode (TEST_MODE=false or unset): Normal email delivery
 
 ### Leadership Management
 - Participants can express interest but cannot self-assign leadership
@@ -200,18 +204,21 @@ class ParticipantModel:
 
 ### Volunteer Registration
 1. Visit registration page with form and interactive map
-2. Select area by clicking map polygon OR dropdown menu
+2. Select area by clicking map polygon OR dropdown menu OR "Wherever I'm needed most"
 3. Complete personal information including leadership interest
 4. Submit and receive confirmation
-5. Area leader receives automated notification
+5. If specific area selected: area leader receives automated notification
+6. If "Wherever I'm needed most" selected: participant created with preferred_area="UNASSIGNED" for admin review
 
 ### Admin Management
-1. Authenticate with Google OAuth (@naturevancouver.ca whitelisted account)
+1. Authenticate with Google OAuth (whitelisted admin account)
 2. Select year (defaults to current)
-3. View dashboard with area volunteer counts and recent registrations
-4. Assign area leaders from interested participants
-5. Export participant lists for communication
-6. Manually manage registrations as needed
+3. View dashboard with area volunteer counts, recent registrations, and unassigned participants
+4. Review daily digest of unassigned participants
+5. Manually assign unassigned participants to appropriate areas
+6. Assign area leaders from interested participants
+7. Export participant lists for communication
+8. Manually manage registrations as needed
 
 ### Area Leader Access
 1. Authenticate with Google OAuth (any Google account)
@@ -245,6 +252,8 @@ routes/
   leader.py                    # Area leader interface
   api.py                       # JSON endpoints for map
   auth.py                      # OAuth and authorization handling
+services/
+  email_service.py             # Email service with test mode
 templates/
   base.html                    # Base template with auth status
   index.html                   # Registration form
@@ -305,3 +314,9 @@ def get_historical_participants(area_code, years_back=3):
 - Environment-based configuration (dev/test/prod)
 - Automated SSL certificate management
 - Scale-to-zero cost optimization during off-season
+
+### Environment Variables
+- `TEST_MODE=true` (test instance): Redirects all emails to birdcount@naturevancouver.ca with modified subject/body
+- `TEST_MODE=false` or unset (production): Normal email delivery
+- `GOOGLE_CLOUD_PROJECT=vancouver-cbc-registration` (required for Firestore)
+- `SECRET_KEY` (Flask sessions, auto-generated if not set)

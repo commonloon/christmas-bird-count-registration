@@ -1,30 +1,46 @@
 # app.py - Flask application entry point
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session, g
 from google.cloud import firestore
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
 import os
 from datetime import datetime
 import json
+import logging
 
 # Initialize Flask app
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# OAuth configuration
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
+GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
+
 # Initialize Firestore client
 try:
     db = firestore.Client()
+    logger.info("Firestore client initialized successfully")
 except Exception as e:
-    print(f"Warning: Could not initialize Firestore client: {e}")
+    logger.error(f"Warning: Could not initialize Firestore client: {e}")
     db = None
 
 # Import route modules
 from routes.main import main_bp
 from routes.admin import admin_bp
+from routes.leader import leader_bp
 from routes.api import api_bp
+from routes.auth import auth_bp
 
 # Register blueprints
 app.register_blueprint(main_bp)
 app.register_blueprint(admin_bp, url_prefix='/admin')
+app.register_blueprint(leader_bp, url_prefix='/leader')
 app.register_blueprint(api_bp, url_prefix='/api')
+app.register_blueprint(auth_bp, url_prefix='/auth')
 
 # Load area boundaries data
 def load_area_boundaries():
@@ -36,10 +52,29 @@ def load_area_boundaries():
         print("Warning: Area boundaries file not found")
         return []
 
-# Make area boundaries available to templates
+# Make area boundaries and common data available to templates
 @app.context_processor
-def inject_areas():
-    return {'areas': load_area_boundaries()}
+def inject_common_data():
+    return {
+        'areas': load_area_boundaries(),
+        'current_year': datetime.now().year,
+        'user_role': getattr(g, 'user_role', 'public'),
+        'user_email': getattr(g, 'user_email', None),
+        'is_authenticated': 'user_email' in session
+    }
+
+# Before request handler for authentication context
+@app.before_request
+def load_user():
+    """Load user information into g context for templates."""
+    if 'user_email' in session:
+        g.user_email = session['user_email']
+        g.user_name = session.get('user_name', '')
+        g.user_role = session.get('user_role', 'public')
+    else:
+        g.user_email = None
+        g.user_name = None  
+        g.user_role = 'public'
 
 # Error handlers
 @app.errorhandler(404)
