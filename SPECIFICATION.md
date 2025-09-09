@@ -113,10 +113,12 @@ ADMIN_EMAILS = [
 - Area difficulty and habitat information
 
 **Leader Management (`/admin/leaders`)**
-- Current area leader assignments across all areas
-- Areas without assigned leaders (highlighted for attention)
-- Participants interested in leadership with promotion tools
-- Leader assignment workflow with email and contact details
+- Current area leader assignments with contact information and status
+- Manual leader entry form for direct assignment (primary workflow)
+- Areas without assigned leaders (highlighted for attention)  
+- Participants interested in leadership with promotion tools (exceptional case)
+- Leader management operations: edit contact info, remove/reassign leaders
+- Integration logic: auto-assign leader registrations, sync participant promotions
 
 **Export and Reporting**
 - CSV export of all participants with comprehensive data
@@ -164,16 +166,25 @@ ADMIN_EMAILS = [
 ```
 {
   id: auto_generated,
-  area_code: string,              // "A" through "X"
-  leader_email: string,           // Google account email
-  leader_name: string,
-  leader_phone: string,
+  area_code: string,              // "A" through "X" 
+  leader_email: string,           // Any email (Google or non-Google)
+  first_name: string,             // Required
+  last_name: string,              // Required  
+  cell_phone: string,             // Required
   assigned_by: string,            // Admin email who made assignment
-  assigned_date: timestamp,
-  active: boolean,
-  year: integer
+  assigned_at: timestamp,         // When leader was assigned
+  active: boolean,                // Currently active leader
+  year: integer,                  // Explicit year field
+  created_from_participant: boolean, // True if promoted from participant
+  notes: string                   // Optional admin notes
 }
 ```
+
+**Business Rules:**
+- Multiple leaders allowed per area
+- One area maximum per leader (enforced by application logic)
+- Leaders with Google emails can access leader UI, others receive notifications only
+- Manual entry creates area_leaders records only (no participant record required)
 
 ### Removal Log Collection (per year: removal_log_YYYY)
 ```
@@ -229,10 +240,32 @@ class ParticipantModel:
 - Production mode (TEST_MODE=false or unset): Normal email delivery
 
 ### Leadership Management
-- Participants can express interest but cannot self-assign leadership
-- Admins review interested participants and assign leaders through interface
-- Leaders get access to historical contact lists for their areas
-- Multiple leaders per area supported
+
+**Assignment Methods:**
+1. **Manual Entry (Primary)**: Admins directly enter leader information
+   - Creates records only in `area_leaders_YYYY` collection
+   - No participant registration required
+   - Supports any email address (Google or non-Google)
+
+2. **Participant Promotion (Exceptional)**: Promote existing participants to leaders
+   - Updates both `participants` and `area_leaders` collections
+   - Changes participant's area assignment to match led area
+   - Sets `is_leader=True` in participant record
+
+**Integration Logic:**
+- If leader registers as participant → auto-assign to their led area
+- Leader status tracked in both collections for data consistency
+- Email notifications sent to leaders for team updates (no workflow automation)
+
+**Access Control:**
+- Leaders with Google emails: Access to leader UI (`/leader` routes)
+- Leaders with non-Google emails: Receive notifications only
+- All leaders: Included in team communication and updates
+
+**Business Rules:**
+- Multiple leaders per area allowed
+- One area maximum per leader (enforced by application)
+- Required fields: first_name, last_name, email, cell_phone
 
 ## User Workflows
 

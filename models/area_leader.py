@@ -24,6 +24,10 @@ class AreaLeaderModel:
             f"Added area leader to {self.collection}: {leader_data.get('leader_email')} for area {leader_data.get('area_code')}")
         return doc_ref[1].id
 
+    def add_leader(self, leader_data: Dict) -> str:
+        """Add a new area leader (alias for add_area_leader for consistency)."""
+        return self.add_area_leader(leader_data)
+
     def get_area_leader(self, leader_id: str) -> Optional[Dict]:
         """Get an area leader by ID from the year-specific collection."""
         doc = self.db.collection(self.collection).document(leader_id).get()
@@ -79,6 +83,20 @@ class AreaLeaderModel:
         query = (self.db.collection(self.collection)
                  .where('active', '==', True)
                  .order_by('area_code'))
+
+        for doc in query.stream():
+            data = doc.to_dict()
+            data['id'] = doc.id
+            leaders.append(data)
+
+        return leaders
+
+    def get_areas_by_leader_email(self, email: str) -> List[Dict]:
+        """Get all areas led by a specific email address."""
+        leaders = []
+        query = (self.db.collection(self.collection)
+                 .where('leader_email', '==', email.lower())
+                 .where('active', '==', True))
 
         for doc in query.stream():
             data = doc.to_dict()

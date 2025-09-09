@@ -208,11 +208,27 @@ The application uses production Firestore - test carefully:
 3. Historical data remains accessible read-only
 4. Update admin whitelist if coordinators change
 
-### Creating Missing Admin Templates
-Missing templates will cause 500 errors. Implement in order of importance:
-1. `templates/admin/participants.html` - View all participants  
-2. `templates/admin/unassigned.html` - Manage unassigned participants
-3. `templates/admin/area_detail.html` - Area-specific participant views
+### Leader Management Business Rules
+**Area-Leader Relationships:**
+- Multiple leaders allowed per area
+- One area maximum per leader
+- Manual leader entry creates records only in `area_leaders_YYYY` collection
+- Participant-to-leader promotion updates both collections
+
+**Registration Integration:**
+- If leader registers as participant → auto-assign to their led area
+- If participant promoted to leader → update their area assignment to match led area
+- Leader status tracked in both participant.is_leader and area_leaders collection
+
+**Email and Access Requirements:**
+- Leaders can have non-Google emails (for notifications only)
+- Only Google email leaders can access leader UI at `/leader`
+- Required leader fields: first_name, last_name, email, cell_phone
+- Email notifications for team updates, but no automatic workflow notifications
+
+**Implementation Priority:**
+- Manual leader entry is primary workflow (most common)
+- Participant-to-leader promotion is exceptional case
 
 ### Debugging Deployment Issues
 1. **Check service configuration**: `gcloud run services describe SERVICE --region=us-west1`

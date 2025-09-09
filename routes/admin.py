@@ -199,6 +199,80 @@ def leaders():
                            current_user=get_current_user())
 
 
+@admin_bp.route('/add_leader', methods=['POST'])
+@require_admin
+def add_leader():
+    """Manually add a new area leader."""
+    if not g.db:
+        flash('Database unavailable.', 'error')
+        return redirect(url_for('admin.leaders'))
+
+    selected_year = int(request.form.get('year', datetime.now().year))
+    first_name = request.form.get('first_name', '').strip()
+    last_name = request.form.get('last_name', '').strip()
+    leader_email = request.form.get('leader_email', '').strip().lower()
+    cell_phone = request.form.get('cell_phone', '').strip()
+    area_code = request.form.get('area_code', '').strip().upper()
+    notes = request.form.get('notes', '').strip()
+
+    # Validate required fields
+    if not all([first_name, last_name, leader_email, cell_phone, area_code]):
+        flash('All required fields must be completed.', 'error')
+        return redirect(url_for('admin.leaders', year=selected_year))
+
+    # Validate area code
+    from config.areas import get_area_info
+    if not get_area_info(area_code):
+        flash(f'Invalid area code: {area_code}', 'error')
+        return redirect(url_for('admin.leaders', year=selected_year))
+
+    area_leader_model = AreaLeaderModel(g.db, selected_year)
+    user = get_current_user()
+
+    try:
+        # Check if leader already assigned to this area
+        existing_leaders = area_leader_model.get_leaders_by_area(area_code)
+        for leader in existing_leaders:
+            if leader.leader_email == leader_email:
+                flash(f'{first_name} {last_name} is already assigned as a leader for Area {area_code}.', 'warning')
+                return redirect(url_for('admin.leaders', year=selected_year))
+
+        # Check if this email is already leading another area (one area per leader rule)
+        leader_areas = area_leader_model.get_areas_by_leader_email(leader_email)
+        if leader_areas:
+            existing_area = leader_areas[0].area_code
+            flash(f'{leader_email} is already leading Area {existing_area}. Leaders can only lead one area.', 'error')
+            return redirect(url_for('admin.leaders', year=selected_year))
+
+        # Create the area leader record
+        leader_data = {
+            'area_code': area_code,
+            'leader_email': leader_email,
+            'first_name': first_name,
+            'last_name': last_name,
+            'cell_phone': cell_phone,
+            'assigned_by': user['email'],
+            'assigned_at': datetime.now(),
+            'active': True,
+            'year': selected_year,
+            'created_from_participant': False,
+            'notes': notes if notes else None
+        }
+
+        leader_id = area_leader_model.add_leader(leader_data)
+        
+        if leader_id:
+            flash(f'Successfully added {first_name} {last_name} as leader for Area {area_code}.', 'success')
+        else:
+            flash('Failed to add leader. Please try again.', 'error')
+
+    except Exception as e:
+        logger.error(f"Error adding leader: {e}")
+        flash('An error occurred while adding the leader.', 'error')
+
+    return redirect(url_for('admin.leaders', year=selected_year))
+
+
 @admin_bp.route('/assign_leader', methods=['POST'])
 @require_admin
 def assign_leader():
