@@ -87,15 +87,41 @@ ADMIN_EMAILS = [
 - Graceful fallback to dropdown-only if map fails
 
 ### Admin Interface
-- Year selector (defaults to current year)
-- View all participants and area assignments by year
-- Unassigned participant management with assignment tools
-- Assign area leaders to specific areas
-- Export participant data as CSV (current or historical)
-- Manual participant management (add/edit/delete for current year only)
-- Area-specific participant lists
-- Track participant removals for email notifications
-- Daily email digest of unassigned participants
+**Dashboard (`/admin/`)**
+- Year selector with available years dropdown (defaults to current year)
+- Statistics overview: total participants, assigned/unassigned counts, areas needing leaders
+- Recent registrations preview (latest 10 participants)
+- Quick action buttons for common management tasks
+
+**Participant Management (`/admin/participants`)**
+- Complete participant list with search and filtering
+- Participant details: contact info, skill level, area assignment, leadership interest
+- Delete participants with confirmation modal and reason logging
+- Direct navigation to area-specific views
+
+**Unassigned Participant Management (`/admin/unassigned`)**
+- Area capacity overview with color-coded participant counts
+- Bulk and individual assignment tools 
+- Assignment recommendations based on skill level and experience
+- Quick assignment to areas needing more volunteers
+
+**Area Detail Views (`/admin/area/<code>`)**  
+- Area-specific participant lists and statistics
+- Team composition analysis (skill levels, experience distribution)
+- Area leader assignments and contact information
+- Historical participant data (3-year lookback for recruitment)
+- Area difficulty and habitat information
+
+**Leader Management (`/admin/leaders`)**
+- Current area leader assignments across all areas
+- Areas without assigned leaders (highlighted for attention)
+- Participants interested in leadership with promotion tools
+- Leader assignment workflow with email and contact details
+
+**Export and Reporting**
+- CSV export of all participants with comprehensive data
+- Year-specific exports for historical analysis
+- Email digest system for unassigned participants
 
 ### Area Leader Interface
 - View own area's participant lists (current + historical years)
@@ -243,37 +269,58 @@ class ParticipantModel:
 
 ## File Structure
 ```
-app.py                          # Flask entry point with OAuth integration
+app.py                          # Flask entry point with OAuth initialization
 requirements.txt                # Python dependencies
-Dockerfile                      # Container configuration
+Dockerfile                      # Container configuration for Cloud Run
+deploy.sh                       # Automated deployment script (test/production/both)
+
 config/
-  areas.py                      # Area definitions (static)
+  areas.py                      # Static area definitions (24 areas A-X)
   settings.py                   # Environment configuration
   admins.py                     # Admin email whitelist
+
 models/
-  participant.py                # Year-aware participant operations
-  area_leader.py               # Year-aware leader operations
-  removal_log.py               # Year-aware removal tracking
+  participant.py                # Year-aware participant operations with Firestore
+  area_leader.py               # Year-aware leader management
+  removal_log.py               # Year-aware removal tracking for audit
+
 routes/
   main.py                      # Public registration routes
-  admin.py                     # Admin interface with year selector
-  leader.py                    # Area leader interface
-  api.py                       # JSON endpoints for map
-  auth.py                      # OAuth and authorization handling
+  admin.py                     # Complete admin interface with all management features
+  leader.py                    # Area leader interface (to be implemented)
+  api.py                       # JSON endpoints for map data
+  auth.py                      # Google Identity Services OAuth handling
+
 services/
-  email_service.py             # Email service with test mode
+  email_service.py             # Email service with test mode support
+
 templates/
-  base.html                    # Base template with auth status
-  index.html                   # Registration form
-  registration_success.html    # Success page
-  admin/                       # Admin interface templates
-  leader/                      # Leader interface templates
-  errors/                      # Error page templates
+  base.html                    # Base template with conditional navigation (no public admin links)
+  index.html                   # Registration form with interactive map
+  registration_success.html    # Registration confirmation page
+  auth/
+    login.html                 # Google OAuth login page
+  admin/
+    dashboard.html             # Admin overview with statistics
+    participants.html          # Complete participant management
+    unassigned.html           # Unassigned participant assignment tools
+    area_detail.html          # Area-specific participant and leader views
+    leaders.html              # Area leader management interface
+  leader/                      # Leader interface templates (to be implemented)
+  errors/                      # 404/500 error page templates
+
 static/
-  css/main.css                 # Responsive styling
-  js/map.js                    # Interactive map functionality
-  js/registration.js           # Form validation and interactions
-  data/area_boundaries.json    # Parsed area polygons
+  css/main.css                 # Bootstrap-based responsive styling
+  js/map.js                    # Leaflet.js interactive map functionality
+  js/registration.js           # Form validation and map-form synchronization
+  data/area_boundaries.json    # GeoJSON area polygons for map rendering
+
+utils/
+  setup_oauth_secrets.sh       # OAuth credential setup script for Google Secret Manager
+
+OAUTH-SETUP.md                  # Complete OAuth setup instructions
+CLAUDE.md                       # AI assistant instructions and troubleshooting guide
+SPECIFICATION.md                # This complete project specification
 ```
 
 ## Historical Data Access Patterns
@@ -316,15 +363,133 @@ def get_historical_participants(area_code, years_back=3):
 - Session management with appropriate timeouts
 
 ## Deployment Architecture
-- Google Cloud Run for application hosting
-- Firestore for data persistence
-- Custom domain: cbc-test.naturevancouver.ca (test), cbc-registration.naturevancouver.ca (production)
-- Environment-based configuration (dev/test/prod)
-- Automated SSL certificate management
-- Scale-to-zero cost optimization during off-season
+
+### Google Cloud Platform Configuration
+- **Google Cloud Run** for stateless application hosting with automatic HTTPS
+- **Google Firestore** for document-based data persistence  
+- **Google Secret Manager** for secure OAuth credential storage
+- **Custom domains**: 
+  - Test: `cbc-test.naturevancouver.ca`
+  - Production: `cbc-registration.naturevancouver.ca`
+- **Region**: `us-west1` (Oregon) for data residency
+- **Auto-scaling**: Scale-to-zero during off-season for cost optimization
+
+### Deployment Process
+**Automated Scripts:**
+```bash
+./deploy.sh test           # Deploy to test environment
+./deploy.sh production     # Deploy to production environment  
+./deploy.sh both          # Deploy to both environments (default)
+```
+
+**OAuth Setup (One-time):**
+```bash
+# 1. Create OAuth client in Google Console (see OAUTH-SETUP.md)
+# 2. Download client_secret.json to project root
+./utils/setup_oauth_secrets.sh    # Extract credentials to Secret Manager
+rm client_secret.json             # Remove sensitive file
+```
 
 ### Environment Variables
-- `TEST_MODE=true` (test instance): Redirects all emails to birdcount@naturevancouver.ca with modified subject/body
-- `TEST_MODE=false` or unset (production): Normal email delivery
-- `GOOGLE_CLOUD_PROJECT=vancouver-cbc-registration` (required for Firestore)
-- `SECRET_KEY` (Flask sessions, auto-generated if not set)
+**Test Environment:**
+- `FLASK_ENV=development`
+- `TEST_MODE=true` (redirects all emails to admin with modified subject)
+- `GOOGLE_CLOUD_PROJECT=vancouver-cbc-registration`
+
+**Production Environment:**  
+- `FLASK_ENV=production`
+- `TEST_MODE=false` (normal email delivery)
+- `GOOGLE_CLOUD_PROJECT=vancouver-cbc-registration`
+
+**Secret Manager Credentials:**
+- `GOOGLE_CLIENT_ID` (Google OAuth client ID)
+- `GOOGLE_CLIENT_SECRET` (Google OAuth client secret) 
+- `SECRET_KEY` (Flask session encryption key)
+
+### Security Configuration
+**OAuth Client Requirements:**
+- Application type: **Web application**
+- Authorized JavaScript origins: `https://DOMAIN` (both test and production)
+- Authorized redirect URIs: **None** (Google Identity Services uses direct callbacks)
+- OAuth consent screen: **Published** (not in testing mode)
+
+**Cloud Run Service Account:**
+- Default compute service account with `secretmanager.secretAccessor` role
+- Firestore access through `GOOGLE_CLOUD_PROJECT` environment variable
+- No additional IAM configuration required
+
+## Implementation Notes
+
+### Critical Implementation Requirements
+
+**OAuth Integration:**
+- Google Identity Services (not traditional OAuth redirect flow)
+- Client credentials must be stored in Google Secret Manager (never in code)
+- OAuth consent screen must be **published** for authentication to work
+- **Common Issue**: Trailing newlines in client ID secrets cause "invalid_client" errors
+
+**Database Design:**
+- All Firestore operations must include explicit year fields for data integrity
+- Composite indexes required for complex queries (auto-created via error URLs)
+- Email deduplication logic prevents duplicate registrations within same year
+
+**Security Architecture:**
+- No admin links visible to public users (security by obscurity)
+- Authentication decorators on all protected routes
+- Role determination happens during OAuth callback and stored in session
+- Admin access requires both OAuth authentication AND email whitelist membership
+
+**Template Requirements:**
+- All admin templates require year selector and breadcrumb navigation
+- Mobile-responsive design mandatory (Bootstrap 5 classes)
+- Error handling for missing data (empty collections, unavailable services)
+- Consistent user feedback via Flask flash messaging system
+
+### Common Development Pitfalls
+
+1. **OAuth Client Configuration**
+   - Must use "Web application" type (not Desktop or Mobile)
+   - JavaScript origins required, redirect URIs must be empty
+   - Consent screen must be published (not in testing mode)
+
+2. **Secret Management** 
+   - Never commit OAuth credentials to version control
+   - Use `.strip()` on all secret values to remove newlines
+   - Test credential access in Cloud Run environment before deployment
+
+3. **Firestore Operations**
+   - All write operations should include explicit year fields
+   - Handle missing collections gracefully (new years start with empty data)
+   - Use composite indexes for filtering by multiple fields
+
+4. **Year-Based Data Access**
+   - Always validate year parameters to prevent unauthorized historical access
+   - Display clear indicators for current vs. historical data
+   - Enforce read-only access to historical years via UI validation
+
+### Testing and Validation
+
+**Pre-Deployment Checklist:**
+- [ ] OAuth client properly configured with published consent screen
+- [ ] All secrets stored in Secret Manager and accessible by Cloud Run
+- [ ] Admin email whitelist updated with current coordinators
+- [ ] All admin templates render without errors for empty data sets
+- [ ] Mobile responsiveness tested on various screen sizes
+- [ ] Year selector functionality verified across all admin interfaces
+
+**Post-Deployment Verification:**
+```bash
+# Test OAuth flow
+curl -I https://DOMAIN/admin  # Should redirect to login
+
+# Verify admin authentication
+# (Manual test: authenticate with whitelisted admin account)
+
+# Check application logs for errors
+gcloud run services logs read SERVICE --region=us-west1 --limit=50
+
+# Verify Firestore connectivity and permissions
+# (Admin dashboard should load without database errors)
+```
+
+This specification represents a complete, production-ready Christmas Bird Count registration system with comprehensive admin management capabilities.
