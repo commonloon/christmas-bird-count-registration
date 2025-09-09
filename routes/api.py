@@ -64,3 +64,33 @@ def get_area_counts():
         return jsonify(counts)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/areas_needing_leaders')
+def get_areas_needing_leaders():
+    """Get all areas with leadership status for map display."""
+    try:
+        # Load area boundaries
+        with open('static/data/area_boundaries.json', 'r') as f:
+            areas = json.load(f)
+
+        # Get areas without leaders from current year
+        from datetime import datetime
+        from models.area_leader import AreaLeaderModel
+        
+        if db:
+            current_year = datetime.now().year
+            area_leader_model = AreaLeaderModel(db, current_year)
+            areas_without_leaders = area_leader_model.get_areas_without_leaders()
+        else:
+            areas_without_leaders = []
+
+        return jsonify({
+            'areas': areas,
+            'areas_without_leaders': areas_without_leaders
+        })
+
+    except FileNotFoundError:
+        return jsonify({'error': 'Area boundaries not found'}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

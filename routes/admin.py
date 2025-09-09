@@ -8,6 +8,7 @@ from routes.auth import require_admin, get_current_user
 from services.email_service import email_service
 from datetime import datetime
 import csv
+import logging
 from io import StringIO
 
 admin_bp = Blueprint('admin', __name__)
@@ -194,6 +195,7 @@ def leaders():
                            areas_without_leaders=areas_without_leaders,
                            leadership_interested=leadership_interested,
                            all_areas=all_areas,
+                           get_area_info=get_area_info,
                            selected_year=selected_year,
                            available_years=available_years,
                            current_user=get_current_user())
@@ -267,7 +269,7 @@ def add_leader():
             flash('Failed to add leader. Please try again.', 'error')
 
     except Exception as e:
-        logger.error(f"Error adding leader: {e}")
+        logging.error(f"Error adding leader: {e}")
         flash('An error occurred while adding the leader.', 'error')
 
     return redirect(url_for('admin.leaders', year=selected_year))
@@ -282,8 +284,18 @@ def assign_leader():
         return redirect(url_for('admin.leaders'))
 
     participant_id = request.form.get('participant_id')
-    area_code = request.form.get('area_code')
+    area_code = request.form.get('area_code', '').strip().upper()
     selected_year = int(request.form.get('year', datetime.now().year))
+
+    # Validate required fields
+    if not participant_id or not area_code:
+        flash('Participant ID and area code are required.', 'error')
+        return redirect(url_for('admin.leaders', year=selected_year))
+
+    # Validate area code
+    if not get_area_info(area_code):
+        flash(f'Invalid area code: {area_code}', 'error')
+        return redirect(url_for('admin.leaders', year=selected_year))
 
     participant_model = ParticipantModel(g.db, selected_year)
     area_leader_model = AreaLeaderModel(g.db, selected_year)
@@ -296,6 +308,14 @@ def assign_leader():
         return redirect(url_for('admin.leaders', year=selected_year))
 
     try:
+        # Check if this email is already leading another area (one area per leader rule)
+        participant_email = participant['email']
+        leader_areas = area_leader_model.get_areas_by_leader_email(participant_email)
+        if leader_areas:
+            existing_area = leader_areas[0]['area_code']
+            flash(f'{participant_email} is already leading Area {existing_area}. Leaders can only lead one area.', 'error')
+            return redirect(url_for('admin.leaders', year=selected_year))
+
         # Update participant record
         participant_model.assign_leadership(participant_id, area_code, user['email'])
 
@@ -312,7 +332,8 @@ def assign_leader():
               'success')
 
     except Exception as e:
-        flash('Failed to assign leader.', 'error')
+        logging.error(f"Error assigning leader: {e}")
+        flash('An error occurred while assigning the leader.', 'error')
 
     return redirect(url_for('admin.leaders', year=selected_year))
 

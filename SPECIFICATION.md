@@ -113,11 +113,14 @@ ADMIN_EMAILS = [
 - Area difficulty and habitat information
 
 **Leader Management (`/admin/leaders`)**
+- Interactive map showing areas needing leaders (red) vs areas with leaders (green)
+- Leader names displayed in map tooltips when hovering over areas with leaders
 - Current area leader assignments with contact information and status
-- Manual leader entry form for direct assignment (primary workflow)
-- Areas without assigned leaders (highlighted for attention)  
-- Participants interested in leadership with promotion tools (exceptional case)
-- Leader management operations: edit contact info, remove/reassign leaders
+- Manual leader entry form with validation and business rule enforcement (primary workflow)
+- Participant-to-leader promotion from "Potential Leaders" list (exceptional case)
+- Areas without assigned leaders highlighted on map and listed below
+- Map legend showing counts of areas with/without leaders
+- Enhanced area dropdowns with proper area codes and names
 - Integration logic: auto-assign leader registrations, sync participant promotions
 
 **Export and Reporting**
@@ -321,7 +324,7 @@ routes/
   main.py                      # Public registration routes
   admin.py                     # Complete admin interface with all management features
   leader.py                    # Area leader interface (to be implemented)
-  api.py                       # JSON endpoints for map data
+  api.py                       # JSON endpoints for map data and leadership information
   auth.py                      # Google Identity Services OAuth handling
 
 services/
@@ -338,13 +341,14 @@ templates/
     participants.html          # Complete participant management
     unassigned.html           # Unassigned participant assignment tools
     area_detail.html          # Area-specific participant and leader views
-    leaders.html              # Area leader management interface
+    leaders.html              # Area leader management interface with interactive map
   leader/                      # Leader interface templates (to be implemented)
   errors/                      # 404/500 error page templates
 
 static/
   css/main.css                 # Bootstrap-based responsive styling
-  js/map.js                    # Leaflet.js interactive map functionality
+  js/map.js                    # Leaflet.js interactive map functionality for registration
+  js/leaders-map.js            # Leaflet.js interactive map for leaders page
   js/registration.js           # Form validation and map-form synchronization
   data/area_boundaries.json    # GeoJSON area polygons for map rendering
 

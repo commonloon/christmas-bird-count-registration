@@ -83,10 +83,11 @@ rm client_secret.json
 - `routes/main.py` - Public registration routes
 - `routes/admin.py` - Admin interface with year selector  
 - `routes/auth.py` - OAuth and authorization handling
-- `routes/api.py` - JSON endpoints for map data
+- `routes/api.py` - JSON endpoints for map data and leadership information
 
 ### Frontend
 - `static/js/map.js` - Leaflet.js interactive map with area selection
+- `static/js/leaders-map.js` - Leaders page map showing areas needing leaders
 - `static/js/registration.js` - Form validation and interactions
 - `static/css/main.css` - Bootstrap-based responsive styling
 - `static/data/area_boundaries.json` - GeoJSON area polygons for map
@@ -96,10 +97,10 @@ rm client_secret.json
 - `templates/index.html` - Registration form with interactive map
 - `templates/auth/login.html` - Google OAuth login page
 - `templates/admin/dashboard.html` - Admin overview with statistics and year selection
-- `templates/admin/leaders.html` - Leader management interface
-- `templates/admin/participants.html` - Participant management (to be implemented)
-- `templates/admin/unassigned.html` - Unassigned participant management (to be implemented)
-- `templates/admin/area_detail.html` - Area-specific views (to be implemented)
+- `templates/admin/leaders.html` - Leader management interface with interactive map
+- `templates/admin/participants.html` - Participant management interface
+- `templates/admin/unassigned.html` - Unassigned participant management interface
+- `templates/admin/area_detail.html` - Area-specific views interface
 - `templates/errors/` - 404/500 error pages
 
 ## Key Implementation Patterns
@@ -208,10 +209,17 @@ The application uses production Firestore - test carefully:
 3. Historical data remains accessible read-only
 4. Update admin whitelist if coordinators change
 
-### Leader Management Business Rules
+### Leader Management System
+**Completed Features:**
+- Interactive map display showing areas needing leaders vs areas with leaders
+- Manual leader entry form with validation and business rule enforcement
+- Participant-to-leader promotion from "Potential Leaders" list
+- Area dropdowns properly populated with area codes and names
+- Leader information displayed in map tooltips on hover
+
 **Area-Leader Relationships:**
 - Multiple leaders allowed per area
-- One area maximum per leader
+- One area maximum per leader (enforced in backend)
 - Manual leader entry creates records only in `area_leaders_YYYY` collection
 - Participant-to-leader promotion updates both collections
 
@@ -220,15 +228,17 @@ The application uses production Firestore - test carefully:
 - If participant promoted to leader → update their area assignment to match led area
 - Leader status tracked in both participant.is_leader and area_leaders collection
 
+**Map Functionality:**
+- Red areas indicate areas needing leaders (interactive, clickable)
+- Green areas indicate areas with leaders (shows leader names on hover)
+- Map legend shows count of areas with/without leaders
+- Areas needing leaders have enhanced hover and click interactions
+
 **Email and Access Requirements:**
 - Leaders can have non-Google emails (for notifications only)
 - Only Google email leaders can access leader UI at `/leader`
 - Required leader fields: first_name, last_name, email, cell_phone
 - Email notifications for team updates, but no automatic workflow notifications
-
-**Implementation Priority:**
-- Manual leader entry is primary workflow (most common)
-- Participant-to-leader promotion is exceptional case
 
 ### Debugging Deployment Issues
 1. **Check service configuration**: `gcloud run services describe SERVICE --region=us-west1`
