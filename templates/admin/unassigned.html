@@ -33,12 +33,12 @@
             {% for area in all_areas %}
             <div class="col-md-2 col-sm-3 col-4 mb-2">
                 <div class="text-center">
-                    <a href="{{ url_for('admin.area_detail', area_code=area.code, year=selected_year) }}" 
-                       class="btn btn-sm {% if area_counts.get(area.code, 0) == 0 %}btn-outline-secondary{% elif area_counts.get(area.code, 0) < 5 %}btn-outline-warning{% else %}btn-outline-success{% endif %}">
-                        {{ area.code }}
+                    <a href="{{ url_for('admin.area_detail', area_code=area, year=selected_year) }}" 
+                       class="btn btn-sm {% if area_counts.get(area, 0) == 0 %}btn-outline-secondary{% elif area_counts.get(area, 0) < 5 %}btn-outline-warning{% else %}btn-outline-success{% endif %}">
+                        {{ area }}
                     </a>
                     <br>
-                    <small class="text-muted">{{ area_counts.get(area.code, 0) }}</small>
+                    <small class="text-muted">{{ area_counts.get(area, 0) }}</small>
                 </div>
             </div>
             {% endfor %}
@@ -115,9 +115,9 @@
                                 <select name="area_code" class="form-select form-select-sm me-2" style="width: 120px;" required>
                                     <option value="">Select...</option>
                                     {% for area in all_areas %}
-                                    <option value="{{ area.code }}" 
-                                            {% if area_counts.get(area.code, 0) >= 8 %}class="text-warning"{% endif %}>
-                                        {{ area.code }} ({{ area_counts.get(area.code, 0) }})
+                                    <option value="{{ area }}" 
+                                            {% if area_counts.get(area, 0) >= 8 %}class="text-warning"{% endif %}>
+                                        {{ area }} ({{ area_counts.get(area, 0) }})
                                     </option>
                                     {% endfor %}
                                 </select>
@@ -130,46 +130,6 @@
                 </tbody>
             </table>
         </div>
-        
-        <!-- Bulk Assignment Section -->
-        {% if participants|length > 1 %}
-        <div class="mt-4">
-            <div class="card border-info">
-                <div class="card-header bg-info">
-                    <h6 class="mb-0">Bulk Assignment</h6>
-                </div>
-                <div class="card-body">
-                    <p class="mb-3">Assign multiple participants to areas that need more volunteers:</p>
-                    
-                    <!-- Show areas that need more participants -->
-                    <div class="row">
-                        {% for area in all_areas %}
-                            {% if area_counts.get(area.code, 0) < 4 %}
-                            <div class="col-md-4 mb-2">
-                                <form method="POST" action="{{ url_for('admin.assign_participant') }}" class="d-inline">
-                                    <input type="hidden" name="area_code" value="{{ area.code }}">
-                                    <input type="hidden" name="year" value="{{ selected_year }}">
-                                    
-                                    <div class="d-flex align-items-center">
-                                        <strong class="me-2">{{ area.code }}:</strong>
-                                        <select name="participant_id" class="form-select form-select-sm me-2" required>
-                                            <option value="">Choose participant...</option>
-                                            {% for p in participants %}
-                                            <option value="{{ p.id }}">{{ p.first_name }} {{ p.last_name }} ({{ p.skill_level }})</option>
-                                            {% endfor %}
-                                        </select>
-                                        <button type="submit" class="btn btn-sm btn-outline-primary">Add</button>
-                                    </div>
-                                    <small class="text-muted">Currently: {{ area_counts.get(area.code, 0) }} participants</small>
-                                </form>
-                            </div>
-                            {% endif %}
-                        {% endfor %}
-                    </div>
-                </div>
-            </div>
-        </div>
-        {% endif %}
     </div>
 </div>
 
@@ -185,19 +145,4 @@
     </div>
 </div>
 {% endif %}
-
-<!-- Assignment Tips -->
-<div class="card border-light mt-4">
-    <div class="card-header bg-light">
-        <h6 class="mb-0">💡 Assignment Tips</h6>
-    </div>
-    <div class="card-body">
-        <ul class="mb-0">
-            <li><strong>Beginners:</strong> Pair with experienced birders in popular areas (Stanley Park, Queen Elizabeth Park)</li>
-            <li><strong>Experts:</strong> Can handle challenging areas or lead teams in less-birded locations</li>
-            <li><strong>Leadership Interest:</strong> Consider as area leaders for areas without current leaders</li>
-            <li><strong>Geographic spread:</strong> Try to balance teams across Vancouver's diverse habitats</li>
-        </ul>
-    </div>
-</div>
 {% endblock %}

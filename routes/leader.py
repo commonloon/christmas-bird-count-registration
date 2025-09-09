@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, make_response, g
 from google.cloud import firestore
+from config.database import get_firestore_client
 from models.participant import ParticipantModel
 from models.area_leader import AreaLeaderModel
 from routes.auth import require_leader
@@ -16,7 +17,7 @@ def load_leader_areas():
     """Load the areas this leader is responsible for."""
     if hasattr(g, 'user_email'):
         try:
-            db = firestore.Client()
+            db, _ = get_firestore_client()
             current_year = datetime.now().year
             leader_model = AreaLeaderModel(db, current_year)
             g.leader_areas = leader_model.get_leader_areas(g.user_email)
@@ -31,7 +32,7 @@ def load_leader_areas():
 def dashboard():
     """Area leader dashboard showing their areas and participant counts."""
     try:
-        db = firestore.Client()
+        db, _ = get_firestore_client()
         current_year = datetime.now().year
         participant_model = ParticipantModel(db, current_year)
         
@@ -67,7 +68,7 @@ def view_area(area_code):
         return redirect(url_for('leader.dashboard'))
     
     try:
-        db = firestore.Client()
+        db, _ = get_firestore_client()
         current_year = datetime.now().year
         participant_model = ParticipantModel(db, current_year)
         
@@ -93,7 +94,7 @@ def view_area_history(area_code):
         return redirect(url_for('leader.dashboard'))
     
     try:
-        db = firestore.Client()
+        db, _ = get_firestore_client()
         current_year = datetime.now().year
         participant_model = ParticipantModel(db, current_year)
         
@@ -123,7 +124,7 @@ def export_area_contacts(area_code):
         return redirect(url_for('leader.dashboard'))
     
     try:
-        db = firestore.Client()
+        db, _ = get_firestore_client()
         current_year = datetime.now().year
         participant_model = ParticipantModel(db, current_year)
         
@@ -172,7 +173,7 @@ def export_area_history(area_code):
         return redirect(url_for('leader.dashboard'))
     
     try:
-        db = firestore.Client()
+        db, _ = get_firestore_client()
         current_year = datetime.now().year
         participant_model = ParticipantModel(db, current_year)
         
@@ -220,7 +221,7 @@ def export_area_history(area_code):
 def profile():
     """Area leader profile and settings."""
     try:
-        db = firestore.Client()
+        db, _ = get_firestore_client()
         current_year = datetime.now().year
         leader_model = AreaLeaderModel(db, current_year)
         

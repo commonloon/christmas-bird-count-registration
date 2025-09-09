@@ -1,6 +1,7 @@
 # app.py - Flask application entry point
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session, g
 from google.cloud import firestore
+from config.database import get_firestore_client
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 import os
@@ -22,8 +23,8 @@ GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
 
 # Initialize Firestore client
 try:
-    db = firestore.Client()
-    logger.info("Firestore client initialized successfully")
+    db, database_id = get_firestore_client()
+    logger.info(f"Firestore client initialized successfully for database: {database_id}")
 except Exception as e:
     logger.error(f"Warning: Could not initialize Firestore client: {e}")
     db = None

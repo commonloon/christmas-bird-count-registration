@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response, g
 from google.cloud import firestore
+from config.database import get_firestore_client
 from models.participant import ParticipantModel
 from models.area_leader import AreaLeaderModel
 from models.removal_log import RemovalLogModel
@@ -18,7 +19,7 @@ admin_bp = Blueprint('admin', __name__)
 def load_db():
     """Load database client and check admin access."""
     try:
-        g.db = firestore.Client()
+        g.db, _ = get_firestore_client()
     except Exception as e:
         g.db = None
         flash('Database unavailable.', 'error')

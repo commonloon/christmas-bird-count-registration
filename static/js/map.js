@@ -155,7 +155,7 @@ function updateSelectionFeedback(areaCode, areaName) {
         mapDiv.parentNode.insertBefore(feedbackDiv, mapDiv.nextSibling);
     }
 
-    if (areaCode === 'ANYWHERE') {
+    if (areaCode === 'UNASSIGNED') {
         feedbackDiv.innerHTML = '🎯 Wherever I\'m needed most selected';
         feedbackDiv.className = 'selection-feedback';
     } else if (areaCode) {
@@ -182,7 +182,7 @@ function showMapError(message) {
 
 // Function to highlight area from dropdown selection
 function highlightAreaFromDropdown(areaCode) {
-    if (areaCode === 'ANYWHERE') {
+    if (areaCode === 'UNASSIGNED') {
         // Clear any map selection for "anywhere" option
         if (selectedArea && areaLayers[selectedArea]) {
             const prevStyle = getAreaStyle(
@@ -192,7 +192,7 @@ function highlightAreaFromDropdown(areaCode) {
             areaLayers[selectedArea].polygon.setStyle(prevStyle);
         }
         selectedArea = null;
-        updateSelectionFeedback('ANYWHERE', 'Auto-assignment');
+        updateSelectionFeedback('UNASSIGNED', 'Auto-assignment');
         return;
     }
 

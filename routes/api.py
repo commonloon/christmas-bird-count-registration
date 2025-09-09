@@ -1,5 +1,6 @@
 from flask import Blueprint, jsonify, request
 from google.cloud import firestore
+from config.database import get_firestore_client
 from models.participant import ParticipantModel
 import json
 
@@ -7,7 +8,7 @@ api_bp = Blueprint('api', __name__)
 
 # Initialize Firestore and models
 try:
-    db = firestore.Client()
+    db, _ = get_firestore_client()
     participant_model = ParticipantModel(db)
 except Exception as e:
     print(f"Warning: Could not initialize Firestore: {e}")

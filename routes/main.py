@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, g
 from google.cloud import firestore
+from config.database import get_firestore_client
 from models.participant import ParticipantModel
 from models.area_leader import AreaLeaderModel
 from config.areas import get_area_info, get_all_areas
@@ -14,7 +15,7 @@ main_bp = Blueprint('main', __name__)
 def load_db():
     """Load database client for this request."""
     try:
-        g.db = firestore.Client()
+        g.db, _ = get_firestore_client()
     except Exception as e:
         g.db = None
         print(f"Warning: Could not initialize Firestore: {e}")

@@ -62,6 +62,24 @@ gcloud run services logs read cbc-registration --region=us-west1 --limit=50
 rm client_secret.json
 ```
 
+### Utility Scripts
+```bash
+# Install utility dependencies (one-time setup)
+pip install -r utils/requirements.txt
+
+# Set up Firestore databases (run once per project setup)
+python utils/setup_databases.py --dry-run       # Preview what would be created
+python utils/setup_databases.py                # Create missing databases with indexes
+python utils/setup_databases.py --skip-indexes # Create databases only (faster, but may have runtime delays)
+python utils/setup_databases.py --force        # Recreate all databases (with confirmation)
+
+# Generate test participants for development/testing
+python utils/generate_test_participants.py                    # 20 regular + 5 leadership
+python utils/generate_test_participants.py 50                # 50 regular + 5 leadership  
+python utils/generate_test_participants.py 10 --seq 100      # 10 regular + 5 leadership, start at email 0100
+python utils/generate_test_participants.py 0 --seq 5000      # 0 regular + 5 leadership, start at email 5000
+```
+
 ## Project Structure
 
 ### Core Files
@@ -130,7 +148,7 @@ historical_participants = participant_model.get_historical_participants('A', yea
 ### Area Management
 - 24 count areas (A-X, no Y) with static configuration
 - Interactive map with clickable polygons synced to dropdown
-- Auto-assignment to areas needing volunteers ("ANYWHERE" preference)
+- Auto-assignment to areas needing volunteers ("UNASSIGNED" preference)
 - No capacity limits - areas accommodate varying numbers
 
 ## Important Constraints

@@ -94,8 +94,8 @@
                         </td>
                         <td>{{ participant.experience }}</td>
                         <td>
-                            {% if participant.preferred_area == 'ANYWHERE' %}
-                                <span class="badge bg-secondary">ANYWHERE</span>
+                            {% if participant.preferred_area == 'UNASSIGNED' %}
+                                <span class="badge bg-secondary">UNASSIGNED</span>
                             {% elif participant.preferred_area %}
                                 <a href="{{ url_for('admin.area_detail', area_code=participant.preferred_area, year=selected_year) }}" class="btn btn-sm btn-outline-primary">
                                     {{ participant.preferred_area }}

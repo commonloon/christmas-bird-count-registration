@@ -5,7 +5,7 @@ Web application for Nature Vancouver's annual Christmas Bird Count registration 
 
 ## Technical Stack
 - **Backend**: Python 3.13, Flask with Blueprint routing
-- **Database**: Google Firestore with year-based collections
+- **Database**: Google Firestore with environment-specific databases (`cbc-test`, `cbc-register`) and year-based collections
 - **Authentication**: Google Identity Services OAuth with Google Secret Manager for credentials
 - **Frontend**: Bootstrap 5, Leaflet.js for interactive mapping
 - **Deployment**: Google Cloud Run with automated deployment scripts
@@ -76,6 +76,7 @@ ADMIN_EMAILS = [
 - Leadership interest tracking (separate from actual leadership assignment)
 - Dual area selection: interactive map clicking OR dropdown menu
 - Manual assignment option: "Wherever I'm needed most" creates participants with preferred_area="UNASSIGNED" for admin review
+- Consistent terminology: "UNASSIGNED" used throughout system (replaced legacy "ANYWHERE" references)
 - Email validation and duplicate registration prevention (per year)
 - Mobile-responsive design (primary usage)
 
@@ -100,9 +101,9 @@ ADMIN_EMAILS = [
 - Direct navigation to area-specific views
 
 **Unassigned Participant Management (`/admin/unassigned`)**
-- Area capacity overview with color-coded participant counts
-- Bulk and individual assignment tools 
-- Assignment recommendations based on skill level and experience
+- Area capacity overview with color-coded participant counts (fixed to show actual counts)
+- Individual assignment tools with area dropdowns showing current participant counts
+- Streamlined interface focused on essential assignment workflow
 - Quick assignment to areas needing more volunteers
 
 **Area Detail Views (`/admin/area/<code>`)**  
@@ -123,6 +124,7 @@ ADMIN_EMAILS = [
   - Save button validates and updates leader information with business rule enforcement
   - Delete button (trash icon) with simple confirmation dialog
   - Real-time map refresh after successful operations
+  - Client-side data synchronization prevents server round-trips for map updates
 - Manual leader entry form with validation and business rule enforcement (primary workflow)
 - Participant-to-leader promotion from "Potential Leaders" list (exceptional case)
 - Areas without assigned leaders highlighted on map and listed below
@@ -363,6 +365,9 @@ static/
 
 utils/
   setup_oauth_secrets.sh       # OAuth credential setup script for Google Secret Manager
+  setup_databases.py           # Firestore database creation script
+  generate_test_participants.py # Test data generation script for development/testing
+  requirements.txt             # Dependencies for utility scripts (requests, faker, firestore)
 
 OAUTH-SETUP.md                  # Complete OAuth setup instructions
 CLAUDE.md                       # AI assistant instructions and troubleshooting guide
@@ -512,6 +517,30 @@ rm client_secret.json             # Remove sensitive file
    - Always validate year parameters to prevent unauthorized historical access
    - Display clear indicators for current vs. historical data
    - Enforce read-only access to historical years via UI validation
+
+### Database Setup
+For initial project setup or after database deletion:
+```bash
+# Install utility dependencies
+cd utils
+pip install -r requirements.txt
+
+# Create required Firestore databases
+python setup_databases.py --dry-run       # Preview what would be created
+python setup_databases.py                # Create missing databases with indexes (cbc-test, cbc-register)
+python setup_databases.py --skip-indexes # Create databases only (faster, but may have runtime delays)
+python setup_databases.py --force        # Recreate all databases (with confirmation)
+```
+
+### Test Data Generation
+For development and testing purposes:
+```bash
+# Generate test participants
+python generate_test_participants.py                    # 20 regular + 5 leadership
+python generate_test_participants.py 50                # 50 regular + 5 leadership  
+python generate_test_participants.py 10 --seq 100      # 10 regular + 5 leadership, start at email 0100
+python generate_test_participants.py 0 --seq 5000      # 0 regular + 5 leadership, start at email 5000
+```
 
 ### Testing and Validation
 

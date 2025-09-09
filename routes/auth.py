@@ -120,8 +120,9 @@ def oauth_callback():
 
         # Determine user role
         from google.cloud import firestore
+        from config.database import get_firestore_client
         try:
-            db_client = firestore.Client()
+            db_client, _ = get_firestore_client()
             user_role = get_user_role(email, db_client)
         except Exception as e:
             logger.error(f"Database connection error: {e}")
