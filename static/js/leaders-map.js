@@ -41,6 +41,9 @@ function loadAreasNeedingLeaders() {
                 return;
             }
 
+            // Cache area boundary data for future refreshes
+            window.cachedAreaData = data.areas;
+            
             displayAreasNeedingLeaders(data.areas, data.areas_without_leaders);
         })
         .catch(error => {
@@ -235,3 +238,72 @@ function showLeadersMapError(message) {
         </div>
     `;
 }
+
+// Clear existing map layers for refresh
+function clearMapLayers() {
+    if (leadersAreaLayers) {
+        Object.values(leadersAreaLayers).forEach(layer => {
+            if (layer.polygon) {
+                leadersMap.removeLayer(layer.polygon);
+            }
+        });
+        leadersAreaLayers = {};
+    }
+}
+
+// Calculate areas needing leaders from current window.leaderData
+function calculateAreasNeedingLeaders() {
+    const allAreas = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X'];
+    const areasWithLeaders = new Set();
+    
+    // Check which areas have leaders based on current window.leaderData
+    if (window.leaderData) {
+        Object.keys(window.leaderData).forEach(areaCode => {
+            if (window.leaderData[areaCode] && window.leaderData[areaCode].length > 0) {
+                areasWithLeaders.add(areaCode);
+            }
+        });
+    }
+    
+    return allAreas.filter(area => !areasWithLeaders.has(area));
+}
+
+// Refresh the leaders map with current data (called after AJAX operations)
+function refreshLeadersMap() {
+    if (!leadersMap || !leadersAreaLayers) {
+        // Map not initialized yet
+        return;
+    }
+    
+    // Clear existing layers
+    clearMapLayers();
+    
+    // Calculate current areas needing leaders
+    const areasNeedingLeaders = calculateAreasNeedingLeaders();
+    
+    // Get area boundary data from the first load (stored in layer data)
+    const allAreaData = [];
+    
+    // We need to reconstruct area data from what we know
+    // Since we don't want to make another API call, we'll fetch it once and store it
+    if (window.cachedAreaData) {
+        displayAreasNeedingLeaders(window.cachedAreaData, areasNeedingLeaders);
+    } else {
+        // If no cached data, reload from API once and cache it
+        fetch('/api/areas_needing_leaders')
+            .then(response => response.json())
+            .then(data => {
+                if (!data.error && data.areas) {
+                    // Cache the area boundary data for future refreshes
+                    window.cachedAreaData = data.areas;
+                    displayAreasNeedingLeaders(data.areas, areasNeedingLeaders);
+                }
+            })
+            .catch(error => {
+                console.error('Error refreshing map:', error);
+            });
+    }
+}
+
+// Make refresh function available globally
+window.refreshLeadersMap = refreshLeadersMap;

@@ -115,7 +115,14 @@ ADMIN_EMAILS = [
 **Leader Management (`/admin/leaders`)**
 - Interactive map showing areas needing leaders (red) vs areas with leaders (green)
 - Leader names displayed in map tooltips when hovering over areas with leaders
+- Live map updates after edit/delete operations using client-side data management
 - Current area leader assignments with contact information and status
+- **Inline edit/delete functionality**: Edit leader information directly in the table
+  - Edit button (pencil icon) enables inline editing of all fields simultaneously
+  - Area dropdown, name fields, email, and phone become editable
+  - Save button validates and updates leader information with business rule enforcement
+  - Delete button (trash icon) with simple confirmation dialog
+  - Real-time map refresh after successful operations
 - Manual leader entry form with validation and business rule enforcement (primary workflow)
 - Participant-to-leader promotion from "Potential Leaders" list (exceptional case)
 - Areas without assigned leaders highlighted on map and listed below
@@ -185,9 +192,11 @@ ADMIN_EMAILS = [
 
 **Business Rules:**
 - Multiple leaders allowed per area
-- One area maximum per leader (enforced by application logic)
+- One area maximum per leader (enforced by application logic with validation)
 - Leaders with Google emails can access leader UI, others receive notifications only
 - Manual entry creates area_leaders records only (no participant record required)
+- Inline editing enforces business rules: prevents duplicate area assignments per leader
+- Participant synchronization: editing leaders promoted from participants updates both records
 
 ### Removal Log Collection (per year: removal_log_YYYY)
 ```
@@ -331,7 +340,7 @@ services/
   email_service.py             # Email service with test mode support
 
 templates/
-  base.html                    # Base template with conditional navigation (no public admin links)
+  base.html                    # Base template with conditional navigation and Bootstrap Icons
   index.html                   # Registration form with interactive map
   registration_success.html    # Registration confirmation page
   auth/
@@ -341,14 +350,14 @@ templates/
     participants.html          # Complete participant management
     unassigned.html           # Unassigned participant assignment tools
     area_detail.html          # Area-specific participant and leader views
-    leaders.html              # Area leader management interface with interactive map
+    leaders.html              # Leader management with inline edit/delete and live map updates
   leader/                      # Leader interface templates (to be implemented)
   errors/                      # 404/500 error page templates
 
 static/
   css/main.css                 # Bootstrap-based responsive styling
   js/map.js                    # Leaflet.js interactive map functionality for registration
-  js/leaders-map.js            # Leaflet.js interactive map for leaders page
+  js/leaders-map.js            # Leaflet.js interactive map for leaders page with live refresh capability
   js/registration.js           # Form validation and map-form synchronization
   data/area_boundaries.json    # GeoJSON area polygons for map rendering
 

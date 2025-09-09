@@ -89,6 +89,18 @@ class ParticipantModel:
 
         return counts
 
+    def get_participants_by_email(self, email: str) -> List[Dict]:
+        """Get all participants with a specific email address."""
+        participants = []
+        query = self.db.collection(self.collection).where('email', '==', email.lower())
+        
+        for doc in query.stream():
+            data = doc.to_dict()
+            data['id'] = doc.id
+            participants.append(data)
+        
+        return participants
+
     def update_participant(self, participant_id: str, updates: Dict) -> bool:
         """Update a participant's information."""
         try:

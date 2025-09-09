@@ -54,26 +54,66 @@
                         <th>Email</th>
                         <th>Phone</th>
                         <th>Assigned</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for leader in all_leaders %}
-                    <tr>
-                        <td><strong>{{ leader.area_code }}</strong></td>
+                    <tr data-leader-id="{{ leader.id }}" data-leader-email="{{ leader.leader_email }}" data-created-from-participant="{{ leader.created_from_participant or false }}">
                         <td>
-                            {% if leader.first_name and leader.last_name %}
-                                {{ leader.first_name }} {{ leader.last_name }}
-                            {% else %}
-                                {{ leader.leader_name or 'N/A' }}
-                            {% endif %}
-                            {% if leader.created_from_participant %}
-                                <span class="badge bg-info ms-1" title="Promoted from participant">Participant</span>
-                            {% else %}
-                                <span class="badge bg-secondary ms-1" title="Manually entered">Manual</span>
-                            {% endif %}
+                            <div class="area-display">
+                                <strong>{{ leader.area_code }}</strong>
+                            </div>
+                            <div class="area-edit" style="display: none;">
+                                <select class="form-select form-select-sm area-select">
+                                    {% for area in all_areas %}
+                                    <option value="{{ area }}" {% if area == leader.area_code %}selected{% endif %}>{{ area }} - {{ get_area_info(area).name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
                         </td>
-                        <td><a href="mailto:{{ leader.leader_email }}">{{ leader.leader_email }}</a></td>
-                        <td>{{ leader.cell_phone or leader.leader_phone or 'N/A' }}</td>
+                        <td>
+                            <div class="name-display">
+                                {% if leader.first_name and leader.last_name %}
+                                    <span class="leader-name">{{ leader.first_name }} {{ leader.last_name }}</span>
+                                {% else %}
+                                    <span class="leader-name">{{ leader.leader_name or 'N/A' }}</span>
+                                {% endif %}
+                                {% if leader.created_from_participant %}
+                                    <span class="badge bg-info ms-1" title="Promoted from participant">Participant</span>
+                                {% else %}
+                                    <span class="badge bg-secondary ms-1" title="Manually entered">Manual</span>
+                                {% endif %}
+                            </div>
+                            <div class="name-edit" style="display: none;">
+                                <div class="d-flex gap-1">
+                                    {% if leader.first_name and leader.last_name %}
+                                        <input type="text" class="form-control form-control-sm first-name-input" placeholder="First" value="{{ leader.first_name }}">
+                                        <input type="text" class="form-control form-control-sm last-name-input" placeholder="Last" value="{{ leader.last_name }}">
+                                    {% else %}
+                                        {% set name_parts = (leader.leader_name or '').split(' ', 1) %}
+                                        <input type="text" class="form-control form-control-sm first-name-input" placeholder="First" value="{{ name_parts[0] or '' }}">
+                                        <input type="text" class="form-control form-control-sm last-name-input" placeholder="Last" value="{{ name_parts[1] or '' if name_parts|length > 1 else '' }}">
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="email-display">
+                                <a href="mailto:{{ leader.leader_email }}">{{ leader.leader_email }}</a>
+                            </div>
+                            <div class="email-edit" style="display: none;">
+                                <input type="email" class="form-control form-control-sm email-input" value="{{ leader.leader_email }}">
+                            </div>
+                        </td>
+                        <td>
+                            <div class="phone-display">
+                                {{ leader.cell_phone or leader.leader_phone or 'N/A' }}
+                            </div>
+                            <div class="phone-edit" style="display: none;">
+                                <input type="tel" class="form-control form-control-sm phone-input" value="{{ leader.cell_phone or leader.leader_phone or '' }}" placeholder="(604) 555-1234">
+                            </div>
+                        </td>
                         <td>
                             {% if leader.assigned_at %}
                                 {{ leader.assigned_at.strftime('%m/%d/%y') }}
@@ -82,6 +122,21 @@
                             {% else %}
                                 N/A
                             {% endif %}
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm action-buttons">
+                                <button class="btn btn-outline-primary btn-edit" title="Edit">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="btn btn-outline-danger btn-delete" title="Delete">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                            <div class="btn-group btn-group-sm edit-buttons" style="display: none;">
+                                <button class="btn btn-success btn-save" title="Save">
+                                    <i class="bi bi-check"></i>
+                                </button>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}
@@ -241,6 +296,26 @@
     </div>
 </div>
 {% endif %}
+
+<!-- Delete Leader Confirmation Modal -->
+<div class="modal fade" id="deleteLeaderModal" tabindex="-1" aria-labelledby="deleteLeaderModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteLeaderModalLabel">Confirm Delete Leader</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete <strong class="leader-name-to-delete"></strong> as leader of area <strong class="leader-area-to-delete"></strong>?</p>
+                <p class="text-muted">This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteLeader">Delete Leader</button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -255,6 +330,288 @@ if (!window.leaderData["{{ leader.area_code }}"]) {
 window.leaderData["{{ leader.area_code }}"].push("{% if leader.first_name and leader.last_name %}{{ leader.first_name }} {{ leader.last_name }}{% else %}{{ leader.leader_name or 'Unknown Leader' }}{% endif %}");
 {% endfor %}
 {% endif %}
+
+// Inline editing functionality for leaders table
+document.addEventListener('DOMContentLoaded', function() {
+    let leaderIdToDelete = null;
+    let leaderRowToDelete = null;
+    
+    // Handle edit button clicks
+    document.querySelectorAll('.btn-edit').forEach(button => {
+        button.addEventListener('click', function() {
+            const row = this.closest('tr');
+            enableEditMode(row);
+        });
+    });
+    
+    // Handle save button clicks
+    document.querySelectorAll('.btn-save').forEach(button => {
+        button.addEventListener('click', function() {
+            const row = this.closest('tr');
+            saveLeaderChanges(row);
+        });
+    });
+    
+    // Handle delete button clicks
+    document.querySelectorAll('.btn-delete').forEach(button => {
+        button.addEventListener('click', function() {
+            const row = this.closest('tr');
+            const leaderId = row.dataset.leaderId;
+            const leaderName = row.querySelector('.leader-name').textContent;
+            const leaderArea = row.querySelector('.area-display strong').textContent;
+            
+            // Set up modal content
+            document.querySelector('.leader-name-to-delete').textContent = leaderName;
+            document.querySelector('.leader-area-to-delete').textContent = leaderArea;
+            
+            // Store for deletion
+            leaderIdToDelete = leaderId;
+            leaderRowToDelete = row;
+            
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('deleteLeaderModal'));
+            modal.show();
+        });
+    });
+    
+    // Handle delete confirmation
+    document.getElementById('confirmDeleteLeader').addEventListener('click', function() {
+        if (leaderIdToDelete && leaderRowToDelete) {
+            deleteLeader(leaderIdToDelete, leaderRowToDelete);
+        }
+        bootstrap.Modal.getInstance(document.getElementById('deleteLeaderModal')).hide();
+    });
+    
+    function enableEditMode(row) {
+        // Hide display elements and show edit elements
+        row.querySelectorAll('.area-display, .name-display, .email-display, .phone-display').forEach(el => {
+            el.style.display = 'none';
+        });
+        row.querySelectorAll('.area-edit, .name-edit, .email-edit, .phone-edit').forEach(el => {
+            el.style.display = 'block';
+        });
+        
+        // Switch buttons
+        row.querySelector('.action-buttons').style.display = 'none';
+        row.querySelector('.edit-buttons').style.display = 'block';
+    }
+    
+    function disableEditMode(row) {
+        // Show display elements and hide edit elements
+        row.querySelectorAll('.area-display, .name-display, .email-display, .phone-display').forEach(el => {
+            el.style.display = 'block';
+        });
+        row.querySelectorAll('.area-edit, .name-edit, .email-edit, .phone-edit').forEach(el => {
+            el.style.display = 'none';
+        });
+        
+        // Switch buttons back
+        row.querySelector('.action-buttons').style.display = 'block';
+        row.querySelector('.edit-buttons').style.display = 'none';
+    }
+    
+    function saveLeaderChanges(row) {
+        const leaderId = row.dataset.leaderId;
+        const formData = {
+            leader_id: leaderId,
+            area_code: row.querySelector('.area-select').value,
+            first_name: row.querySelector('.first-name-input').value.trim(),
+            last_name: row.querySelector('.last-name-input').value.trim(),
+            leader_email: row.querySelector('.email-input').value.trim(),
+            cell_phone: row.querySelector('.phone-input').value.trim(),
+            year: {{ selected_year }}
+        };
+        
+        // Basic validation
+        if (!formData.first_name || !formData.last_name || !formData.leader_email || !formData.area_code) {
+            alert('Please fill in all required fields (First Name, Last Name, Email, Area).');
+            return;
+        }
+        
+        // Email validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(formData.leader_email)) {
+            alert('Please enter a valid email address.');
+            return;
+        }
+        
+        // Show loading state
+        const saveButton = row.querySelector('.btn-save');
+        const originalText = saveButton.innerHTML;
+        saveButton.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+        saveButton.disabled = true;
+        
+        // Send AJAX request
+        fetch('{{ url_for("admin.edit_leader") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(formData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const oldAreaCode = row.querySelector('.area-display strong').textContent;
+                const oldLeaderName = row.querySelector('.leader-name').textContent;
+                const newLeaderName = formData.first_name + ' ' + formData.last_name;
+                
+                // Update display values
+                row.querySelector('.area-display strong').textContent = formData.area_code;
+                row.querySelector('.leader-name').textContent = newLeaderName;
+                row.querySelector('.email-display a').textContent = formData.leader_email;
+                row.querySelector('.email-display a').href = 'mailto:' + formData.leader_email;
+                row.querySelector('.phone-display').textContent = formData.cell_phone || 'N/A';
+                
+                // Update row data
+                row.dataset.leaderEmail = formData.leader_email;
+                
+                // Update window.leaderData for map refresh
+                updateLeaderDataAfterEdit(oldAreaCode, formData.area_code, oldLeaderName, newLeaderName);
+                
+                // Exit edit mode
+                disableEditMode(row);
+                
+                // Show success message
+                showMessage('Leader updated successfully!', 'success');
+                
+                // Refresh the map if it exists
+                if (window.refreshLeadersMap) {
+                    window.refreshLeadersMap();
+                }
+            } else {
+                alert('Error updating leader: ' + (data.message || 'Unknown error'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error updating leader. Please try again.');
+        })
+        .finally(() => {
+            // Reset button state
+            saveButton.innerHTML = originalText;
+            saveButton.disabled = false;
+        });
+    }
+    
+    function deleteLeader(leaderId, row) {
+        // Send delete request
+        fetch('{{ url_for("admin.delete_leader") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                leader_id: leaderId,
+                year: {{ selected_year }}
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const deletedAreaCode = row.querySelector('.area-display strong').textContent;
+                const deletedLeaderName = row.querySelector('.leader-name').textContent;
+                
+                // Update window.leaderData for map refresh
+                updateLeaderDataAfterDelete(deletedAreaCode, deletedLeaderName);
+                
+                // Remove row from table
+                row.remove();
+                
+                // Show success message
+                showMessage('Leader deleted successfully!', 'success');
+                
+                // Refresh the map if it exists
+                if (window.refreshLeadersMap) {
+                    window.refreshLeadersMap();
+                }
+            } else {
+                alert('Error deleting leader: ' + (data.message || 'Unknown error'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error deleting leader. Please try again.');
+        });
+        
+        // Reset variables
+        leaderIdToDelete = null;
+        leaderRowToDelete = null;
+    }
+    
+    function updateLeaderDataAfterEdit(oldAreaCode, newAreaCode, oldLeaderName, newLeaderName) {
+        // Initialize window.leaderData if not exists
+        if (!window.leaderData) {
+            window.leaderData = {};
+        }
+        
+        // Remove from old area if area changed
+        if (oldAreaCode !== newAreaCode && window.leaderData[oldAreaCode]) {
+            const index = window.leaderData[oldAreaCode].indexOf(oldLeaderName);
+            if (index > -1) {
+                window.leaderData[oldAreaCode].splice(index, 1);
+                // Remove area key if no leaders left
+                if (window.leaderData[oldAreaCode].length === 0) {
+                    delete window.leaderData[oldAreaCode];
+                }
+            }
+        }
+        
+        // Add to new area or update name in same area
+        if (!window.leaderData[newAreaCode]) {
+            window.leaderData[newAreaCode] = [];
+        }
+        
+        if (oldAreaCode === newAreaCode) {
+            // Same area, just update the name
+            const index = window.leaderData[newAreaCode].indexOf(oldLeaderName);
+            if (index > -1) {
+                window.leaderData[newAreaCode][index] = newLeaderName;
+            }
+        } else {
+            // Different area, add to new area
+            window.leaderData[newAreaCode].push(newLeaderName);
+        }
+    }
+    
+    function updateLeaderDataAfterDelete(areaCode, leaderName) {
+        // Initialize window.leaderData if not exists
+        if (!window.leaderData || !window.leaderData[areaCode]) {
+            return;
+        }
+        
+        // Remove leader from area
+        const index = window.leaderData[areaCode].indexOf(leaderName);
+        if (index > -1) {
+            window.leaderData[areaCode].splice(index, 1);
+            // Remove area key if no leaders left
+            if (window.leaderData[areaCode].length === 0) {
+                delete window.leaderData[areaCode];
+            }
+        }
+    }
+
+    function showMessage(message, type) {
+        // Create Bootstrap alert
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+        alertDiv.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        
+        // Insert at top of page
+        const container = document.querySelector('.container-fluid, .container');
+        container.insertBefore(alertDiv, container.firstChild);
+        
+        // Auto-dismiss after 5 seconds
+        setTimeout(() => {
+            if (alertDiv.parentNode) {
+                alertDiv.remove();
+            }
+        }, 5000);
+    }
+});
 </script>
 <script src="{{ url_for('static', filename='js/leaders-map.js') }}"></script>
 <style>

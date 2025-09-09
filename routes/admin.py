@@ -235,14 +235,14 @@ def add_leader():
         # Check if leader already assigned to this area
         existing_leaders = area_leader_model.get_leaders_by_area(area_code)
         for leader in existing_leaders:
-            if leader.leader_email == leader_email:
+            if leader['leader_email'] == leader_email:
                 flash(f'{first_name} {last_name} is already assigned as a leader for Area {area_code}.', 'warning')
                 return redirect(url_for('admin.leaders', year=selected_year))
 
         # Check if this email is already leading another area (one area per leader rule)
         leader_areas = area_leader_model.get_areas_by_leader_email(leader_email)
         if leader_areas:
-            existing_area = leader_areas[0].area_code
+            existing_area = leader_areas[0]['area_code']
             flash(f'{leader_email} is already leading Area {existing_area}. Leaders can only lead one area.', 'error')
             return redirect(url_for('admin.leaders', year=selected_year))
 
@@ -453,3 +453,144 @@ def send_unassigned_digest():
         flash('Failed to send digest email.', 'error')
 
     return redirect(url_for('admin.dashboard', year=selected_year))
+
+
+@admin_bp.route('/edit_leader', methods=['POST'])
+@require_admin
+def edit_leader():
+    """Edit leader information with inline editing."""
+    if not g.db:
+        return jsonify({'success': False, 'message': 'Database unavailable'})
+
+    try:
+        # Parse JSON request
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'message': 'No data provided'})
+
+        leader_id = data.get('leader_id')
+        area_code = data.get('area_code', '').strip().upper()
+        first_name = data.get('first_name', '').strip()
+        last_name = data.get('last_name', '').strip()
+        leader_email = data.get('leader_email', '').strip().lower()
+        cell_phone = data.get('cell_phone', '').strip()
+        selected_year = int(data.get('year', datetime.now().year))
+
+        # Validate required fields
+        if not all([leader_id, area_code, first_name, last_name, leader_email]):
+            return jsonify({'success': False, 'message': 'All fields are required except phone'})
+
+        # Validate area code
+        if not get_area_info(area_code):
+            return jsonify({'success': False, 'message': f'Invalid area code: {area_code}'})
+
+        # Initialize models
+        area_leader_model = AreaLeaderModel(g.db, selected_year)
+        participant_model = ParticipantModel(g.db, selected_year)
+        user = get_current_user()
+
+        # Get current leader data
+        current_leader = area_leader_model.get_area_leader(leader_id)
+        if not current_leader:
+            return jsonify({'success': False, 'message': 'Leader not found'})
+
+        current_email = current_leader.get('leader_email')
+        current_area = current_leader.get('area_code')
+
+        # Check if email is changing and if new email is already leading another area
+        if leader_email != current_email:
+            existing_areas = area_leader_model.get_areas_by_leader_email(leader_email)
+            if existing_areas:
+                existing_area = existing_areas[0]['area_code']
+                return jsonify({'success': False, 'message': f'Email {leader_email} is already leading Area {existing_area}'})
+
+        # Update leader record
+        updates = {
+            'area_code': area_code,
+            'first_name': first_name,
+            'last_name': last_name,
+            'leader_email': leader_email,
+            'cell_phone': cell_phone,
+            'updated_by': user['email'],
+            'updated_at': datetime.now()
+        }
+
+        if not area_leader_model.update_leader(leader_id, updates):
+            return jsonify({'success': False, 'message': 'Failed to update leader'})
+
+        # If this leader was promoted from a participant, update participant record too
+        if current_leader.get('created_from_participant'):
+            # Find participant by old email
+            participants = participant_model.get_participants_by_email(current_email)
+            if participants:
+                participant = participants[0]
+                participant_updates = {
+                    'preferred_area': area_code,
+                    'updated_at': datetime.now()
+                }
+                
+                # If email changed, update that too
+                if leader_email != current_email:
+                    participant_updates['email'] = leader_email
+                
+                participant_model.update_participant(participant['id'], participant_updates)
+
+        return jsonify({'success': True, 'message': 'Leader updated successfully'})
+
+    except Exception as e:
+        logging.error(f"Error editing leader: {e}")
+        return jsonify({'success': False, 'message': f'Error updating leader: {str(e)}'})
+
+
+@admin_bp.route('/delete_leader', methods=['POST'])
+@require_admin
+def delete_leader():
+    """Delete (deactivate) a leader."""
+    if not g.db:
+        return jsonify({'success': False, 'message': 'Database unavailable'})
+
+    try:
+        # Parse JSON request
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'message': 'No data provided'})
+
+        leader_id = data.get('leader_id')
+        selected_year = int(data.get('year', datetime.now().year))
+
+        if not leader_id:
+            return jsonify({'success': False, 'message': 'Leader ID is required'})
+
+        # Initialize models
+        area_leader_model = AreaLeaderModel(g.db, selected_year)
+        participant_model = ParticipantModel(g.db, selected_year)
+        user = get_current_user()
+
+        # Get leader data before deletion
+        leader = area_leader_model.get_area_leader(leader_id)
+        if not leader:
+            return jsonify({'success': False, 'message': 'Leader not found'})
+
+        leader_email = leader.get('leader_email')
+
+        # Remove leader (deactivate)
+        if not area_leader_model.remove_leader(leader_id, user['email']):
+            return jsonify({'success': False, 'message': 'Failed to delete leader'})
+
+        # If this leader was promoted from a participant, reset their is_leader status
+        if leader.get('created_from_participant'):
+            participants = participant_model.get_participants_by_email(leader_email)
+            if participants:
+                participant = participants[0]
+                participant_updates = {
+                    'is_leader': False,
+                    'assigned_area_leader': None,
+                    'updated_at': datetime.now()
+                }
+                participant_model.update_participant(participant['id'], participant_updates)
+
+        return jsonify({'success': True, 'message': 'Leader deleted successfully'})
+
+    except Exception as e:
+        logging.error(f"Error deleting leader: {e}")
+        return jsonify({'success': False, 'message': f'Error deleting leader: {str(e)}'})
