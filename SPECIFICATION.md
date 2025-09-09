@@ -4,12 +4,13 @@
 Web application for Nature Vancouver's annual Christmas Bird Count registration with interactive map-based area selection. Users can register by clicking count areas on a map or using a dropdown menu, with automatic assignment to areas needing volunteers.
 
 ## Technical Stack
-- **Backend**: Python 3.13, Flask
+- **Backend**: Python 3.13, Flask with Blueprint routing
 - **Database**: Google Firestore with year-based collections
-- **Authentication**: Google OAuth with role-based access control
-- **Frontend**: Bootstrap 5, Leaflet.js for mapping
-- **Deployment**: Google Cloud Run
-- **Data**: 24 count areas (A-X, excluding Y) with polygon boundaries from KML export
+- **Authentication**: Google Identity Services OAuth with Google Secret Manager for credentials
+- **Frontend**: Bootstrap 5, Leaflet.js for interactive mapping
+- **Deployment**: Google Cloud Run with automated deployment scripts
+- **Security**: Role-based access control with admin whitelist and area leader database
+- **Data**: 24 count areas (A-X, excluding Y) with GeoJSON polygon boundaries
 
 ## Annual Event Architecture
 
@@ -53,13 +54,20 @@ ADMIN_EMAILS = [
 ```
 
 ### Authentication Flow
-1. User visits protected route
-2. Redirect to Google OAuth if not authenticated
-3. Check user role based on email:
-   - In admin list → admin access
-   - In area_leaders_YYYY collection → leader access
-   - Otherwise → public access only
-4. Grant access based on role and route requirements
+1. User visits protected route (e.g., `/admin`)
+2. Authentication decorator redirects to `/auth/login` if not authenticated  
+3. Google Identity Services presents OAuth consent screen
+4. User grants permission, Google returns JWT token via POST to `/auth/oauth/callback`
+5. Server verifies token and extracts user email and name
+6. System determines user role based on email:
+   - In `config/admins.py` whitelist → **admin** access
+   - In `area_leaders_YYYY` collection → **leader** access  
+   - Otherwise → **public** access only
+7. Role stored in Flask session for subsequent requests
+8. User redirected to appropriate interface:
+   - Admins → `/admin/dashboard`
+   - Leaders → `/leader/dashboard` 
+   - Public → main registration page
 
 ## Core Features
 

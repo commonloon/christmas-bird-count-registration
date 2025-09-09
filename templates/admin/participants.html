@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+
+{% block title %}All Participants - Vancouver Christmas Bird Count{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>All Participants</h1>
+    <div>
+        <span class="badge bg-info">{{ selected_year }}</span>
+        {% if current_user.email %}
+        <span class="text-muted">{{ current_user.email }}</span>
+        <a href="{{ url_for('auth.logout') }}" class="btn btn-sm btn-outline-secondary ms-2">Logout</a>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Navigation breadcrumb -->
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('admin.dashboard', year=selected_year) }}">Dashboard</a></li>
+        <li class="breadcrumb-item active" aria-current="page">All Participants</li>
+    </ol>
+</nav>
+
+<!-- Year selector -->
+{% if available_years and available_years|length > 1 %}
+<div class="card mb-4">
+    <div class="card-body">
+        <h5 class="card-title">Year Selection</h5>
+        <form method="GET" class="d-inline-block">
+            <select name="year" class="form-select d-inline-block w-auto" onchange="this.form.submit()">
+                {% for year in available_years %}
+                <option value="{{ year }}" {% if year == selected_year %}selected{% endif %}>{{ year }}</option>
+                {% endfor %}
+            </select>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<!-- Quick Actions -->
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">Quick Actions</h5>
+            </div>
+            <div class="card-body">
+                <a href="{{ url_for('admin.unassigned', year=selected_year) }}" class="btn btn-warning me-2">Manage Unassigned</a>
+                <a href="{{ url_for('admin.leaders', year=selected_year) }}" class="btn btn-info me-2">Manage Leaders</a>
+                <a href="{{ url_for('admin.export_csv', year=selected_year) }}" class="btn btn-success">Export CSV</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Participants Table -->
+{% if participants %}
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">Participants ({{ participants|length }})</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Phone</th>
+                        <th>Skill Level</th>
+                        <th>Experience</th>
+                        <th>Area</th>
+                        <th>Leadership</th>
+                        <th>Registered</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for participant in participants %}
+                    <tr>
+                        <td>
+                            <strong>{{ participant.first_name }} {{ participant.last_name }}</strong>
+                            {% if participant.is_leader %}
+                                <span class="badge bg-success ms-1">Leader</span>
+                            {% endif %}
+                        </td>
+                        <td><a href="mailto:{{ participant.email }}">{{ participant.email }}</a></td>
+                        <td>{{ participant.phone or 'N/A' }}</td>
+                        <td>
+                            <span class="badge bg-{% if participant.skill_level == 'Expert' %}success{% elif participant.skill_level == 'Intermediate' %}primary{% elif participant.skill_level == 'Beginner' %}info{% else %}secondary{% endif %}">
+                                {{ participant.skill_level }}
+                            </span>
+                        </td>
+                        <td>{{ participant.experience }}</td>
+                        <td>
+                            {% if participant.preferred_area == 'ANYWHERE' %}
+                                <span class="badge bg-secondary">ANYWHERE</span>
+                            {% elif participant.preferred_area %}
+                                <a href="{{ url_for('admin.area_detail', area_code=participant.preferred_area, year=selected_year) }}" class="btn btn-sm btn-outline-primary">
+                                    {{ participant.preferred_area }}
+                                </a>
+                            {% else %}
+                                <span class="text-muted">Unassigned</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if participant.interested_in_leadership %}
+                                <span class="badge bg-warning">Interested</span>
+                            {% else %}
+                                <span class="text-muted">No</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if participant.created_at %}
+                                {{ participant.created_at.strftime('%m/%d/%y %H:%M') }}
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal" 
+                                        data-participant-id="{{ participant.id }}" 
+                                        data-participant-name="{{ participant.first_name }} {{ participant.last_name }}">
+                                    Delete
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteModalLabel">Confirm Deletion</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete <strong id="participantName"></strong>?</p>
+                <p class="text-muted">This action cannot be undone. The participant will be logged in the removal history.</p>
+                
+                <div class="mb-3">
+                    <label for="deleteReason" class="form-label">Reason for removal (optional)</label>
+                    <textarea class="form-control" id="deleteReason" rows="2" placeholder="e.g., Duplicate registration, requested withdrawal"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form method="POST" id="deleteForm" class="d-inline">
+                    <input type="hidden" name="year" value="{{ selected_year }}">
+                    <input type="hidden" name="reason" id="deleteReasonInput">
+                    <button type="submit" class="btn btn-danger">Delete Participant</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% else %}
+<div class="card">
+    <div class="card-body text-center">
+        <h5>No Participants</h5>
+        <p class="text-muted">No participants registered for {{ selected_year }} yet.</p>
+        <a href="{{ url_for('main.index') }}" class="btn btn-primary">Registration Page</a>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Handle delete modal
+const deleteModal = document.getElementById('deleteModal');
+if (deleteModal) {
+    deleteModal.addEventListener('show.bs.modal', function (event) {
+        const button = event.relatedTarget;
+        const participantId = button.getAttribute('data-participant-id');
+        const participantName = button.getAttribute('data-participant-name');
+        
+        const modalTitle = deleteModal.querySelector('#participantName');
+        const deleteForm = deleteModal.querySelector('#deleteForm');
+        
+        modalTitle.textContent = participantName;
+        deleteForm.action = '/admin/delete_participant/' + participantId;
+    });
+    
+    // Handle reason input
+    const reasonTextarea = deleteModal.querySelector('#deleteReason');
+    const reasonInput = deleteModal.querySelector('#deleteReasonInput');
+    
+    reasonTextarea.addEventListener('input', function() {
+        reasonInput.value = this.value;
+    });
+}
+</script>
+{% endblock %}
