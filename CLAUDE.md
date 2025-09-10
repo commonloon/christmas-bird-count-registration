@@ -271,16 +271,26 @@ The application uses production Firestore - test carefully:
 - Client-side data management for instant map updates without server round-trips
 - AJAX operations with comprehensive error handling and user feedback
 
-**Email Automation System (In Development):**
+**Email Automation System (Partially Implemented):**
 - **Three Email Types**: 
   1. Twice-daily team updates to area leaders when team composition changes
   2. Weekly summaries for areas with no changes (Fridays at 11pm)
   3. Daily admin digest listing unassigned participants
 - **Test Environment**: Admin dashboard includes manual email trigger buttons (test server only)
-- **Environment Detection**: Uses `TEST_MODE=true` or domain contains 'test' for test server identification
-- **Test Mode Behavior**: All emails redirect to birdcount@naturevancouver.ca on test server
+- **Environment-Based Security**: Test email routes only registered when `TEST_MODE=true`
+- **Test Mode Behavior**: All emails redirect to `birdcount@naturevancouver.ca` on test server
+- **Timezone Support**: Configurable display timezone via `DISPLAY_TIMEZONE` environment variable
 - **Race Condition Prevention**: Timestamp selection before queries, update after successful send
 - **Production Scheduling**: Cloud Scheduler integration planned for automated triggers
+
+**Current Implementation Status:**
+- ✅ **Email Generation Logic**: Core functionality implemented in `test/email_generator.py`
+- ✅ **Email Templates**: HTML templates created for all three email types
+- ✅ **Test UI**: Admin dashboard buttons for manual triggering (test server only)
+- ✅ **Security**: Production servers do not expose test email routes
+- ✅ **Timezone Handling**: UTC storage with configurable display timezone
+- ❌ **Email Service**: Requires Google Cloud Email API configuration
+- ❌ **SMTP/API Setup**: Email delivery not yet functional
 
 **Email and Access Requirements:**
 - Leaders can have non-Google emails (for notifications only)
@@ -288,22 +298,33 @@ The application uses production Firestore - test carefully:
 - Required leader fields: first_name, last_name, email, cell_phone
 - Automated email notifications for team updates and weekly summaries
 
-### Email Automation Development
+### Email System Architecture
 1. **Test Email Triggers (Test Server Only)**:
    - Access admin dashboard on `cbc-test.naturevancouver.ca/admin`
    - Use email trigger buttons to test each email type on demand
    - All test emails redirect to `birdcount@naturevancouver.ca`
+   - Routes only exist when `TEST_MODE=true` (production security)
    - Check logs: `gcloud run services logs read cbc-test --region=us-west1 --limit=50`
 
 2. **Email System Components**:
-   - **Email Generation**: `utils/email_generator.py` - Core logic for all email types
+   - **Email Generation**: `test/email_generator.py` - Core logic for all email types with timezone support
+   - **Email Service**: `services/email_service.py` - Email delivery with test mode support
    - **Email Templates**: `templates/emails/` - HTML templates for team updates, weekly summaries, admin digest
    - **Environment Detection**: `is_test_server()` helper function for test mode behavior
-   - **SMTP Configuration**: `config/email_settings.py` - Email service configuration
+   - **Email Configuration**: `config/email_settings.py` - Email service configuration
+   - **Timezone Helpers**: `config/settings.py` - UTC storage with local display conversion
 
-3. **Production Email Scheduling**:
-   - **Cloud Scheduler**: Configure cron jobs for twice-daily and weekly triggers
-   - **Pub/Sub Integration**: Consider message queuing for reliable email delivery
+3. **Deployment Configuration**:
+   - **Timezone Setting**: `DISPLAY_TIMEZONE` variable in `deploy.sh` (default: America/Vancouver)
+   - **Environment Variables**: `TEST_MODE`, `DISPLAY_TIMEZONE` passed to Cloud Run
+   - **Deployment Output**: Shows configured timezone during deployment for verification
+   - **Security**: Test routes only registered in test mode, completely absent from production
+
+4. **Next Steps for Completion**:
+   - **Configure Google Cloud Email API**: Enable API and set up service account authentication
+   - **Add Email API Credentials**: Store in Google Secret Manager
+   - **Update Email Service**: Replace SMTP with Google Cloud Email API
+   - **Production Scheduling**: Configure Cloud Scheduler for automated triggers
    - **Monitoring**: Set up alerts for email delivery failures and processing errors
 
 ### Debugging Deployment Issues
@@ -311,3 +332,5 @@ The application uses production Firestore - test carefully:
 2. **Monitor logs in real-time**: `gcloud run services logs tail SERVICE --region=us-west1`
 3. **Verify secrets access**: Check that service account has `secretmanager.secretAccessor` role
 4. **Test Firestore connection**: Verify `GOOGLE_CLOUD_PROJECT` and service account permissions
+- we can't test locally because the app uses google cloud services that are not configured on the local windows 11 host where we're doing development.  All testing has to be done on the cbc-test version of the app, accessible on the web as cbc-test.naturevancouver.ca
+- remember that the project files are stored in a git repository, so it may be necessary to use git commands when removing or moving a file

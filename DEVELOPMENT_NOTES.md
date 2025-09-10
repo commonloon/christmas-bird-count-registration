@@ -1,378 +1,248 @@
-# DEVELOPMENT NOTES - Christmas Bird Count Registration App
+# Email Automation System - Development Notes
 
-## COMPLETED TASKS (Most Recent Sessions)
+## Current Development Status (As of 2025-09-10)
 
-### Admin Interface Implementation ✅
-- **Security Fix**: Removed public admin link from base template 
-- **OAuth Authentication**: Fixed Google Identity Services integration with proper client configuration
-- **Complete Admin Templates**: Created all admin interface templates:
-  - Dashboard with statistics and year selector
-  - Participant management with delete functionality 
-  - Unassigned participant assignment tools
-  - Area detail views with team composition analysis
-  - Leader management interface with manual entry and participant promotion
+### ✅ Completed Features
 
-### Leader Management System ✅ 
-- **Business Rules Implemented**:
-  - Multiple leaders per area allowed
-  - One area maximum per leader (enforced)
-  - Manual leader entry as primary workflow (no participant registration required)
-  - Required fields: first_name, last_name, email, cell_phone
-- **Manual Leader Entry**: Complete form and backend with validation
-- **Auto-Assignment Logic**: Leaders who register as participants are automatically assigned to their led area
+#### 1. Email Generation Logic
+- **Location**: `test/email_generator.py` (moved from `utils/` for security)
+- **Three Email Types**: Team updates, weekly summaries, admin digest
+- **Features**: 
+  - Change detection logic with participant diff tracking
+  - Race condition prevention via timestamp management
+  - Error handling and logging
+  - Flask app context support for template rendering
 
-### Leader Management UI Fixes ✅ 
-- **Dropdown Population Fixed**: Area dropdowns now properly display area codes and names instead of "-"
-- **Backend Validation Enhanced**: Added proper validation, error handling, and business rule enforcement
-- **Interactive Map Implementation**: 
-  - New map display showing areas needing leaders (red) vs areas with leaders (green)
-  - Leader names appear in tooltips when hovering over areas with leaders
-  - Map legend showing counts of areas with/without leaders
-  - Click interactions for areas needing leaders
-  - Enhanced visual feedback and user experience
+#### 2. Environment-Based Security
+- **Test Routes**: Only registered when `TEST_MODE=true` 
+- **Production Safety**: Routes completely absent from production servers
+- **Implementation**: Conditional route registration in `routes/admin.py`
+- **Admin Access**: Requires `@require_admin` decorator
 
-### Inline Edit/Delete Functionality ✅ (Recent Session)
-- **Inline Table Editing**: Complete edit/delete functionality for leaders table
-  - Edit button (pencil icon) enables simultaneous editing of all fields
-  - Area dropdown, name fields, email, and phone become editable inline
-  - Save button with comprehensive validation and business rule enforcement
-  - Delete button (trash icon) with confirmation modal (no reason required)
-- **Live Map Updates**: Client-side data management for real-time map refresh
-  - `window.refreshLeadersMap()` function for map updates after operations
-  - Local `window.leaderData` synchronization without server API calls
-  - Cached area boundary data for efficient refreshes
-  - Immediate visual feedback: map colors and tooltips update instantly
-- **Bug Fixes Applied**: Fixed dictionary access errors in add_leader route
-  - Corrected `.leader_email` to `['leader_email']` attribute vs dictionary access
-  - Fixed duplicate leader validation logic
+#### 3. Timezone Support System
+- **Configuration**: Single `DISPLAY_TIMEZONE` variable in `deploy.sh` 
+- **Default**: `America/Vancouver` for Christmas Bird Count timing
+- **Storage Strategy**: All calculations in UTC, display conversion available
+- **Helper Functions**: In `config/settings.py` for timezone conversion
+- **Deployment Visibility**: Shows configured timezone during deployment
 
-### Technical Files Created/Modified ✅
-- `static/js/leaders-map.js`: Interactive map with live refresh capability and client-side data management
-  - Added `window.refreshLeadersMap()`, `clearMapLayers()`, `calculateAreasNeedingLeaders()`
-  - Cached area boundary data for efficient refreshes
-- `templates/admin/leaders.html`: Complete inline editing interface with dual display/edit modes
-  - Bootstrap Icons integration for edit/delete buttons
-  - Inline form controls with validation and AJAX operations
-  - Client-side `window.leaderData` synchronization functions
-- `templates/base.html`: Added Bootstrap Icons CDN for consistent iconography
-- `routes/admin.py`: Enhanced with edit_leader and delete_leader JSON API endpoints
-  - Fixed dictionary access bugs in add_leader route
-  - Comprehensive validation and participant record synchronization
-- `models/participant.py`: Added `get_participants_by_email()` method for leader-participant sync
-- `routes/api.py`: Added `/areas_needing_leaders` endpoint (used for initial data caching)
+#### 4. Email Templates
+- **Location**: `templates/emails/`
+- **Files**: `team_update.html`, `weekly_summary.html`, `admin_digest.html`
+- **Features**: Responsive HTML with environment-aware links
 
-## CURRENT STATE
+#### 5. Test Interface
+- **Location**: Admin dashboard at `/admin` (test server only)
+- **Buttons**: Manual trigger for all three email types
+- **Feedback**: JSON response with success/failure details
+- **Logging**: Detailed logs for debugging in Cloud Run
 
-### Working Features
-1. **Public Registration**: Form with interactive map, email validation, leadership interest tracking
-2. **Admin Authentication**: Google OAuth with email whitelist working properly  
-3. **Complete Admin Interface**: Full CRUD operations for participants and leaders
-4. **Enhanced Leader Management**: 
-   - Manual entry with working dropdowns and validation
-   - Participant-to-leader promotion from potential leaders list
-   - Interactive map showing leadership gaps visually with live updates
-   - Leader names displayed on map hover with real-time refresh
-   - **Inline edit/delete functionality**: Direct table editing with validation
-   - Business rule enforcement (one area per leader) with proper error handling
-   - Client-side map updates without server round-trips
-5. **Year-Based Data**: All models handle year-specific collections properly
-6. **Live User Experience**: Immediate visual feedback for all leader management operations
+### ❌ Pending Implementation
 
-### Database & System Infrastructure ✅ (Recent Session)
-- **Multi-Database Architecture**: Environment-specific Firestore databases implemented
-  - `cbc-test` database for development/testing environment
-  - `cbc-register` database for production environment
-  - Automatic database selection based on `FLASK_ENV` and `TEST_MODE` environment variables
-  - Database configuration helper: `config/database.py`
-- **Automated Database Setup**: `utils/setup_databases.py` script with index creation
-  - Creates both databases with proper Firestore indexes automatically
-  - Handles "already exists" cases gracefully
-  - Composite index creation for optimal query performance
-  - Command line options: `--dry-run`, `--skip-indexes`, `--force`
-- **Terminology Consistency**: Standardized on "UNASSIGNED" throughout system
-  - Replaced all "ANYWHERE" references with "UNASSIGNED" 
-  - Updated templates, JavaScript, and configuration
-  - Fixed area capacity overview to show actual participant counts
-- **Context-Aware Navigation**: Admin templates now show appropriate branding
-  - "Vancouver CBC Registration Admin" for admin pages linking to admin dashboard
-  - "Vancouver CBC Registration" for public pages linking to registration
-  - Automatic detection using `request.endpoint.startswith('admin.')`
+#### 1. Google Cloud Email API Configuration
+**Current Issue**: Email service uses SMTP but needs Google Cloud Email API
 
-### NEXT PRIORITY: Email Automation System 🚧
-**Current Task**: Implement automated email notifications to area leaders
+**Required Steps**:
+1. Enable Google Cloud Email API in project console
+2. Create service account with email permissions
+3. Store credentials in Google Secret Manager
+4. Update `services/email_service.py` to use Email API instead of SMTP
+5. Remove SMTP-specific configuration
 
-#### **Email System Requirements (from EMAIL.md):**
-1. **Twice-Daily Team Updates**:
-   - Recipients: Area leaders when team composition changes
-   - Subject: "Team Update for Vancouver CBC Area X"
-   - Content: New members, removed members, complete current team roster
-   - Triggers: Participant additions, removals, area reassignments, email changes
-
-2. **Weekly Team Summary (No Changes)**:
-   - Recipients: Area leaders with no team changes in past week
-   - When: Every Friday at 11pm
-   - Subject: "Weekly Team Summary for Vancouver CBC Area X"
-   - Content: "No changes" note + complete team roster with all details
-
-3. **Daily Admin Digest**:
-   - Recipients: All admins (from `config/admins.py`)
-   - Subject: "Vancouver CBC Participants not assigned to a count area"
-   - Content: Link to admin/unassigned page + list of unassigned participants
-
-#### **Test Email Trigger Implementation (Ready to Code):**
-**Requirement**: Add test buttons to admin dashboard (test server only) for on-demand email testing
-
-**Files to Modify**:
-1. **`routes/admin.py`** - Add test trigger routes:
-   ```python
-   @admin_bp.route('/test/trigger-team-updates', methods=['POST'])
-   @require_admin
-   def test_trigger_team_updates():
-       # Environment check: only work on test server
-       if not is_test_server():
-           return jsonify({'error': 'Test triggers only available on test server'}), 403
-       
-       # Generate twice-daily team updates for all areas with leaders
-       results = generate_team_update_emails()
-       return jsonify({'success': True, 'message': f'Team update emails generated: {results}'})
-       
-   @admin_bp.route('/test/trigger-weekly-summaries', methods=['POST'])
-   @require_admin 
-   def test_trigger_weekly_summaries():
-       # Environment check: only work on test server
-       if not is_test_server():
-           return jsonify({'error': 'Test triggers only available on test server'}), 403
-       
-       # Generate weekly summaries for all areas with leaders
-       results = generate_weekly_summary_emails()
-       return jsonify({'success': True, 'message': f'Weekly summary emails generated: {results}'})
-       
-   @admin_bp.route('/test/trigger-admin-digest', methods=['POST'])
-   @require_admin
-   def test_trigger_admin_digest():
-       # Environment check: only work on test server
-       if not is_test_server():
-           return jsonify({'error': 'Test triggers only available on test server'}), 403
-       
-       # Generate admin digest
-       results = generate_admin_digest_email()
-       return jsonify({'success': True, 'message': f'Admin digest email generated: {results}'})
-   ```
-
-2. **`templates/admin/dashboard.html`** - Add test buttons section:
-   ```html
-   {% if is_test_server %}
-   <div class="card mt-4">
-       <div class="card-header">
-           <h5 class="mb-0"><i class="bi bi-envelope-paper"></i> Email Testing (Test Server Only)</h5>
-       </div>
-       <div class="card-body">
-           <p class="text-muted mb-3">Trigger email generation on demand for testing purposes. All emails will be sent to birdcount@naturevancouver.ca on the test server.</p>
-           
-           <div class="d-flex flex-wrap gap-2">
-               <button type="button" class="btn btn-outline-primary" onclick="triggerTestEmail('team-updates')">
-                   <i class="bi bi-people"></i> Trigger Team Updates
-               </button>
-               <button type="button" class="btn btn-outline-info" onclick="triggerTestEmail('weekly-summaries')">
-                   <i class="bi bi-calendar-week"></i> Trigger Weekly Summaries
-               </button>
-               <button type="button" class="btn btn-outline-warning" onclick="triggerTestEmail('admin-digest')">
-                   <i class="bi bi-person-gear"></i> Trigger Admin Digest
-               </button>
-           </div>
-           
-           <div id="test-email-results" class="mt-3" style="display: none;">
-               <div class="alert alert-info">
-                   <div class="d-flex align-items-center">
-                       <div class="spinner-border spinner-border-sm me-2" role="status"></div>
-                       <span>Generating emails...</span>
-                   </div>
-               </div>
-           </div>
-       </div>
-   </div>
-   
-   <script>
-   function triggerTestEmail(emailType) {
-       const resultsDiv = document.getElementById('test-email-results');
-       resultsDiv.style.display = 'block';
-       resultsDiv.innerHTML = '<div class="alert alert-info"><div class="d-flex align-items-center"><div class="spinner-border spinner-border-sm me-2"></div><span>Generating emails...</span></div></div>';
-       
-       const endpoints = {
-           'team-updates': '/admin/test/trigger-team-updates',
-           'weekly-summaries': '/admin/test/trigger-weekly-summaries', 
-           'admin-digest': '/admin/test/trigger-admin-digest'
-       };
-       
-       fetch(endpoints[emailType], {
-           method: 'POST',
-           headers: {
-               'Content-Type': 'application/json'
-           }
-       })
-       .then(response => response.json())
-       .then(data => {
-           if (data.success) {
-               resultsDiv.innerHTML = `<div class="alert alert-success"><i class="bi bi-check-circle"></i> ${data.message}</div>`;
-           } else {
-               resultsDiv.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> Error: ${data.error || 'Unknown error'}</div>`;
-           }
-       })
-       .catch(error => {
-           resultsDiv.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> Network error: ${error.message}</div>`;
-       });
-   }
-   </script>
-   {% endif %}
-   ```
-
-#### **Core Email Generation Functions (to be implemented):**
-
-**Environment Detection Helper**:
+**Code Changes Needed**:
 ```python
-def is_test_server():
-    """Detect if running on test server for email trigger functionality."""
-    # Check environment variable first
-    if os.getenv('TEST_MODE', '').lower() == 'true':
-        return True
-    
-    # Check if domain contains 'test' for deployed test server
-    if request and hasattr(request, 'host') and 'test' in request.host.lower():
-        return True
-        
-    return False
+# Replace in services/email_service.py
+from google.cloud import email_v1
+
+class EmailService:
+    def __init__(self):
+        self.client = email_v1.EmailServiceClient()
+        # Remove SMTP-specific code
 ```
 
-**Email Generation Functions**:
+**Environment Variables to Remove**:
+- `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_SERVER`, `SMTP_PORT`
+
+**New Dependencies**:
+- Add `google-cloud-email` to `requirements.txt`
+
+#### 2. Production Automation
+**Missing**: Cloud Scheduler configuration for automated triggers
+
+**Required Components**:
+- Cloud Scheduler jobs for twice-daily and weekly triggers
+- Pub/Sub topics for reliable message delivery
+- HTTP endpoints for scheduler to call (different from test routes)
+- Monitoring and alerting for failed email deliveries
+
+## Current Bug Status
+
+### Fixed Issues ✅
+1. **"No module named 'utils'"**: Fixed by moving to `test/` directory and adding `__init__.py`
+2. **Timezone comparison errors**: Fixed by ensuring all datetime comparisons are timezone-aware
+3. **Route security**: Test routes only exist in test mode
+
+### Active Issues ❌
+
+#### 1. Email Service Not Functional
+- **Error**: `SMTP credentials not configured`
+- **Cause**: Missing Google Cloud Email API setup
+- **Impact**: Emails not delivered despite successful generation
+- **Priority**: High - blocks end-to-end testing
+
+#### 2. Limited Area Processing
+- **Symptom**: Only 4 areas processed instead of 24 (A-X)
+- **Likely Cause**: Only 4 areas currently have assigned leaders
+- **Investigation Needed**: Check area leader data in Firestore
+- **Query**: `area_leaders_2025` collection - verify leader distribution
+
+#### 3. Error Handling Improvements
+- **Current**: Email failures don't prevent function completion
+- **Needed**: Better error propagation and retry logic
+- **Impact**: Silent failures in production environment
+
+## File Structure and Key Changes Made
+
+### New/Modified Files
+```
+test/
+  __init__.py                 # NEW: Package initialization
+  email_generator.py          # MOVED: From utils/email_generator.py
+
+services/
+  __init__.py                 # NEW: Package initialization  
+  email_service.py            # MODIFIED: Needs Email API integration
+
+config/
+  settings.py                 # MODIFIED: Added timezone helper functions
+
+deploy.sh                     # MODIFIED: Added DISPLAY_TIMEZONE configuration
+requirements.txt              # MODIFIED: Added pytz dependency
+```
+
+### Security Changes
 ```python
-def generate_team_update_emails():
-    """Generate twice-daily team update emails for areas with changes."""
-    # 1. Pick timestamp before querying to prevent race conditions
-    current_time = datetime.utcnow()
-    
-    # 2. Get all areas with leaders
-    # 3. For each area, check for changes since last_email_sent
-    # 4. Generate email content with new/removed/current members
-    # 5. Send email (test mode: birdcount@naturevancouver.ca)
-    # 6. Update last_email_sent timestamp
-    
-def generate_weekly_summary_emails():
-    """Generate weekly summary emails for areas with no changes."""
-    # 1. Every Friday at 11pm (or manual trigger on test)
-    # 2. Get areas with leaders but no changes in past week
-    # 3. Generate "no changes" email with complete roster
-    # 4. Send to area leaders (test mode: birdcount@naturevancouver.ca)
-    
-def generate_admin_digest_email():
-    """Generate daily admin digest with unassigned participants."""
-    # 1. Get all unassigned participants
-    # 2. Build email with link to admin/unassigned page
-    # 3. Send to all admins from config/admins.py
-    # 4. Test mode: send to birdcount@naturevancouver.ca
+# routes/admin.py - Conditional route registration
+def register_test_email_routes():
+    # Test routes defined here
+    pass
+
+# Only register when in test mode
+if os.getenv('TEST_MODE', '').lower() == 'true':
+    register_test_email_routes()
 ```
 
-#### **Email Implementation Strategy:**
-- **Race Condition Prevention**: Choose `last_email_sent` timestamp BEFORE querying begins, update AFTER email sent successfully
-- **Change Detection**: Track area assignments, additions, removals, email address changes
-- **Test Mode**: `cbc-test` server sends all emails to `birdcount@naturevancouver.ca`
-- **Environment Detection**: Use `TEST_MODE=true` or domain contains 'test' for test server identification
-- **Timestamp Management**: Store per-area `last_email_sent` values to prevent duplicates (duplicates acceptable, missed notifications are not)
-- **Email Content**: Include environment-aware links (cbc-test.naturevancouver.ca vs cbc-registration.naturevancouver.ca)
+## Testing Status
 
-#### **Implementation Files to Create:**
-1. **`utils/email_generator.py`** - Core email generation logic
-2. **`templates/emails/team_update.html`** - HTML email template for team updates
-3. **`templates/emails/weekly_summary.html`** - HTML email template for weekly summaries  
-4. **`templates/emails/admin_digest.html`** - HTML email template for admin digest
-5. **`config/email_settings.py`** - Email configuration and SMTP settings
-
-#### **Immediate Next Steps:**
-1. Add test email trigger buttons to admin dashboard (test server only) ✅ Ready to implement
-2. Create email generation functions for each email type
-3. Implement change detection logic with proper timestamp handling
-4. Create email templates with environment-aware links
-5. Test email automation end-to-end on cbc-test server
-6. Add scheduled triggers for production (Cloud Scheduler or similar)
-
-### Other Priority Tasks
-1. **Implement area leader interface** (`/leader` routes):
-   - Leader-specific dashboard showing their area
-   - Participant contact lists for their assigned area
-   - Historical participant data access (3 years back)
-   - Export functionality for recruitment emails
-
-2. **Complete participant management enhancements**:
-   - Participant editing functionality (beyond delete)
-   - Bulk participant operations
-   - Advanced assignment tools
-   - Enhanced search and filtering capabilities
-
-## TECHNICAL CONTEXT
-
-### Key Implementation Details
-- **Database**: Google Firestore with year-based collections
-- **Authentication**: Google Identity Services (not redirect flow) with Secret Manager credentials
-- **Deployment**: Google Cloud Run in us-west1 region
-- **Business Logic**: Auto-assignment when leaders register, one-area-per-leader rule enforcement
-- **Maps**: Two separate Leaflet.js implementations with live refresh capability
-  - Registration map: Area selection for participants
-  - Leaders map: Real-time leadership status with client-side data management
-- **Frontend Architecture**: Bootstrap 5 + Bootstrap Icons + Leaflet.js with AJAX operations
-- **Data Synchronization**: Client-side `window.leaderData` management for instant UI updates
-
-### Critical Files Structure
+### Current Test Results
 ```
-routes/
-  admin.py           # Complete admin interface with inline edit/delete functionality
-    - edit_leader: JSON API for inline editing with validation
-    - delete_leader: JSON API for leader deletion with participant sync
-    - add_leader: Manual leader entry (fixed dictionary access bugs)
-  api.py            # JSON endpoints for map data caching
-  
-static/js/
-  map.js            # Registration page interactive map
-  leaders-map.js    # Leaders page map with live refresh and client-side data management
-    - window.refreshLeadersMap(): Main refresh function
-    - clearMapLayers(): Remove existing polygons for redraw
-    - calculateAreasNeedingLeaders(): Client-side leadership calculation
-  
-templates/admin/
-  leaders.html      # Inline editing interface with dual display/edit modes
-    - Bootstrap Icons for edit/delete buttons
-    - AJAX operations with window.leaderData synchronization
-  
-templates/base.html # Bootstrap Icons CDN integration
-
-models/
-  area_leader.py    # Business rule enforcement and validation
-  participant.py    # Enhanced with get_participants_by_email() for sync
+Team Update: 0 emails sent, 4 areas processed
+Weekly Summary: 0 emails sent, 4 areas processed  
+Admin Digest: 1 unassigned participants, 0 emails sent
 ```
 
-### Recent Bug Fixes Applied
-1. **Dictionary Access Errors**: Fixed add_leader route treating dictionaries as objects
-   - Changed `leader.leader_email` → `leader['leader_email']`
-   - Changed `leader_areas[0].area_code` → `leader_areas[0]['area_code']`
-2. **Template Name Field Population**: Fixed edit button clearing first/last name fields
-   - Added intelligent handling of both `first_name`/`last_name` and `leader_name` data structures
-   - Template now splits combined names when separate fields are unavailable
-3. **Template Logic**: Fixed area dropdown rendering to use actual area data structure
-4. **Backend Validation**: Added missing required field validation and area code validation
-5. **Error Handling**: Proper logging and user feedback for all error conditions
-6. **Data Consistency**: Enhanced business rule enforcement preventing duplicate assignments
+### Expected vs Actual
+- **Expected**: 24 areas (A-X) with varying leader counts
+- **Actual**: Only 4 areas have leaders assigned
+- **Email Delivery**: 0% success rate due to missing Email API
 
-## OAUTH SETUP STATUS ✅
-- Google OAuth client configured and working
-- Published consent screen (not in testing mode)  
-- Credentials stored in Google Secret Manager
-- JavaScript origins configured, redirect URIs removed
-- Admin authentication fully functional
+### Test Mode Verification
+- ✅ Routes only exist on test server
+- ✅ All emails would redirect to `birdcount@naturevancouver.ca`
+- ✅ Timezone handling works correctly
+- ❌ Email delivery fails at SMTP stage
 
-## DEVELOPMENT STATUS
-The application has core functionality implemented:
-- ✅ Public registration with map-based area selection
-- ✅ Admin authentication and interface
-- ✅ Leader management with interactive map
-- ✅ Year-based data architecture
-- ✅ Enhanced user experience and validation
+## Next Development Session Tasks
 
-**Still in active development** - additional testing and refinement needed before deployment.
+### Immediate Priority (Email API Setup)
+1. **Enable Google Cloud Email API** in project console
+2. **Create service account** with necessary permissions
+3. **Update email service** to use Cloud Email API
+4. **Test email delivery** end-to-end
+5. **Verify test mode** redirects work correctly
+
+### Secondary Priority (Data Investigation)  
+1. **Investigate area leader distribution** - why only 4 areas?
+2. **Add better error handling** for email failures
+3. **Improve logging** for debugging email issues
+4. **Test with more realistic data** distribution
+
+### Future Sessions (Production Features)
+1. **Cloud Scheduler** setup for automated triggers
+2. **Monitoring and alerting** for email system
+3. **Performance optimization** for large participant counts
+4. **Email templates** refinement and testing
+
+## Environment Configuration
+
+### Current Deploy Settings
+```bash
+# deploy.sh
+DISPLAY_TIMEZONE="America/Vancouver"
+
+# Test environment
+FLASK_ENV=development,TEST_MODE=true,DISPLAY_TIMEZONE=$DISPLAY_TIMEZONE
+
+# Production environment  
+FLASK_ENV=production,DISPLAY_TIMEZONE=$DISPLAY_TIMEZONE
+```
+
+### Dependencies
+```
+# requirements.txt additions
+pytz                          # For timezone handling
+google-cloud-email           # TODO: Add for Email API
+```
+
+## Debugging Information
+
+### Useful Commands
+```bash
+# View recent logs
+gcloud run services logs read cbc-test --region=us-west1 --limit=50
+
+# Check service configuration
+gcloud run services describe cbc-test --region=us-west1
+
+# Test email triggers (on cbc-test.naturevancouver.ca)
+curl -X POST https://cbc-test.naturevancouver.ca/admin/test/trigger-team-updates
+```
+
+### Key Log Patterns
+- `ERROR:test.email_generator:Critical error` - Email generation failure
+- `ERROR:services.email_service:SMTP credentials not configured` - Email API missing
+- `INFO:test.email_generator:Team update emails completed` - Function completion stats
+- `INFO:services.email_service:Email service initialized in TEST MODE` - Test mode confirmation
+
+### File System Investigation (Container)
+The email system files are properly deployed to the container:
+```
+/app/test/email_generator.py     ✅ Present
+/app/services/email_service.py   ✅ Present  
+/app/templates/emails/           ✅ Present
+/app/utils/                      ❌ Excluded by .gcloudignore (correct)
+```
+
+## Architecture Decisions Made
+
+### 1. Security-First Approach
+- Test routes only exist in test mode
+- Production servers have no test endpoints
+- Email addresses validated before sending
+
+### 2. Timezone Strategy  
+- UTC for all storage and calculations
+- Configurable display timezone for user interfaces
+- Single source of truth in deployment configuration
+
+### 3. Email Service Architecture
+- Test mode redirects all emails to admin address
+- Separate service layer for email delivery abstraction
+- Template-based HTML email generation
+
+### 4. Error Handling Philosophy
+- Log errors but continue processing other areas
+- Return detailed status information for debugging
+- Fail gracefully without breaking the main application
+
+This development status reflects significant progress on the email system with core functionality implemented and tested, requiring only Email API configuration to achieve full functionality.

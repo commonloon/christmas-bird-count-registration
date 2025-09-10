@@ -177,12 +177,23 @@ ADMIN_EMAILS = [
 
 **Implementation Features:**
 - **Test Environment**: Admin dashboard includes manual email trigger buttons (test server only)
-- **Environment Detection**: Uses `TEST_MODE=true` or domain contains 'test' for test server identification  
-- **Test Mode Behavior**: All emails redirect to `birdcount@naturevancouver.ca`
+- **Environment-Based Security**: Email test routes only registered when `TEST_MODE=true`
+- **Test Mode Behavior**: All emails redirect to `birdcount@naturevancouver.ca` 
+- **Timezone Support**: Configurable display timezone via `DISPLAY_TIMEZONE` environment variable (default: America/Vancouver)
+- **Email Service**: Google Cloud Email API for reliable delivery (replaces SMTP)
 - **Race Condition Prevention**: Timestamp selection before queries, update after successful send
 - **Production Scheduling**: Cloud Scheduler integration planned for automated triggers
 - **Change Detection**: Track area assignments, additions, removals, email address changes
 - **Timestamp Management**: Store per-area `last_email_sent` values to prevent duplicates
+
+**Current Implementation Status (Partially Complete):**
+- ✅ **Core Logic**: Email generation implemented in `test/email_generator.py`
+- ✅ **Templates**: HTML email templates created for all three email types
+- ✅ **Security**: Test routes only exist in test mode, completely absent from production
+- ✅ **Timezone Handling**: UTC storage with configurable display timezone conversion
+- ✅ **Test Interface**: Manual trigger buttons in admin dashboard (test server only)
+- ❌ **Email Delivery**: Requires Google Cloud Email API configuration and credentials
+- ❌ **Production Automation**: Cloud Scheduler configuration pending
 
 ## Data Models
 

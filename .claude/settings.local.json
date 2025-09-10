@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gcloud run services describe:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

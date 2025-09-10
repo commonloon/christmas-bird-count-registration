@@ -1,8 +1,16 @@
 #!/bin/bash
+date
 
 # Deployment script for Christmas Bird Count Registration App
 # Usage: ./deploy.sh [test|production|registration|both]
 # Default: both
+
+# Display timezone configuration (single source of truth)
+DISPLAY_TIMEZONE="America/Vancouver"
+
+echo "Deploying with display timezone: $DISPLAY_TIMEZONE"
+echo "If this timezone is incorrect for your location, update the DISPLAY_TIMEZONE variable in deploy.sh"
+echo ""
 
 DEPLOY_TARGET=${1:-both}
 
@@ -27,14 +35,14 @@ deploy() {
 
 case $DEPLOY_TARGET in
     test)
-        deploy "cbc-test" "FLASK_ENV=development,TEST_MODE=true"
+        deploy "cbc-test" "FLASK_ENV=development,TEST_MODE=true,DISPLAY_TIMEZONE=$DISPLAY_TIMEZONE"
         ;;
     production|registration)
-        deploy "cbc-registration" "FLASK_ENV=production"
+        deploy "cbc-registration" "FLASK_ENV=production,DISPLAY_TIMEZONE=$DISPLAY_TIMEZONE"
         ;;
     both)
-        deploy "cbc-test" "FLASK_ENV=development,TEST_MODE=true"
-        deploy "cbc-registration" "FLASK_ENV=production"
+        deploy "cbc-test" "FLASK_ENV=development,TEST_MODE=true,DISPLAY_TIMEZONE=$DISPLAY_TIMEZONE"
+        deploy "cbc-registration" "FLASK_ENV=production,DISPLAY_TIMEZONE=$DISPLAY_TIMEZONE"
         ;;
     *)
         echo "Invalid deployment target: $DEPLOY_TARGET"

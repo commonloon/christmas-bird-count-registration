@@ -12,14 +12,12 @@ Implements race condition prevention and change detection logic.
 
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple, Any
 from flask import render_template, current_app
 from jinja2 import Template
 from google.cloud import firestore
 import logging
-
-# Note: No sys.path manipulation needed - proper package structure handles imports
 
 from config.database import get_firestore_client
 from config.admins import ADMIN_EMAILS
@@ -103,6 +101,10 @@ def get_participants_changes_since(participant_model: ParticipantModel, area_cod
                                    since_timestamp: datetime) -> Tuple[List[Dict], List[Dict]]:
     """Get participants added and removed since the given timestamp."""
     try:
+        # Ensure since_timestamp is timezone-aware for comparison
+        if since_timestamp.tzinfo is None:
+            since_timestamp = since_timestamp.replace(tzinfo=timezone.utc)
+        
         # Get current participants for the area
         current_participants = participant_model.get_participants_by_area(area_code)
         
@@ -112,12 +114,26 @@ def get_participants_changes_since(participant_model: ParticipantModel, area_cod
             created_at = participant.get('created_at')
             updated_at = participant.get('updated_at')
             
-            if created_at and created_at > since_timestamp:
-                new_participants.append(participant)
-            elif updated_at and updated_at > since_timestamp:
-                # Check if this was an area reassignment to this area
-                if participant.get('preferred_area') == area_code:
+            # Handle created_at comparison
+            if created_at:
+                # Ensure created_at is timezone-aware for comparison
+                if created_at.tzinfo is None:
+                    created_at = created_at.replace(tzinfo=timezone.utc)
+                
+                if created_at > since_timestamp:
                     new_participants.append(participant)
+                    continue
+            
+            # Handle updated_at comparison
+            if updated_at:
+                # Ensure updated_at is timezone-aware for comparison
+                if updated_at.tzinfo is None:
+                    updated_at = updated_at.replace(tzinfo=timezone.utc)
+                
+                if updated_at > since_timestamp:
+                    # Check if this was an area reassignment to this area
+                    if participant.get('preferred_area') == area_code:
+                        new_participants.append(participant)
         
         # Get removed participants from removal log
         removal_model = RemovalLogModel(participant_model.db, participant_model.year)
@@ -363,9 +379,19 @@ def generate_admin_digest_email(app=None) -> Dict[str, Any]:
         # Calculate days waiting for each participant
         days_waiting = []
         total_wait_days = 0
+        
+        # Ensure current_time is timezone-aware (UTC)
+        if current_time.tzinfo is None:
+            current_time = current_time.replace(tzinfo=timezone.utc)
+        
         for participant in unassigned_participants:
             created_at = participant.get('created_at')
             if created_at:
+                # Ensure created_at is timezone-aware for comparison
+                if created_at.tzinfo is None:
+                    # If naive, assume UTC
+                    created_at = created_at.replace(tzinfo=timezone.utc)
+                
                 days_wait = (current_time - created_at).days
                 days_waiting.append(days_wait)
                 total_wait_days += days_wait

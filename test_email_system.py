@@ -19,7 +19,7 @@ os.environ['TEST_MODE'] = 'true'
 from flask import Flask
 from config.database import get_firestore_client
 from config.email_settings import is_test_server
-from utils.email_generator import (
+from test.email_generator import (
     generate_team_update_emails,
     generate_weekly_summary_emails, 
     generate_admin_digest_email
