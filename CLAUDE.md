@@ -15,9 +15,9 @@ This is a Flask web application for Nature Vancouver's annual Christmas Bird Cou
 
 ### Key Components
 - **Backend**: Flask with Blueprint routing architecture
-- **Database**: Google Firestore with year-aware models
+- **Database**: Google Firestore with environment-specific databases (`cbc-test`, `cbc-register`) and year-aware models
 - **Authentication**: Google OAuth with role-based access control
-- **Frontend**: Bootstrap 5 + Leaflet.js interactive map
+- **Frontend**: Bootstrap 5 + Leaflet.js interactive map with context-aware navigation
 - **Deployment**: Google Cloud Run + Firestore
 
 ## Essential Commands
@@ -111,17 +111,28 @@ python utils/generate_test_participants.py 0 --seq 5000      # 0 regular + 5 lea
 - `static/data/area_boundaries.json` - GeoJSON area polygons for map
 
 ### Templates
-- `templates/base.html` - Base template with conditional navigation (no public admin links)
+- `templates/base.html` - Base template with context-aware navigation (admin vs public)
 - `templates/index.html` - Registration form with interactive map
 - `templates/auth/login.html` - Google OAuth login page
 - `templates/admin/dashboard.html` - Admin overview with statistics and year selection
-- `templates/admin/leaders.html` - Leader management interface with interactive map
+- `templates/admin/leaders.html` - Leader management interface with interactive map and inline editing
 - `templates/admin/participants.html` - Participant management interface
-- `templates/admin/unassigned.html` - Unassigned participant management interface
+- `templates/admin/unassigned.html` - Unassigned participant management interface (streamlined)
 - `templates/admin/area_detail.html` - Area-specific views interface
 - `templates/errors/` - 404/500 error pages
 
 ## Key Implementation Patterns
+
+### Database Configuration
+```python
+# Environment-specific database selection
+from config.database import get_firestore_client
+
+# Automatically uses appropriate database based on environment
+db, database_id = get_firestore_client()
+# Test: FLASK_ENV=development OR TEST_MODE=true → cbc-test
+# Prod: FLASK_ENV=production AND TEST_MODE≠true → cbc-register
+```
 
 ### Year-Based Data Access
 ```python
@@ -230,6 +241,7 @@ The application uses production Firestore - test carefully:
 ### Leader Management System
 **Completed Features:**
 - Interactive map display showing areas needing leaders vs areas with leaders
+- Inline edit/delete functionality with real-time validation and map updates
 - Manual leader entry form with validation and business rule enforcement
 - Participant-to-leader promotion from "Potential Leaders" list
 - Area dropdowns properly populated with area codes and names
@@ -252,11 +264,47 @@ The application uses production Firestore - test carefully:
 - Map legend shows count of areas with/without leaders
 - Areas needing leaders have enhanced hover and click interactions
 
+**Inline Edit/Delete Functionality:**
+- Direct table editing with pencil and trash icons (Bootstrap Icons)
+- Simultaneous editing of all leader fields (area, names, email, phone)
+- Real-time validation and business rule enforcement
+- Client-side data management for instant map updates without server round-trips
+- AJAX operations with comprehensive error handling and user feedback
+
+**Email Automation System (In Development):**
+- **Three Email Types**: 
+  1. Twice-daily team updates to area leaders when team composition changes
+  2. Weekly summaries for areas with no changes (Fridays at 11pm)
+  3. Daily admin digest listing unassigned participants
+- **Test Environment**: Admin dashboard includes manual email trigger buttons (test server only)
+- **Environment Detection**: Uses `TEST_MODE=true` or domain contains 'test' for test server identification
+- **Test Mode Behavior**: All emails redirect to birdcount@naturevancouver.ca on test server
+- **Race Condition Prevention**: Timestamp selection before queries, update after successful send
+- **Production Scheduling**: Cloud Scheduler integration planned for automated triggers
+
 **Email and Access Requirements:**
 - Leaders can have non-Google emails (for notifications only)
 - Only Google email leaders can access leader UI at `/leader`
 - Required leader fields: first_name, last_name, email, cell_phone
-- Email notifications for team updates, but no automatic workflow notifications
+- Automated email notifications for team updates and weekly summaries
+
+### Email Automation Development
+1. **Test Email Triggers (Test Server Only)**:
+   - Access admin dashboard on `cbc-test.naturevancouver.ca/admin`
+   - Use email trigger buttons to test each email type on demand
+   - All test emails redirect to `birdcount@naturevancouver.ca`
+   - Check logs: `gcloud run services logs read cbc-test --region=us-west1 --limit=50`
+
+2. **Email System Components**:
+   - **Email Generation**: `utils/email_generator.py` - Core logic for all email types
+   - **Email Templates**: `templates/emails/` - HTML templates for team updates, weekly summaries, admin digest
+   - **Environment Detection**: `is_test_server()` helper function for test mode behavior
+   - **SMTP Configuration**: `config/email_settings.py` - Email service configuration
+
+3. **Production Email Scheduling**:
+   - **Cloud Scheduler**: Configure cron jobs for twice-daily and weekly triggers
+   - **Pub/Sub Integration**: Consider message queuing for reliable email delivery
+   - **Monitoring**: Set up alerts for email delivery failures and processing errors
 
 ### Debugging Deployment Issues
 1. **Check service configuration**: `gcloud run services describe SERVICE --region=us-west1`

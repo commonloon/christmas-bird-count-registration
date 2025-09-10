@@ -175,5 +175,70 @@
 </div>
 {% endif %}
 
+<!-- Email Testing Section (Test Server Only) -->
+{% if is_test_server %}
+<div class="card mt-4 border-secondary">
+    <div class="card-header bg-secondary text-white">
+        <h5 class="mb-0"><i class="bi bi-envelope-paper"></i> Email Testing (Test Server Only)</h5>
+    </div>
+    <div class="card-body">
+        <p class="text-muted mb-3">Trigger email generation on demand for testing purposes. All emails will be sent to birdcount@naturevancouver.ca on the test server.</p>
+        
+        <div class="d-flex flex-wrap gap-2">
+            <button type="button" class="btn btn-outline-primary" onclick="triggerTestEmail('team-updates')">
+                <i class="bi bi-people"></i> Trigger Team Updates
+            </button>
+            <button type="button" class="btn btn-outline-info" onclick="triggerTestEmail('weekly-summaries')">
+                <i class="bi bi-calendar-week"></i> Trigger Weekly Summaries
+            </button>
+            <button type="button" class="btn btn-outline-warning" onclick="triggerTestEmail('admin-digest')">
+                <i class="bi bi-person-gear"></i> Trigger Admin Digest
+            </button>
+        </div>
+        
+        <div id="test-email-results" class="mt-3" style="display: none;">
+            <div class="alert alert-info">
+                <div class="d-flex align-items-center">
+                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                    <span>Generating emails...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function triggerTestEmail(emailType) {
+    const resultsDiv = document.getElementById('test-email-results');
+    resultsDiv.style.display = 'block';
+    resultsDiv.innerHTML = '<div class="alert alert-info"><div class="d-flex align-items-center"><div class="spinner-border spinner-border-sm me-2" role="status"></div><span>Generating emails...</span></div></div>';
+    
+    const endpoints = {
+        'team-updates': '{{ url_for("admin.test_trigger_team_updates") }}',
+        'weekly-summaries': '{{ url_for("admin.test_trigger_weekly_summaries") }}', 
+        'admin-digest': '{{ url_for("admin.test_trigger_admin_digest") }}'
+    };
+    
+    fetch(endpoints[emailType], {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            resultsDiv.innerHTML = `<div class="alert alert-success"><i class="bi bi-check-circle"></i> ${data.message}</div>`;
+        } else {
+            resultsDiv.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> Error: ${data.error || 'Unknown error'}</div>`;
+        }
+    })
+    .catch(error => {
+        resultsDiv.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> Network error: ${error.message}</div>`;
+    });
+}
+</script>
+{% endif %}
+
 {% endif %}
 {% endblock %}

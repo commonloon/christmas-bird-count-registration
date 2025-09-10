@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response, g
 from google.cloud import firestore
 from config.database import get_firestore_client
+from config.email_settings import is_test_server
 from models.participant import ParticipantModel
 from models.area_leader import AreaLeaderModel
 from models.removal_log import RemovalLogModel
@@ -68,6 +69,7 @@ def dashboard():
                            total_participants=total_participants,
                            total_unassigned=total_unassigned,
                            total_assigned=total_assigned,
+                           is_test_server=is_test_server(),
                            current_user=get_current_user())
 
 
@@ -595,3 +597,108 @@ def delete_leader():
     except Exception as e:
         logging.error(f"Error deleting leader: {e}")
         return jsonify({'success': False, 'message': f'Error deleting leader: {str(e)}'})
+
+
+# Email Test Trigger Routes (Test Server Only)
+
+@admin_bp.route('/test/trigger-team-updates', methods=['POST'])
+@require_admin
+def test_trigger_team_updates():
+    """Test trigger for twice-daily team update emails (test server only)."""
+    # Environment check: only work on test server
+    if not is_test_server():
+        return jsonify({'error': 'Test triggers only available on test server'}), 403
+    
+    try:
+        # Import here to avoid circular imports
+        from utils.email_generator import generate_team_update_emails
+        
+        # Generate twice-daily team updates for all areas with leaders
+        results = generate_team_update_emails()
+        
+        message = f"Team update emails: {results['emails_sent']} sent, {results['areas_processed']} areas processed"
+        if results['errors']:
+            message += f", {len(results['errors'])} errors"
+            
+        return jsonify({
+            'success': True, 
+            'message': message,
+            'details': results
+        })
+        
+    except Exception as e:
+        logging.error(f"Error in test_trigger_team_updates: {e}")
+        return jsonify({
+            'success': False, 
+            'error': f'Error generating team update emails: {str(e)}'
+        }), 500
+
+
+@admin_bp.route('/test/trigger-weekly-summaries', methods=['POST'])
+@require_admin 
+def test_trigger_weekly_summaries():
+    """Test trigger for weekly summary emails (test server only)."""
+    # Environment check: only work on test server
+    if not is_test_server():
+        return jsonify({'error': 'Test triggers only available on test server'}), 403
+    
+    try:
+        # Import here to avoid circular imports
+        from utils.email_generator import generate_weekly_summary_emails
+        
+        # Generate weekly summaries for all areas with leaders
+        results = generate_weekly_summary_emails()
+        
+        message = f"Weekly summary emails: {results['emails_sent']} sent, {results['areas_processed']} areas processed"
+        if results['errors']:
+            message += f", {len(results['errors'])} errors"
+            
+        return jsonify({
+            'success': True, 
+            'message': message,
+            'details': results
+        })
+        
+    except Exception as e:
+        logging.error(f"Error in test_trigger_weekly_summaries: {e}")
+        return jsonify({
+            'success': False, 
+            'error': f'Error generating weekly summary emails: {str(e)}'
+        }), 500
+
+
+@admin_bp.route('/test/trigger-admin-digest', methods=['POST'])
+@require_admin
+def test_trigger_admin_digest():
+    """Test trigger for daily admin digest email (test server only)."""
+    # Environment check: only work on test server
+    if not is_test_server():
+        return jsonify({'error': 'Test triggers only available on test server'}), 403
+    
+    try:
+        # Import here to avoid circular imports
+        from utils.email_generator import generate_admin_digest_email
+        
+        # Generate admin digest
+        results = generate_admin_digest_email()
+        
+        if results['unassigned_count'] == 0:
+            message = "Admin digest: No unassigned participants found"
+        else:
+            message = f"Admin digest: {results['emails_sent']} email sent for {results['unassigned_count']} unassigned participants"
+            
+        if results['errors']:
+            message += f", {len(results['errors'])} errors"
+            
+        return jsonify({
+            'success': True, 
+            'message': message,
+            'details': results
+        })
+        
+    except Exception as e:
+        logging.error(f"Error in test_trigger_admin_digest: {e}")
+        return jsonify({
+            'success': False, 
+            'error': f'Error generating admin digest email: {str(e)}'
+        }), 500

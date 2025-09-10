@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Digest - Unassigned Participants</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #ffc107;
+            color: #212529;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px 5px 0 0;
+        }
+        .content {
+            background-color: #f8f9fa;
+            padding: 30px;
+            border: 1px solid #dee2e6;
+        }
+        .footer {
+            background-color: #6c757d;
+            color: white;
+            padding: 15px;
+            text-align: center;
+            font-size: 12px;
+            border-radius: 0 0 5px 5px;
+        }
+        .alert {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .participant {
+            background-color: white;
+            padding: 15px;
+            margin: 10px 0;
+            border-left: 4px solid #ffc107;
+            border-radius: 3px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .participant-header {
+            font-weight: bold;
+            color: #495057;
+            margin-bottom: 8px;
+        }
+        .participant-details {
+            font-size: 14px;
+            color: #6c757d;
+        }
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            background-color: #ffc107;
+            color: #212529;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-top: 20px;
+            font-weight: bold;
+        }
+        .btn:hover {
+            background-color: #e0a800;
+        }
+        .stats {
+            background-color: white;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 4px solid #dc3545;
+        }
+        .leadership-interest {
+            background-color: #d1ecf1;
+            padding: 5px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+            font-weight: bold;
+            color: #0c5460;
+            display: inline-block;
+            margin-top: 5px;
+        }
+        .waiting-time {
+            color: #dc3545;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1><i>⚠️</i> Vancouver Christmas Bird Count</h1>
+        <h2>Admin Digest - Unassigned Participants</h2>
+        <p>{{ current_date.strftime('%B %d, %Y') }}</p>
+    </div>
+
+    <div class="content">
+        <p>Dear CBC Administrators,</p>
+
+        {% if unassigned_participants %}
+        <div class="alert">
+            <strong>Action Required:</strong> There are {{ unassigned_participants|length }} participant{{ 's' if unassigned_participants|length != 1 else '' }} 
+            who selected "Wherever I'm needed most" and need area assignment.
+        </div>
+
+        <div class="stats">
+            <h4><i>📊</i> Quick Statistics</h4>
+            <p><strong>Total Unassigned:</strong> {{ unassigned_participants|length }}</p>
+            <p><strong>With Leadership Interest:</strong> {{ leadership_interest_count }}</p>
+            <p><strong>Average Wait Time:</strong> {{ average_wait_days }} day{{ 's' if average_wait_days != 1 else '' }}</p>
+        </div>
+
+        <h3><i>📋</i> Participants Awaiting Assignment</h3>
+        
+        {% for participant in unassigned_participants %}
+        <div class="participant">
+            <div class="participant-header">
+                {{ loop.index }}. {{ participant.first_name }} {{ participant.last_name }}
+                {% if days_waiting[loop.index0] >= 3 %}
+                <span class="waiting-time">({{ days_waiting[loop.index0] }} days waiting)</span>
+                {% endif %}
+            </div>
+            <div class="participant-details">
+                <strong>Email:</strong> {{ participant.email }}<br>
+                <strong>Phone:</strong> {{ participant.phone or 'Not provided' }}<br>
+                <strong>Skill Level:</strong> {{ participant.skill_level or 'Not specified' }} | 
+                <strong>CBC Experience:</strong> {{ participant.experience or 'Not specified' }}<br>
+                <strong>Registered:</strong> {{ participant.created_at.strftime('%Y-%m-%d %H:%M') if participant.created_at else 'Unknown' }}
+                {% if participant.interested_in_leadership %}
+                <br><span class="leadership-interest">🌟 Interested in Leadership</span>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+
+        <p><strong>Recommended Actions:</strong></p>
+        <ul>
+            <li>Review area capacity and assign participants to areas needing more volunteers</li>
+            <li>Consider leadership potential for participants expressing interest</li>
+            <li>Prioritize participants who have been waiting longest</li>
+            <li>Contact participants if clarification is needed on their preferences</li>
+        </ul>
+
+        <p>Click below to access the assignment interface:</p>
+        <a href="{{ admin_unassigned_url }}" class="btn">🔧 Assign Participants to Areas</a>
+
+        {% else %}
+        <div style="background-color: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 20px; border-radius: 5px; text-align: center;">
+            <h3><i>✅</i> All Participants Assigned!</h3>
+            <p>Great news! There are currently no unassigned participants waiting for area assignment.</p>
+        </div>
+        {% endif %}
+
+        <hr style="margin: 30px 0; border: none; border-top: 1px solid #dee2e6;">
+
+        <p><strong>Daily Digest Schedule:</strong> This email is sent daily when there are unassigned participants. 
+        You will continue to receive this digest until all participants are assigned to areas.</p>
+    </div>
+
+    <div class="footer">
+        <p>This is an automated daily digest from the Vancouver CBC registration system.<br>
+        Generated on {{ current_date.strftime('%Y-%m-%d at %H:%M') }} Pacific Time</p>
+        {% if test_mode %}
+        <p><strong>TEST MODE:</strong> This email was generated for testing purposes.</p>
+        {% endif %}
+    </div>
+</body>
+</html>

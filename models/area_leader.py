@@ -51,6 +51,10 @@ class AreaLeaderModel:
 
         return leaders
 
+    def get_leaders_for_area(self, area_code: str) -> List[Dict]:
+        """Get all active leaders for a specific area (alias for get_leaders_by_area)."""
+        return self.get_leaders_by_area(area_code)
+
     def get_leaders_by_email(self, email: str) -> List[Dict]:
         """Get all areas led by a specific email address in the current year."""
         leaders = []

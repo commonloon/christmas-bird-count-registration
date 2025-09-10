@@ -5,10 +5,14 @@ Web application for Nature Vancouver's annual Christmas Bird Count registration 
 
 ## Technical Stack
 - **Backend**: Python 3.13, Flask with Blueprint routing
-- **Database**: Google Firestore with environment-specific databases (`cbc-test`, `cbc-register`) and year-based collections
+- **Database**: Google Firestore with multi-database architecture:
+  - `cbc-test`: Development/testing environment database
+  - `cbc-register`: Production environment database
+  - Year-based collections within each database (`participants_2025`, `area_leaders_2025`)
+  - Automated database setup with composite indexes
 - **Authentication**: Google Identity Services OAuth with Google Secret Manager for credentials
-- **Frontend**: Bootstrap 5, Leaflet.js for interactive mapping
-- **Deployment**: Google Cloud Run with automated deployment scripts
+- **Frontend**: Bootstrap 5 + Bootstrap Icons, Leaflet.js for interactive mapping
+- **Deployment**: Google Cloud Run with automated deployment scripts for both environments
 - **Security**: Role-based access control with admin whitelist and area leader database
 - **Data**: 24 count areas (A-X, excluding Y) with GeoJSON polygon boundaries
 
@@ -23,6 +27,13 @@ Each year's data is stored in separate Firestore collections:
 - Historical queries merge results from multiple yearly collections
 - Email deduplication keeps most recent participant information
 - Area leaders can access historical contact lists for recruitment
+
+### Environment-Specific Database Architecture
+- **Automatic Database Selection**: Environment-specific database selection based on `FLASK_ENV` and `TEST_MODE` variables
+- **Database Setup Automation**: `utils/setup_databases.py` script creates both databases with proper indexes
+- **Multi-Environment Support**: Seamless switching between test and production databases
+- **Index Management**: Automated composite index creation for optimal query performance
+- **Data Isolation**: Complete separation of test and production data
 
 ## Authentication & Authorization
 
@@ -93,6 +104,7 @@ ADMIN_EMAILS = [
 - Statistics overview: total participants, assigned/unassigned counts, areas needing leaders
 - Recent registrations preview (latest 10 participants)
 - Quick action buttons for common management tasks
+- **Email Testing Section (Test Server Only)**: Manual trigger buttons for testing all three email types with immediate feedback
 
 **Participant Management (`/admin/participants`)**
 - Complete participant list with search and filtering
@@ -143,12 +155,34 @@ ADMIN_EMAILS = [
 - Read-only access to historical data
 - Area-specific registration statistics
 
-### Email Notification System
-- Twice-daily automated checks for team changes
-- Email area leaders when participants added/removed from their areas
-- Daily digest to admins listing unassigned participants
-- Timestamp-based change detection to prevent missed notifications
-- Race condition handling: better to notify twice than miss changes
+### Email Notification System (In Development)
+**Three Automated Email Types:**
+
+1. **Twice-Daily Team Updates**:
+   - Recipients: Area leaders when team composition changes
+   - Subject: "Team Update for Vancouver CBC Area X"
+   - Content: New members, removed members, complete current team roster
+   - Triggers: Participant additions, removals, area reassignments, email changes
+
+2. **Weekly Team Summary (No Changes)**:
+   - Recipients: Area leaders with no team changes in past week
+   - When: Every Friday at 11pm
+   - Subject: "Weekly Team Summary for Vancouver CBC Area X"
+   - Content: "No changes" note + complete team roster with all details
+
+3. **Daily Admin Digest**:
+   - Recipients: All admins (from `config/admins.py`)
+   - Subject: "Vancouver CBC Participants not assigned to a count area"
+   - Content: Link to admin/unassigned page + list of unassigned participants
+
+**Implementation Features:**
+- **Test Environment**: Admin dashboard includes manual email trigger buttons (test server only)
+- **Environment Detection**: Uses `TEST_MODE=true` or domain contains 'test' for test server identification  
+- **Test Mode Behavior**: All emails redirect to `birdcount@naturevancouver.ca`
+- **Race Condition Prevention**: Timestamp selection before queries, update after successful send
+- **Production Scheduling**: Cloud Scheduler integration planned for automated triggers
+- **Change Detection**: Track area assignments, additions, removals, email address changes
+- **Timestamp Management**: Store per-area `last_email_sent` values to prevent duplicates
 
 ## Data Models
 
@@ -246,12 +280,11 @@ class ParticipantModel:
 - Mobile-optimized touch interactions
 
 ### Email Notification Logic
-- Track last_email_sent timestamp per area per year
-- Compare with participant last_modified timestamps
-- Log removals separately since they're admin-only events
-- Atomic timestamp capture prevents race conditions
-- Test mode (TEST_MODE=true): All emails redirect to birdcount@naturevancouver.ca with modified subject/body indicating intended recipients
-- Production mode (TEST_MODE=false or unset): Normal email delivery
+- **Email Templates**: HTML email templates for each email type with environment-aware links
+- **SMTP Configuration**: Email service configuration with provider settings
+- **Environment-Aware Links**: Test server links to `cbc-test.naturevancouver.ca`, production to `cbc-registration.naturevancouver.ca`
+- **Delivery Monitoring**: Logging and error handling for email delivery failures
+- **Test Mode Implementation**: Manual triggers via admin dashboard for development testing
 
 ### Leadership Management
 
@@ -325,6 +358,8 @@ config/
   areas.py                      # Static area definitions (24 areas A-X)
   settings.py                   # Environment configuration
   admins.py                     # Admin email whitelist
+  database.py                   # Database configuration helper for environment-specific databases
+  email_settings.py             # Email service configuration and SMTP settings (to be created)
 
 models/
   participant.py                # Year-aware participant operations with Firestore
@@ -342,7 +377,7 @@ services/
   email_service.py             # Email service with test mode support
 
 templates/
-  base.html                    # Base template with conditional navigation and Bootstrap Icons
+  base.html                    # Base template with context-aware navigation and Bootstrap Icons
   index.html                   # Registration form with interactive map
   registration_success.html    # Registration confirmation page
   auth/
@@ -350,10 +385,14 @@ templates/
   admin/
     dashboard.html             # Admin overview with statistics
     participants.html          # Complete participant management
-    unassigned.html           # Unassigned participant assignment tools
+    unassigned.html           # Streamlined unassigned participant assignment tools
     area_detail.html          # Area-specific participant and leader views
     leaders.html              # Leader management with inline edit/delete and live map updates
   leader/                      # Leader interface templates (to be implemented)
+  emails/                      # Email templates directory (to be created)
+    team_update.html           # HTML template for twice-daily team updates
+    weekly_summary.html        # HTML template for weekly team summaries  
+    admin_digest.html          # HTML template for daily admin digest
   errors/                      # 404/500 error page templates
 
 static/
@@ -365,8 +404,9 @@ static/
 
 utils/
   setup_oauth_secrets.sh       # OAuth credential setup script for Google Secret Manager
-  setup_databases.py           # Firestore database creation script
+  setup_databases.py           # Firestore database creation script with environment-specific databases
   generate_test_participants.py # Test data generation script for development/testing
+  email_generator.py           # Email generation logic for automated notifications (to be implemented)
   requirements.txt             # Dependencies for utility scripts (requests, faker, firestore)
 
 OAUTH-SETUP.md                  # Complete OAuth setup instructions
@@ -473,6 +513,12 @@ rm client_secret.json             # Remove sensitive file
 
 ### Critical Implementation Requirements
 
+**Database Architecture:**
+- **Environment-specific databases**: `cbc-test` for development, `cbc-register` for production
+- **Automatic database selection**: Based on `FLASK_ENV` and `TEST_MODE` environment variables
+- **Composite indexes**: Automatically created by database setup script for optimal performance
+- **Year-based collections**: All data organized by year with explicit year fields for integrity
+
 **OAuth Integration:**
 - Google Identity Services (not traditional OAuth redirect flow)
 - Client credentials must be stored in Google Secret Manager (never in code)
@@ -481,7 +527,7 @@ rm client_secret.json             # Remove sensitive file
 
 **Database Design:**
 - All Firestore operations must include explicit year fields for data integrity
-- Composite indexes required for complex queries (auto-created via error URLs)
+- Composite indexes required for complex queries (created automatically by setup script)
 - Email deduplication logic prevents duplicate registrations within same year
 
 **Security Architecture:**
@@ -492,9 +538,11 @@ rm client_secret.json             # Remove sensitive file
 
 **Template Requirements:**
 - All admin templates require year selector and breadcrumb navigation
+- **Context-aware navigation**: Admin templates show "Admin" branding and link to admin dashboard
 - Mobile-responsive design mandatory (Bootstrap 5 classes)
 - Error handling for missing data (empty collections, unavailable services)
 - Consistent user feedback via Flask flash messaging system
+- Inline editing capabilities with live updates for leader management
 
 ### Common Development Pitfalls
 

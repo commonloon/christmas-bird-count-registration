@@ -181,6 +181,21 @@ class RemovalLogModel:
 
         return removals
 
+    def get_removals_since(self, area_code: str, since_timestamp: datetime) -> List[Dict]:
+        """Get removals for a specific area since the given timestamp."""
+        removals = []
+        query = (self.db.collection(self.collection)
+                 .where('area_code', '==', area_code)
+                 .where('removed_at', '>=', since_timestamp)
+                 .order_by('removed_at', direction=firestore.Query.DESCENDING))
+
+        for doc in query.stream():
+            data = doc.to_dict()
+            data['id'] = doc.id
+            removals.append(data)
+
+        return removals
+
     def get_removals_needing_notification(self) -> Dict[str, List[Dict]]:
         """Get pending removals grouped by area for email notifications."""
         pending = self.get_pending_removals()

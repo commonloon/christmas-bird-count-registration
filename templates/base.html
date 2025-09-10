@@ -12,7 +12,11 @@
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container">
-            <a class="navbar-brand" href="{{ url_for('main.index') }}">Vancouver CBC Registration</a>
+            {% if request.endpoint and request.endpoint.startswith('admin.') %}
+                <a class="navbar-brand" href="{{ url_for('admin.dashboard', year=selected_year) }}">Vancouver CBC Registration Admin</a>
+            {% else %}
+                <a class="navbar-brand" href="{{ url_for('main.index') }}">Vancouver CBC Registration</a>
+            {% endif %}
             <div class="navbar-nav ms-auto">
             </div>
         </div>

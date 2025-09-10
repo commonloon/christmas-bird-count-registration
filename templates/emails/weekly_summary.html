@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weekly Summary - Vancouver CBC Area {{ area_code }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #17a2b8;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px 5px 0 0;
+        }
+        .content {
+            background-color: #f8f9fa;
+            padding: 30px;
+            border: 1px solid #dee2e6;
+        }
+        .footer {
+            background-color: #6c757d;
+            color: white;
+            padding: 15px;
+            text-align: center;
+            font-size: 12px;
+            border-radius: 0 0 5px 5px;
+        }
+        .no-changes {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .participant {
+            background-color: white;
+            padding: 10px;
+            margin: 5px 0;
+            border-left: 4px solid #17a2b8;
+            border-radius: 3px;
+        }
+        .section-title {
+            color: #17a2b8;
+            font-weight: bold;
+            margin-top: 25px;
+            margin-bottom: 10px;
+        }
+        .team-roster {
+            background-color: white;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #17a2b8;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-top: 15px;
+        }
+        .stats {
+            background-color: white;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 4px solid #28a745;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Vancouver Christmas Bird Count</h1>
+        <h2>Area {{ area_code }} Weekly Summary</h2>
+        <p>{{ current_date.strftime('%B %d, %Y') }}</p>
+    </div>
+
+    <div class="content">
+        <p>Dear Area {{ area_code }} Leader{{ 's' if leader_names|length > 1 else '' }},</p>
+        
+        {% if leader_names %}
+        <p><strong>Area Leaders:</strong> {{ leader_names|join(', ') }}</p>
+        {% endif %}
+
+        <div class="no-changes">
+            <h3><i>✅</i> No Team Changes This Week</h3>
+            <p>Your team composition has remained stable with no additions, removals, or reassignments in the past week.</p>
+        </div>
+
+        {% if current_team %}
+        <div class="stats">
+            <h4><i>📊</i> Team Statistics</h4>
+            <p><strong>Total Team Members:</strong> {{ current_team|length }}</p>
+            <p><strong>Skill Level Breakdown:</strong></p>
+            <ul>
+                {% for skill, count in skill_breakdown.items() %}
+                <li>{{ skill }}: {{ count }} member{{ 's' if count != 1 else '' }}</li>
+                {% endfor %}
+            </ul>
+            <p><strong>CBC Experience Breakdown:</strong></p>
+            <ul>
+                {% for exp, count in experience_breakdown.items() %}
+                <li>{{ exp }}: {{ count }} member{{ 's' if count != 1 else '' }}</li>
+                {% endfor %}
+            </ul>
+            {% if leadership_interest_count > 0 %}
+            <p><strong>Leadership Interest:</strong> {{ leadership_interest_count }} member{{ 's' if leadership_interest_count != 1 else '' }}</p>
+            {% endif %}
+        </div>
+
+        <div class="section-title">
+            <i>👥</i> COMPLETE TEAM ROSTER ({{ current_team|length }} members)
+        </div>
+        <div class="team-roster">
+            {% for participant in current_team %}
+            <div class="participant">
+                <strong>{{ participant.first_name }} {{ participant.last_name }}</strong><br>
+                <strong>Email:</strong> {{ participant.email }}<br>
+                <strong>Phone:</strong> {{ participant.phone or 'Not provided' }}<br>
+                <strong>Skill:</strong> {{ participant.skill_level or 'Not specified' }} | 
+                <strong>Experience:</strong> {{ participant.experience or 'Not specified' }}
+                {% if participant.interested_in_leadership %}
+                | <strong>Leadership Interest:</strong> Yes
+                {% endif %}
+                <br><small><strong>Registered:</strong> {{ participant.created_at.strftime('%Y-%m-%d') if participant.created_at else 'Unknown' }}</small>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <p><strong>Reminder:</strong> With the count date approaching, now is a good time to:</p>
+        <ul>
+            <li>Confirm attendance with all team members</li>
+            <li>Share final meeting location and time details</li>
+            <li>Review area boundaries and target species</li>
+            <li>Ensure everyone has necessary equipment (binoculars, warm clothes, etc.)</li>
+        </ul>
+
+        <p>For the most current team information and contact details:</p>
+        <a href="{{ leader_dashboard_url }}" class="btn">View Leader Dashboard</a>
+    </div>
+
+    <div class="footer">
+        <p>This is your weekly team summary from the Vancouver CBC registration system.<br>
+        You receive this email when your team has had no changes for a week.<br>
+        Generated on {{ current_date.strftime('%Y-%m-%d at %H:%M') }} Pacific Time</p>
+        {% if test_mode %}
+        <p><strong>TEST MODE:</strong> This email was generated for testing purposes.</p>
+        {% endif %}
+    </div>
+</body>
+</html>

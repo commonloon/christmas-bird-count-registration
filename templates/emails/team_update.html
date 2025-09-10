@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Team Update - Vancouver CBC Area {{ area_code }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #0d6efd;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px 5px 0 0;
+        }
+        .content {
+            background-color: #f8f9fa;
+            padding: 30px;
+            border: 1px solid #dee2e6;
+        }
+        .footer {
+            background-color: #6c757d;
+            color: white;
+            padding: 15px;
+            text-align: center;
+            font-size: 12px;
+            border-radius: 0 0 5px 5px;
+        }
+        .participant-list {
+            margin: 15px 0;
+        }
+        .participant {
+            background-color: white;
+            padding: 10px;
+            margin: 5px 0;
+            border-left: 4px solid #28a745;
+            border-radius: 3px;
+        }
+        .removed-participant {
+            border-left-color: #dc3545;
+            background-color: #fff5f5;
+        }
+        .section-title {
+            color: #0d6efd;
+            font-weight: bold;
+            margin-top: 25px;
+            margin-bottom: 10px;
+        }
+        .current-team {
+            background-color: white;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #0d6efd;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Vancouver Christmas Bird Count</h1>
+        <h2>Area {{ area_code }} Team Update</h2>
+    </div>
+
+    <div class="content">
+        <p>Dear Area {{ area_code }} Leader{{ 's' if leader_names|length > 1 else '' }},</p>
+        
+        {% if leader_names %}
+        <p><strong>Area Leaders:</strong> {{ leader_names|join(', ') }}</p>
+        {% endif %}
+
+        <p>Your Christmas Bird Count team has been updated. Here are the recent changes:</p>
+
+        {% if new_participants %}
+        <div class="section-title">
+            <i>📥</i> NEW TEAM MEMBERS ({{ new_participants|length }})
+        </div>
+        <div class="participant-list">
+            {% for participant in new_participants %}
+            <div class="participant">
+                <strong>{{ participant.first_name }} {{ participant.last_name }}</strong><br>
+                <strong>Email:</strong> {{ participant.email }}<br>
+                <strong>Phone:</strong> {{ participant.phone or 'Not provided' }}<br>
+                <strong>Skill Level:</strong> {{ participant.skill_level or 'Not specified' }}<br>
+                <strong>CBC Experience:</strong> {{ participant.experience or 'Not specified' }}
+                {% if participant.interested_in_leadership %}
+                <br><strong>Leadership Interest:</strong> Yes
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if removed_participants %}
+        <div class="section-title">
+            <i>📤</i> REMOVED TEAM MEMBERS ({{ removed_participants|length }})
+        </div>
+        <div class="participant-list">
+            {% for removal in removed_participants %}
+            <div class="participant removed-participant">
+                <strong>{{ removal.participant_name }}</strong>
+                {% if removal.reason %}
+                <br><strong>Reason:</strong> {{ removal.reason }}
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if current_team %}
+        <div class="section-title">
+            <i>👥</i> COMPLETE CURRENT TEAM ROSTER ({{ current_team|length }} members)
+        </div>
+        <div class="current-team">
+            {% for participant in current_team %}
+            <div class="participant">
+                <strong>{{ participant.first_name }} {{ participant.last_name }}</strong><br>
+                <strong>Email:</strong> {{ participant.email }}<br>
+                <strong>Phone:</strong> {{ participant.phone or 'Not provided' }}<br>
+                <strong>Skill:</strong> {{ participant.skill_level or 'Not specified' }} | 
+                <strong>Experience:</strong> {{ participant.experience or 'Not specified' }}
+                {% if participant.interested_in_leadership %}
+                | <strong>Leadership Interest:</strong> Yes
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <p><strong>Next Steps:</strong></p>
+        <ul>
+            <li>Welcome new team members and provide them with count day details</li>
+            <li>Share meeting location and time information</li>
+            <li>Coordinate any special equipment or preparation needs</li>
+        </ul>
+
+        <p>For the most current team information, visit your leader dashboard:</p>
+        <a href="{{ leader_dashboard_url }}" class="btn">View Leader Dashboard</a>
+    </div>
+
+    <div class="footer">
+        <p>This is an automated notification from the Vancouver CBC registration system.<br>
+        Generated on {{ current_date.strftime('%Y-%m-%d at %H:%M') }} Pacific Time</p>
+        {% if test_mode %}
+        <p><strong>TEST MODE:</strong> This email was generated for testing purposes.</p>
+        {% endif %}
+    </div>
+</body>
+</html>
