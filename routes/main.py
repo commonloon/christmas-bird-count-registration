@@ -1,3 +1,4 @@
+# Updated by Claude AI at 2025-01-15 14:35:12
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, g
 from google.cloud import firestore
 from config.database import get_firestore_client
@@ -48,6 +49,12 @@ def register():
     experience = request.form.get('experience', '')
     preferred_area = request.form.get('preferred_area', '')
     interested_in_leadership = request.form.get('interested_in_leadership') == 'on'
+    
+    # Get new fields
+    participation_type = request.form.get('participation_type', '')
+    has_binoculars = request.form.get('has_binoculars') == 'on'
+    spotting_scope = request.form.get('spotting_scope') == 'on'
+    notes_to_organizers = request.form.get('notes_to_organizers', '').strip()
 
     # Basic validation
     errors = []
@@ -64,6 +71,8 @@ def register():
         errors.append('CBC experience level is required')
     if not preferred_area:
         errors.append('Area selection is required')
+    if not participation_type or participation_type not in ['regular', 'FEEDER']:
+        errors.append('Please select how you would like to participate')
 
     # Check if email already registered for current year
     if participant_model.email_exists(email):
@@ -73,6 +82,13 @@ def register():
     valid_areas = get_all_areas() + ['UNASSIGNED']
     if preferred_area not in valid_areas:
         errors.append('Invalid area selection')
+        
+    # Validate FEEDER participant constraints
+    if participation_type == 'FEEDER':
+        if preferred_area == 'UNASSIGNED':
+            errors.append('Feeder counters must select a specific area')
+        if interested_in_leadership:
+            errors.append('Feeder counters cannot be area leaders')
 
     if errors:
         for error in errors:
@@ -104,7 +120,11 @@ def register():
         'interested_in_leadership': interested_in_leadership,
         'is_leader': bool(leader_areas),  # True if they are an area leader
         'assigned_area_leader': preferred_area if leader_areas else None,
-        'auto_assigned': auto_assigned_from_leadership
+        'auto_assigned': auto_assigned_from_leadership,
+        'participation_type': participation_type,
+        'has_binoculars': has_binoculars,
+        'spotting_scope': spotting_scope,
+        'notes_to_organizers': notes_to_organizers
     }
 
     try:

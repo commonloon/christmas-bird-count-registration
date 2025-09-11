@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """
+Updated by Claude AI at 2025-01-15 14:35:12
 Test Participant Data Generator for Christmas Bird Count Registration
 
 This script generates test participants by submitting data to the registration endpoint.
@@ -53,16 +54,43 @@ def generate_email(date_str, sequence_num):
     return f"birdcount-{date_str}-{sequence_num:04d}@{EMAIL_DOMAIN}"
 
 
+def generate_notes():
+    """Generate realistic notes to organizers."""
+    notes_options = [
+        "",  # Many participants won't have notes
+        "I would like to car pool to the meeting point",
+        "I would prefer to be assigned to an area in East Vancouver", 
+        "This is my first time participating, please assign me to a beginner-friendly area",
+        "I have mobility limitations and prefer accessible locations",
+        "I'd like to be with an experienced team leader",
+        "I can drive others if needed for carpooling",
+        "Please let me know about early morning meeting times",
+        "I'm particularly interested in waterfowl identification",
+        "I have experience with raptors and can help with identification"
+    ]
+    return random.choice(notes_options)
+
+
 def create_participant_data(email, interested_in_leadership=False, force_unassigned=False):
-    """Create realistic participant data."""
+    """Create realistic participant data with new fields."""
     first_name = fake.first_name()
     last_name = fake.last_name()
     
-    # Choose area - force UNASSIGNED if requested, otherwise random
-    if force_unassigned:
-        preferred_area = "UNASSIGNED"
+    # 20% FEEDER participants, 80% regular participants
+    participation_type = 'FEEDER' if random.random() < 0.2 else 'regular'
+    
+    # FEEDER participants: specific area (never UNASSIGNED), no leadership interest
+    if participation_type == 'FEEDER':
+        # Choose from specific areas only (exclude UNASSIGNED)
+        specific_areas = [area for area in AREAS if area != 'UNASSIGNED']
+        preferred_area = random.choice(specific_areas)
+        interested_in_leadership = False  # FEEDER participants cannot be leaders
     else:
-        preferred_area = random.choice(AREAS)
+        # Regular participants: any area including UNASSIGNED if requested
+        if force_unassigned:
+            preferred_area = "UNASSIGNED"
+        else:
+            preferred_area = random.choice(AREAS)
     
     data = {
         'first_name': first_name,
@@ -71,11 +99,19 @@ def create_participant_data(email, interested_in_leadership=False, force_unassig
         'phone': generate_phone_number(),
         'skill_level': random.choice(SKILL_LEVELS),
         'experience': random.choice(EXPERIENCE_LEVELS),
-        'preferred_area': preferred_area
+        'preferred_area': preferred_area,
+        'participation_type': participation_type,
+        'notes_to_organizers': generate_notes()
     }
     
-    # Add leadership interest for specific participants
-    if interested_in_leadership:
+    # Add equipment randomly
+    if random.random() < 0.7:  # 70% have binoculars
+        data['has_binoculars'] = 'on'
+    if random.random() < 0.3:  # 30% can bring spotting scope
+        data['spotting_scope'] = 'on'
+    
+    # Add leadership interest for specific participants (only for regular participants)
+    if interested_in_leadership and participation_type == 'regular':
         data['interested_in_leadership'] = 'on'
     
     return data

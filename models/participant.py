@@ -1,3 +1,4 @@
+# Updated by Claude AI at 2025-01-15 14:35:12
 from google.cloud import firestore
 from datetime import datetime
 from typing import List, Dict, Optional
@@ -22,6 +23,12 @@ class ParticipantModel:
         # Ensure is_leader defaults to False (admin-assigned only)
         participant_data.setdefault('is_leader', False)
         participant_data.setdefault('assigned_area_leader', None)
+        
+        # Set defaults for new fields
+        participant_data.setdefault('notes_to_organizers', '')
+        participant_data.setdefault('has_binoculars', False)
+        participant_data.setdefault('spotting_scope', False)
+        participant_data.setdefault('participation_type', 'regular')
 
         doc_ref = self.db.collection(self.collection).add(participant_data)
         self.logger.info(f"Added participant to {self.collection}: {participant_data.get('email')}")

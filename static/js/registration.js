@@ -1,7 +1,9 @@
+// Updated by Claude AI at 2025-01-15 14:35:12
 // Form interactions for Vancouver CBC Registration
 document.addEventListener('DOMContentLoaded', function() {
     initializeFormHandlers();
     initializeValidation();
+    initializeParticipationTypeValidation();
 });
 
 function initializeFormHandlers() {
@@ -97,6 +99,33 @@ function validateForm() {
             isValid = false;
         }
     });
+
+    // Validate participation type is selected
+    const participationTypeRadios = document.querySelectorAll('input[name="participation_type"]');
+    const participationTypeSelected = Array.from(participationTypeRadios).some(radio => radio.checked);
+    if (!participationTypeSelected) {
+        errors.push('Please select how you would like to participate');
+        isValid = false;
+    }
+
+    // Validate FEEDER participant constraints
+    const feederRadio = document.getElementById('feeder');
+    if (feederRadio && feederRadio.checked) {
+        const areaDropdown = document.getElementById('preferred_area');
+        const leadershipCheckbox = document.getElementById('interested_in_leadership');
+        
+        if (areaDropdown && areaDropdown.value === 'UNASSIGNED') {
+            showFieldError('preferred_area', 'Feeder counters must select a specific area');
+            errors.push('Feeder counters must select a specific area');
+            isValid = false;
+        }
+        
+        if (leadershipCheckbox && leadershipCheckbox.checked) {
+            showFieldError('interested_in_leadership', 'Feeder counters cannot be area leaders');
+            errors.push('Feeder counters cannot be area leaders');
+            isValid = false;
+        }
+    }
 
     // Validate email format
     const emailField = document.getElementById('email');
@@ -291,6 +320,54 @@ function loadFormData(formId) {
         // Ignore storage errors
         console.warn('Could not load form data:', e);
     }
+}
+
+function initializeParticipationTypeValidation() {
+    const feederRadio = document.getElementById('feeder');
+    const regularRadio = document.getElementById('regular');
+    const areaDropdown = document.getElementById('preferred_area');
+    const leadershipCheckbox = document.getElementById('interested_in_leadership');
+    const unassignedOption = document.querySelector('option[value="UNASSIGNED"]');
+
+    if (!feederRadio || !regularRadio || !areaDropdown || !leadershipCheckbox || !unassignedOption) {
+        return;
+    }
+
+    // Handle FEEDER selection constraints
+    feederRadio.addEventListener('change', function() {
+        if (this.checked) {
+            // Disable UNASSIGNED option
+            unassignedOption.disabled = true;
+            unassignedOption.style.color = '#999';
+            
+            // Disable and uncheck leadership checkbox
+            leadershipCheckbox.disabled = true;
+            leadershipCheckbox.checked = false;
+            leadershipCheckbox.parentElement.style.opacity = '0.5';
+            
+            // If UNASSIGNED was selected, reset to empty
+            if (areaDropdown.value === 'UNASSIGNED') {
+                areaDropdown.value = '';
+                // Clear map selection if available
+                if (typeof window.highlightAreaFromDropdown === 'function') {
+                    window.highlightAreaFromDropdown('');
+                }
+            }
+        }
+    });
+
+    // Handle REGULAR selection - restore options
+    regularRadio.addEventListener('change', function() {
+        if (this.checked) {
+            // Re-enable UNASSIGNED option
+            unassignedOption.disabled = false;
+            unassignedOption.style.color = '';
+            
+            // Re-enable leadership checkbox
+            leadershipCheckbox.disabled = false;
+            leadershipCheckbox.parentElement.style.opacity = '1';
+        }
+    });
 }
 
 // Initialize auto-save if sessionStorage is available

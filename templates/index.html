@@ -1,3 +1,4 @@
+{# Updated by Claude AI at 2025-01-15 14:35:12 #}
 {% extends "base.html" %}
 
 {% block content %}
@@ -49,6 +50,24 @@
             </div>
             
             <div class="mb-3">
+                <label class="form-label">I would like to: *</label>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="participation_type" id="regular" value="regular" required>
+                    <label class="form-check-label" for="regular">Count birds in the field as part of a team</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="participation_type" id="feeder" value="FEEDER" required>
+                    <label class="form-check-label" for="feeder">Count birds at my home feeder</label>
+                </div>
+                <div class="mt-2">
+                    <a href="https://view.publitas.com/birds-canada-gykxaz9yrrpp/field-counters-guide-to-cbc_cheat-sheet-with-datasheet/page/1" 
+                       target="_blank" class="btn btn-sm btn-outline-primary me-2">Guide for Field Counters</a>
+                    <a href="https://view.publitas.com/birds-canada-gykxaz9yrrpp/feeder-counters-guide-to-cbc_cheat-sheet-with-datasheet/page/1" 
+                       target="_blank" class="btn btn-sm btn-outline-info">Guide for Feeder Counters</a>
+                </div>
+            </div>
+            
+            <div class="mb-3">
                 <label for="preferred_area" class="form-label">Preferred Count Area *</label>
                 <select class="form-select" id="preferred_area" name="preferred_area" required>
                     <option value="">Choose your preferred area...</option>
@@ -82,11 +101,29 @@
                 </select>
             </div>
 
+            <div class="mb-3">
+                <div class="form-check">
+                    <input type="checkbox" class="form-check-input" id="has_binoculars" name="has_binoculars">
+                    <label class="form-check-label" for="has_binoculars">I have binoculars</label>
+                </div>
+                <div class="form-check">
+                    <input type="checkbox" class="form-check-input" id="spotting_scope" name="spotting_scope">
+                    <label class="form-check-label" for="spotting_scope">I can bring a spotting scope</label>
+                </div>
+            </div>
+
             <div class="mb-3 form-check">
                 <input type="checkbox" class="form-check-input" id="interested_in_leadership" name="interested_in_leadership">
                 <label class="form-check-label" for="interested_in_leadership">
                     I am interested in being an area leader
                 </label>
+            </div>
+            
+            <div class="mb-3">
+                <label for="notes_to_organizers" class="form-label">Notes to Organizers</label>
+                <textarea class="form-control" id="notes_to_organizers" name="notes_to_organizers" 
+                          placeholder="I would like to car pool to the meeting point&#10;I would prefer to be assigned to an area in East Vancouver" 
+                          rows="3"></textarea>
             </div>
             
             <button type="submit" class="btn btn-primary btn-lg">Register</button>
