@@ -93,7 +93,8 @@ ADMIN_EMAILS = [
 
 ### Interactive Map
 - Display 24 Vancouver CBC count areas as clickable polygons
-- Color-coded by volunteer density: green (available), yellow (nearly full), red (full)
+- Color-coded by registration count: orange (0-3 registered), maroon (4-8 registered), navy (8+ registered)
+- Yellow highlighting for selected areas
 - Click area to auto-select in dropdown form
 - Show current volunteer counts in tooltips
 - Graceful fallback to dropdown-only if map fails
@@ -155,45 +156,47 @@ ADMIN_EMAILS = [
 - Read-only access to historical data
 - Area-specific registration statistics
 
-### Email Notification System (In Development)
+### Email Notification System (Core Complete, API Pending)
 **Three Automated Email Types:**
 
 1. **Twice-Daily Team Updates**:
    - Recipients: Area leaders when team composition changes
-   - Subject: "Team Update for Vancouver CBC Area X"
+   - Subject: "CBC Area X Team Update"  
    - Content: New members, removed members, complete current team roster
    - Triggers: Participant additions, removals, area reassignments, email changes
+   - Frequency: Automated checks twice daily (production scheduling pending)
 
 2. **Weekly Team Summary (No Changes)**:
    - Recipients: Area leaders with no team changes in past week
-   - When: Every Friday at 11pm
-   - Subject: "Weekly Team Summary for Vancouver CBC Area X"
-   - Content: "No changes" note + complete team roster with all details
+   - When: Every Friday at 11pm Pacific
+   - Subject: "CBC Area X Weekly Summary"
+   - Content: "No changes this week" + complete team roster with contact details
 
 3. **Daily Admin Digest**:
    - Recipients: All admins (from `config/admins.py`)
-   - Subject: "Vancouver CBC Participants not assigned to a count area"
-   - Content: Link to admin/unassigned page + list of unassigned participants
+   - Subject: "CBC Registration: X Unassigned Participants"
+   - Content: List of unassigned participants with details + admin interface link
 
-**Implementation Features:**
-- **Test Environment**: Admin dashboard includes manual email trigger buttons (test server only)
-- **Environment-Based Security**: Email test routes only registered when `TEST_MODE=true`
-- **Test Mode Behavior**: All emails redirect to `birdcount@naturevancouver.ca` 
-- **Timezone Support**: Configurable display timezone via `DISPLAY_TIMEZONE` environment variable (default: America/Vancouver)
-- **Email Service**: Google Cloud Email API for reliable delivery (replaces SMTP)
+**Implementation Architecture:**
+- **Email Generation**: Core logic in `test/email_generator.py` with Flask app context support
+- **Email Templates**: HTML templates in `templates/emails/` directory
+- **Email Service**: `services/email_service.py` with test mode support (requires Google Cloud Email API)
+- **Environment-Based Security**: Test email routes only registered when `TEST_MODE=true`
+- **Test Mode Behavior**: All emails redirect to `birdcount@naturevancouver.ca` with modified subjects
+- **Timezone Support**: Configurable display timezone via `DISPLAY_TIMEZONE` environment variable
 - **Race Condition Prevention**: Timestamp selection before queries, update after successful send
-- **Production Scheduling**: Cloud Scheduler integration planned for automated triggers
-- **Change Detection**: Track area assignments, additions, removals, email address changes
-- **Timestamp Management**: Store per-area `last_email_sent` values to prevent duplicates
+- **Change Detection**: Participant diff tracking with detailed logging of additions/removals
+- **Error Handling**: Graceful failure with detailed logging, continues processing other areas
 
-**Current Implementation Status (Partially Complete):**
-- ✅ **Core Logic**: Email generation implemented in `test/email_generator.py`
-- ✅ **Templates**: HTML email templates created for all three email types
-- ✅ **Security**: Test routes only exist in test mode, completely absent from production
+**Current Implementation Status:**
+- ✅ **Email Generation Logic**: Complete implementation with timezone-aware datetime handling
+- ✅ **Email Templates**: HTML templates created for all three email types
+- ✅ **Security**: Production servers do not expose test email routes
 - ✅ **Timezone Handling**: UTC storage with configurable display timezone conversion
 - ✅ **Test Interface**: Manual trigger buttons in admin dashboard (test server only)
-- ❌ **Email Delivery**: Requires Google Cloud Email API configuration and credentials
-- ❌ **Production Automation**: Cloud Scheduler configuration pending
+- ✅ **Package Structure**: Proper Python imports and deployment-safe directory structure
+- ❌ **Email Service**: Currently uses SMTP, needs Google Cloud Email API configuration
+- ❌ **Production Automation**: Cloud Scheduler configuration pending for automated triggers
 
 ## Data Models
 
@@ -270,6 +273,54 @@ Static configuration in `config/areas.py` (no year dependency).
 
 ## Key Implementation Details
 
+### Color System Implementation
+The application uses a centralized color management system based on the 20 distinct colors from sashamaps.net's 99.99% accessibility palette:
+
+```python
+# config/colors.py
+DISTINCT_COLOURS = {
+    'orange': '#f58231',  # 0-3 registered
+    'maroon': '#800000',  # 4-8 registered  
+    'navy': '#000075',    # 8+ registered
+    'yellow': '#ffe119', # Selected area
+    # ... 16 additional accessibility colors
+}
+
+MAP_COLORS = {
+    'low_count': DISTINCT_COLOURS['orange'],
+    'med_count': DISTINCT_COLOURS['maroon'], 
+    'high_count': DISTINCT_COLOURS['navy'],
+    'selected': DISTINCT_COLOURS['yellow']
+}
+```
+
+**CSS Custom Properties Implementation:**
+```css
+:root {
+    --map-color-low: #f58231;   /* Orange - 0-3 registered */
+    --map-color-med: #800000;   /* Maroon - 4-8 registered */
+    --map-color-high: #000075;  /* Navy - 8+ registered */
+    --map-color-selected: #ffe119; /* Yellow - selected area */
+}
+
+.area-polygon-low-count {
+    stroke: var(--map-color-low);
+    fill: var(--map-color-low);
+}
+```
+
+**JavaScript Integration:**
+```javascript
+function getAreaStyle(count) {
+    const rootStyles = getComputedStyle(document.documentElement);
+    if (count <= 3) {
+        const color = rootStyles.getPropertyValue('--map-color-low').trim();
+        return { color: color, fillColor: color };
+    }
+    // Additional count ranges...
+}
+```
+
 ### Year-Based Data Access
 ```python
 class ParticipantModel:
@@ -287,6 +338,9 @@ class ParticipantModel:
 ### Map Integration
 - Leaflet.js with OpenStreetMap tiles
 - Parse GeoJSON polygons for clickable areas
+- Registration count-based coloring (0-3: orange, 4-8: maroon, 8+: navy)
+- CSS custom properties for centralized color management
+- JavaScript integration with CSS variables via `getComputedStyle()`
 - Synchronize map selection with form dropdown
 - Mobile-optimized touch interactions
 
@@ -369,6 +423,7 @@ config/
   areas.py                      # Static area definitions (24 areas A-X)
   settings.py                   # Environment configuration
   admins.py                     # Admin email whitelist
+  colors.py                     # Color palette definitions with 20 distinct accessibility colors
   database.py                   # Database configuration helper for environment-specific databases
   email_settings.py             # Email service configuration and SMTP settings (to be created)
 
@@ -413,11 +468,14 @@ static/
   js/registration.js           # Form validation and map-form synchronization
   data/area_boundaries.json    # GeoJSON area polygons for map rendering
 
+test/
+  __init__.py                  # Package initialization for test directory
+  email_generator.py           # Email generation logic for automated notifications
+
 utils/
   setup_oauth_secrets.sh       # OAuth credential setup script for Google Secret Manager
   setup_databases.py           # Firestore database creation script with environment-specific databases
   generate_test_participants.py # Test data generation script for development/testing
-  email_generator.py           # Email generation logic for automated notifications (to be implemented)
   requirements.txt             # Dependencies for utility scripts (requests, faker, firestore)
 
 OAUTH-SETUP.md                  # Complete OAuth setup instructions

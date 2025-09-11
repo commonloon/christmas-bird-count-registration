@@ -55,8 +55,8 @@ function displayAreas(areas) {
         // Convert coordinates to Leaflet format [lat, lng]
         const leafletCoords = coordinates.map(coord => [coord[1], coord[0]]);
 
-        // Determine style based on availability
-        const style = getAreaStyle(area.availability, area.current_count);
+        // Determine style based on registration count
+        const style = getAreaStyle(area.current_count);
 
         // Create polygon
         const polygon = L.polygon(leafletCoords, style)
@@ -79,22 +79,24 @@ function displayAreas(areas) {
     });
 }
 
-function getAreaStyle(availability, count) {
+function getAreaStyle(count) {
+    // Colors from DISTINCT_COLOURS palette (config/colors.py) using CSS variables
+    const rootStyles = getComputedStyle(document.documentElement);
     const baseStyle = {
         weight: 2,
         opacity: 0.8,
         fillOpacity: 0.3
     };
 
-    switch(availability) {
-        case 'high':
-            return { ...baseStyle, color: '#28a745', fillColor: '#28a745' };
-        case 'medium':
-            return { ...baseStyle, color: '#ffc107', fillColor: '#ffc107' };
-        case 'low':
-            return { ...baseStyle, color: '#dc3545', fillColor: '#dc3545' };
-        default:
-            return { ...baseStyle, color: '#6c757d', fillColor: '#6c757d' };
+    if (count <= 3) {
+        const color = rootStyles.getPropertyValue('--map-color-low').trim();
+        return { ...baseStyle, color: color, fillColor: color }; // Orange: 0-3 registered
+    } else if (count <= 8) {
+        const color = rootStyles.getPropertyValue('--map-color-med').trim();
+        return { ...baseStyle, color: color, fillColor: color }; // Maroon: 4-8 registered
+    } else {
+        const color = rootStyles.getPropertyValue('--map-color-high').trim();
+        return { ...baseStyle, color: color, fillColor: color }; // Navy: 8+ registered
     }
 }
 
@@ -102,18 +104,19 @@ function selectAreaOnMap(areaCode, areaName, polygon) {
     // Clear previous selection
     if (selectedArea && areaLayers[selectedArea]) {
         const prevStyle = getAreaStyle(
-            areaLayers[selectedArea].data.availability,
             areaLayers[selectedArea].data.current_count
         );
         areaLayers[selectedArea].polygon.setStyle(prevStyle);
     }
 
     // Highlight selected area
+    const rootStyles = getComputedStyle(document.documentElement);
+    const selectedColor = rootStyles.getPropertyValue('--map-color-selected').trim();
     polygon.setStyle({
         weight: 4,
         opacity: 1,
-        color: '#007bff',
-        fillColor: '#007bff',
+        color: selectedColor,
+        fillColor: selectedColor,
         fillOpacity: 0.6
     });
 
@@ -186,7 +189,6 @@ function highlightAreaFromDropdown(areaCode) {
         // Clear any map selection for "anywhere" option
         if (selectedArea && areaLayers[selectedArea]) {
             const prevStyle = getAreaStyle(
-                areaLayers[selectedArea].data.availability,
                 areaLayers[selectedArea].data.current_count
             );
             areaLayers[selectedArea].polygon.setStyle(prevStyle);

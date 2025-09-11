@@ -91,6 +91,7 @@ python utils/generate_test_participants.py 0 --seq 5000      # 0 regular + 5 lea
 - `config/areas.py` - Static area definitions (A-X, 24 areas)
 - `config/admins.py` - Admin email whitelist
 - `config/settings.py` - Environment configuration
+- `config/colors.py` - Color palette definitions with 20 distinct accessibility colors
 
 ### Models (Year-Aware)
 - `models/participant.py` - Year-specific participant operations with Firestore
@@ -104,10 +105,10 @@ python utils/generate_test_participants.py 0 --seq 5000      # 0 regular + 5 lea
 - `routes/api.py` - JSON endpoints for map data and leadership information
 
 ### Frontend
-- `static/js/map.js` - Leaflet.js interactive map with area selection
+- `static/js/map.js` - Leaflet.js interactive map with registration count-based coloring
 - `static/js/leaders-map.js` - Leaders page map showing areas needing leaders
 - `static/js/registration.js` - Form validation and interactions
-- `static/css/main.css` - Bootstrap-based responsive styling
+- `static/css/main.css` - Bootstrap-based responsive styling with CSS custom properties for colors
 - `static/data/area_boundaries.json` - GeoJSON area polygons for map
 
 ### Templates
@@ -238,6 +239,23 @@ The application uses production Firestore - test carefully:
 3. Historical data remains accessible read-only
 4. Update admin whitelist if coordinators change
 
+### Map Color Management
+The application uses a centralized color system based on 20 distinct accessibility colors from sashamaps.net:
+
+**Modifying Map Colors:**
+1. **Color Palette**: All available colors defined in `config/colors.py` with `DISTINCT_COLOURS` dictionary
+2. **Map Color Assignment**: Update `MAP_COLORS` in `config/colors.py` to change which colors represent different registration count ranges
+3. **CSS Variables**: Colors automatically propagate through CSS custom properties in `:root` 
+4. **JavaScript Integration**: Map rendering uses `getComputedStyle()` to read CSS variables dynamically
+
+**Current Color Scheme:**
+- **Orange** `#f58231`: 0-3 registered participants
+- **Maroon** `#800000`: 4-8 registered participants  
+- **Navy** `#000075`: 8+ registered participants
+- **Yellow** `#ffe119`: Selected area highlighting
+
+**To Change Colors:** Modify only `config/colors.py` - CSS and JavaScript automatically adapt through the centralized system.
+
 ### Leader Management System
 **Completed Features:**
 - Interactive map display showing areas needing leaders vs areas with leaders
@@ -271,26 +289,28 @@ The application uses production Firestore - test carefully:
 - Client-side data management for instant map updates without server round-trips
 - AJAX operations with comprehensive error handling and user feedback
 
-**Email Automation System (Partially Implemented):**
+**Email Automation System (Core Complete, API Pending):**
 - **Three Email Types**: 
   1. Twice-daily team updates to area leaders when team composition changes
-  2. Weekly summaries for areas with no changes (Fridays at 11pm)
+  2. Weekly summaries for areas with no changes (Fridays at 11pm)  
   3. Daily admin digest listing unassigned participants
 - **Test Environment**: Admin dashboard includes manual email trigger buttons (test server only)
 - **Environment-Based Security**: Test email routes only registered when `TEST_MODE=true`
 - **Test Mode Behavior**: All emails redirect to `birdcount@naturevancouver.ca` on test server
 - **Timezone Support**: Configurable display timezone via `DISPLAY_TIMEZONE` environment variable
 - **Race Condition Prevention**: Timestamp selection before queries, update after successful send
+- **Change Detection**: Participant diff tracking with detailed logging
 - **Production Scheduling**: Cloud Scheduler integration planned for automated triggers
 
 **Current Implementation Status:**
 - ✅ **Email Generation Logic**: Core functionality implemented in `test/email_generator.py`
-- ✅ **Email Templates**: HTML templates created for all three email types
+- ✅ **Email Templates**: HTML templates in `templates/emails/` for all three types
 - ✅ **Test UI**: Admin dashboard buttons for manual triggering (test server only)
 - ✅ **Security**: Production servers do not expose test email routes
 - ✅ **Timezone Handling**: UTC storage with configurable display timezone
-- ❌ **Email Service**: Requires Google Cloud Email API configuration
-- ❌ **SMTP/API Setup**: Email delivery not yet functional
+- ✅ **Package Structure**: Proper Python imports and deployment safety
+- ❌ **Email Service**: Currently uses SMTP, needs Google Cloud Email API
+- ❌ **API Integration**: Email delivery fails due to missing API credentials
 
 **Email and Access Requirements:**
 - Leaders can have non-Google emails (for notifications only)
@@ -334,3 +354,4 @@ The application uses production Firestore - test carefully:
 4. **Test Firestore connection**: Verify `GOOGLE_CLOUD_PROJECT` and service account permissions
 - we can't test locally because the app uses google cloud services that are not configured on the local windows 11 host where we're doing development.  All testing has to be done on the cbc-test version of the app, accessible on the web as cbc-test.naturevancouver.ca
 - remember that the project files are stored in a git repository, so it may be necessary to use git commands when removing or moving a file
+- Do not update SPECIFICATION.md with information from DEVELOPMENT_NOTES.md.  The latter is for recording plans for future work, whereas SPECIFICATION.md is intended to reflect the current state of the project.  We will update SPECIFICATION.md with features as they are implemented and specification updates should be based on the actual implementation, not on planning info found in DEVELOPMENT_NOTES.md, unless I explicitly request otherwise.

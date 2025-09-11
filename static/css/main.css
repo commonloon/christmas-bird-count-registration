@@ -1,5 +1,13 @@
 /* Main stylesheet for Vancouver CBC Registration */
 
+/* CSS Custom Properties for Map Colors */
+:root {
+    --map-color-low: #f58231;   /* Orange - 0-3 registered */
+    --map-color-med: #800000;   /* Maroon - 4-8 registered */
+    --map-color-high: #000075;  /* Navy - 8+ registered */
+    --map-color-selected: #ffe119; /* Yellow - selected area */
+}
+
 /* Map styling */
 #count-area-map {
     width: 100%;
@@ -8,33 +16,33 @@
     border-radius: 0.375rem;
 }
 
-/* Area polygon styles for different availability levels */
-.area-polygon-high {
+/* Area polygon styles for different registration counts */
+.area-polygon-low-count {
     fill-opacity: 0.3;
     stroke-width: 2;
-    stroke: #28a745;
-    fill: #28a745;
+    stroke: var(--map-color-low);
+    fill: var(--map-color-low);
 }
 
-.area-polygon-medium {
+.area-polygon-med-count {
     fill-opacity: 0.3;
     stroke-width: 2;
-    stroke: #ffc107;
-    fill: #ffc107;
+    stroke: var(--map-color-med);
+    fill: var(--map-color-med);
 }
 
-.area-polygon-low {
+.area-polygon-high-count {
     fill-opacity: 0.3;
     stroke-width: 2;
-    stroke: #dc3545;
-    fill: #dc3545;
+    stroke: var(--map-color-high);
+    fill: var(--map-color-high);
 }
 
 .area-polygon-selected {
     fill-opacity: 0.6;
     stroke-width: 4;
-    stroke: #007bff;
-    fill: #007bff;
+    stroke: var(--map-color-selected);
+    fill: var(--map-color-selected);
 }
 
 /* Form styling */
@@ -69,16 +77,16 @@
     border-radius: 2px;
 }
 
-.color-box.available {
-    background-color: #28a745;
+.color-box.low-count {
+    background-color: var(--map-color-low);
 }
 
-.color-box.nearly-full {
-    background-color: #ffc107;
+.color-box.med-count {
+    background-color: var(--map-color-med);
 }
 
-.color-box.full {
-    background-color: #dc3545;
+.color-box.high-count {
+    background-color: var(--map-color-high);
 }
 
 /* Selection feedback */
