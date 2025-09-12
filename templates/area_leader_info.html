@@ -1,0 +1,59 @@
+{# Updated by Claude AI on 2025-09-12 #}
+{% extends "base.html" %}
+
+{% block title %}Area Leader Role - Vancouver Christmas Bird Count{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1>Area Leader Role</h1>
+                <a href="{{ url_for('main.index', **form_data) }}" class="btn btn-primary">
+                    <i class="bi bi-arrow-left"></i> Back to Registration
+                </a>
+            </div>
+
+            <div class="card">
+                <div class="card-body">
+                    <p class="lead">The general responsibilities of an Area Leader are as follows:</p>
+                    
+                    <div class="alert alert-info">
+                        <strong>Note:</strong> The duties of an Area Leader can be shared among individuals but one person needs to be designated as an Area Leader in each Area for efficient communication and coordination.
+                    </div>
+
+                    <ol class="list-group list-group-numbered">
+                        <li class="list-group-item">
+                            Act as liaison with the CBC Compiler on data matters and the CBC Coordinator on all other CBC matters.
+                        </li>
+                        <li class="list-group-item">
+                            Become acquainted with the data collection requirements of the CBC and the associated forms and documents for data compilation and submission.
+                        </li>
+                        <li class="list-group-item">
+                            Coordinate the activities of the Survey Team for the Area, providing guidance, direction, and support as required.
+                        </li>
+                        <li class="list-group-item">
+                            With the Survey Team, determine how the data are to be collected (paper forms, eBird, combination, etc.).
+                        </li>
+                        <li class="list-group-item">
+                            Ensure the group waiver form is completed prior to the start of the surveying.
+                        </li>
+                        <li class="list-group-item">
+                            Allocate the effort of the Survey Team across the CBC Area being surveyed and ensure, to the extent possible given weather and other conditions, the entire Area is surveyed.
+                        </li>
+                        <li class="list-group-item">
+                            Compile all the data obtained for the Area surveyed, submit to the Compiler, and be available to answer questions the Compiler may have or to provide additional information if required.
+                        </li>
+                    </ol>
+
+                    <div class="mt-4 text-center">
+                        <a href="{{ url_for('main.index', **form_data) }}" class="btn btn-primary btn-lg">
+                            <i class="bi bi-arrow-left"></i> Return to Registration Form
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -74,11 +74,7 @@
                         </td>
                         <td>
                             <div class="name-display">
-                                {% if leader.first_name and leader.last_name %}
-                                    <span class="leader-name">{{ leader.first_name }} {{ leader.last_name }}</span>
-                                {% else %}
-                                    <span class="leader-name">{{ leader.leader_name or 'N/A' }}</span>
-                                {% endif %}
+                                <span class="leader-name">{{ leader.first_name }} {{ leader.last_name }}</span>
                                 {% if leader.created_from_participant %}
                                     <span class="badge bg-info ms-1" title="Promoted from participant">Participant</span>
                                 {% else %}
@@ -91,9 +87,8 @@
                                         <input type="text" class="form-control form-control-sm first-name-input" placeholder="First" value="{{ leader.first_name }}">
                                         <input type="text" class="form-control form-control-sm last-name-input" placeholder="Last" value="{{ leader.last_name }}">
                                     {% else %}
-                                        {% set name_parts = (leader.leader_name or '').split(' ', 1) %}
-                                        <input type="text" class="form-control form-control-sm first-name-input" placeholder="First" value="{{ name_parts[0] or '' }}">
-                                        <input type="text" class="form-control form-control-sm last-name-input" placeholder="Last" value="{{ name_parts[1] or '' if name_parts|length > 1 else '' }}">
+                                        <input type="text" class="form-control form-control-sm first-name-input" placeholder="First" value="{{ leader.first_name or '' }}">
+                                        <input type="text" class="form-control form-control-sm last-name-input" placeholder="Last" value="{{ leader.last_name or '' }}">
                                     {% endif %}
                                 </div>
                             </div>
@@ -108,10 +103,10 @@
                         </td>
                         <td>
                             <div class="phone-display">
-                                {{ leader.cell_phone or leader.leader_phone or 'N/A' }}
+                                {{ leader.cell_phone or 'N/A' }}
                             </div>
                             <div class="phone-edit" style="display: none;">
-                                <input type="tel" class="form-control form-control-sm phone-input" value="{{ leader.cell_phone or leader.leader_phone or '' }}" placeholder="(604) 555-1234">
+                                <input type="tel" class="form-control form-control-sm phone-input" value="{{ leader.cell_phone or '' }}" placeholder="(604) 555-1234">
                             </div>
                         </td>
                         <td>
@@ -259,23 +254,17 @@
                             {% endif %}
                         </td>
                         <td>
-                            {% if areas_without_leaders %}
                             <form method="POST" action="{{ url_for('admin.assign_leader') }}" class="d-inline">
                                 <input type="hidden" name="participant_id" value="{{ participant.id }}">
                                 <input type="hidden" name="year" value="{{ selected_year }}">
                                 <select name="area_code" class="form-select form-select-sm d-inline w-auto" required>
                                     <option value="">Select area...</option>
                                     {% for area in all_areas %}
-                                        {% if area in areas_without_leaders %}
-                                        <option value="{{ area }}">{{ area }} - {{ get_area_info(area).name }}</option>
-                                        {% endif %}
+                                    <option value="{{ area }}">{{ area }} - {{ get_area_info(area).name }}</option>
                                     {% endfor %}
                                 </select>
                                 <button type="submit" class="btn btn-sm btn-success ms-1">Assign</button>
                             </form>
-                            {% else %}
-                            <small class="text-muted">All areas have leaders</small>
-                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}
@@ -327,7 +316,7 @@ window.leaderData = {};
 if (!window.leaderData["{{ leader.area_code }}"]) {
     window.leaderData["{{ leader.area_code }}"] = [];
 }
-window.leaderData["{{ leader.area_code }}"].push("{% if leader.first_name and leader.last_name %}{{ leader.first_name }} {{ leader.last_name }}{% else %}{{ leader.leader_name or 'Unknown Leader' }}{% endif %}");
+window.leaderData["{{ leader.area_code }}"].push("{{ leader.first_name }} {{ leader.last_name }}");
 {% endfor %}
 {% endif %}
 

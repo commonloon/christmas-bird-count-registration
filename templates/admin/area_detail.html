@@ -92,11 +92,11 @@
             <div class="col-md-6 mb-3">
                 <div class="card border-success">
                     <div class="card-body">
-                        <h6 class="card-title">{{ leader.leader_name }}</h6>
+                        <h6 class="card-title">{{ leader.first_name }} {{ leader.last_name }}</h6>
                         <p class="card-text">
                             <strong>Email:</strong> <a href="mailto:{{ leader.leader_email }}">{{ leader.leader_email }}</a><br>
-                            {% if leader.leader_phone %}
-                            <strong>Phone:</strong> {{ leader.leader_phone }}<br>
+                            {% if leader.cell_phone %}
+                            <strong>Phone:</strong> {{ leader.cell_phone }}<br>
                             {% endif %}
                             <strong>Assigned:</strong> 
                             {% if leader.assigned_at %}

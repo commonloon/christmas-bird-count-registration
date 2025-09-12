@@ -1,3 +1,4 @@
+# Updated by Claude AI on 2025-09-11
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response, g, current_app
 from google.cloud import firestore
 from config.database import get_firestore_client
@@ -5,7 +6,7 @@ from config.email_settings import is_test_server
 from models.participant import ParticipantModel
 from models.area_leader import AreaLeaderModel
 from models.removal_log import RemovalLogModel
-from config.areas import get_area_info, get_all_areas
+from config.areas import get_area_info, get_all_areas, get_public_areas
 from routes.auth import require_admin, get_current_user
 from services.email_service import email_service
 from datetime import datetime
@@ -79,16 +80,60 @@ def dashboard():
 def participants():
     """View and manage all participants."""
     if not g.db:
-        return render_template('admin/participants.html', participants=[], error="Database unavailable")
+        return render_template('admin/participants.html', 
+                             feeder_participants=[], 
+                             regular_participants=[], 
+                             error="Database unavailable")
 
     selected_year = int(request.args.get('year', datetime.now().year))
     participant_model = ParticipantModel(g.db, selected_year)
+    area_leader_model = AreaLeaderModel(g.db, selected_year)
     available_years = ParticipantModel.get_available_years(g.db)
 
-    participants = participant_model.get_all_participants()
+    all_participants = participant_model.get_all_participants()
+    all_leaders = area_leader_model.get_all_leaders()
+    
+    # Create area leader lookup
+    area_leaders = {}
+    for leader in all_leaders:
+        area = leader.get('area_code')
+        if area:
+            if area not in area_leaders:
+                area_leaders[area] = []
+            area_leaders[area].append(leader)
+    
+    # Group participants by type and area, then sort
+    feeder_participants = {}
+    regular_participants = {}
+    
+    for participant in all_participants:
+        participation_type = participant.get('participation_type', 'regular')
+        area = participant.get('preferred_area', 'UNASSIGNED')
+        
+        if participation_type == 'FEEDER':
+            if area not in feeder_participants:
+                feeder_participants[area] = []
+            feeder_participants[area].append(participant)
+        else:
+            if area not in regular_participants:
+                regular_participants[area] = []
+            regular_participants[area].append(participant)
+    
+    # Sort areas alphabetically and participants within each area by first name
+    def sort_area_dict(area_dict):
+        sorted_dict = {}
+        for area in sorted(area_dict.keys()):
+            sorted_dict[area] = sorted(area_dict[area], 
+                                     key=lambda p: (p.get('first_name', '').lower(), p.get('last_name', '').lower()))
+        return sorted_dict
+    
+    feeder_participants = sort_area_dict(feeder_participants)
+    regular_participants = sort_area_dict(regular_participants)
 
     return render_template('admin/participants.html',
-                           participants=participants,
+                           feeder_participants=feeder_participants,
+                           regular_participants=regular_participants,
+                           area_leaders=area_leaders,
                            selected_year=selected_year,
                            available_years=available_years,
                            current_user=get_current_user())
@@ -327,8 +372,9 @@ def assign_leader():
         area_leader_model.assign_leader(
             area_code=area_code,
             leader_email=participant['email'],
-            leader_name=f"{participant['first_name']} {participant['last_name']}",
-            leader_phone=participant.get('phone', ''),
+            first_name=participant['first_name'],
+            last_name=participant['last_name'],
+            cell_phone=participant.get('phone', ''),
             assigned_by=user['email']
         )
 
@@ -399,15 +445,27 @@ def export_csv():
     output = StringIO()
     writer = csv.writer(output)
 
+    # Sort participants: alphabetically by area → by participation type (regular/FEEDER) → by first name
+    def sort_key(p):
+        area = p.get('preferred_area', 'UNASSIGNED')
+        participation_type = p.get('participation_type', 'regular')
+        first_name = p.get('first_name', '').lower()
+        # Sort areas alphabetically, then regular before FEEDER within each area
+        type_order = 0 if participation_type == 'regular' else 1
+        return (area, type_order, first_name)
+    
+    sorted_participants = sorted(participants, key=sort_key)
+
     # Write header
     writer.writerow([
         'First Name', 'Last Name', 'Email', 'Phone', 'Skill Level',
-        'Experience', 'Area', 'Area Leader', 'Leadership Interest',
+        'Experience', 'Area', 'Participation Type', 'Has Binoculars', 'Spotting Scope',
+        'Notes to Organizers', 'Area Leader', 'Leadership Interest',
         'Registration Date', 'Year'
     ])
 
     # Write participant data
-    for p in participants:
+    for p in sorted_participants:
         writer.writerow([
             p.get('first_name', ''),
             p.get('last_name', ''),
@@ -416,6 +474,10 @@ def export_csv():
             p.get('skill_level', ''),
             p.get('experience', ''),
             p.get('preferred_area', ''),
+            p.get('participation_type', 'regular'),
+            'Yes' if p.get('has_binoculars', False) else 'No',
+            'Yes' if p.get('spotting_scope', False) else 'No',
+            p.get('notes_to_organizers', ''),
             'Yes' if p.get('is_leader', False) else 'No',
             'Yes' if p.get('interested_in_leadership', False) else 'No',
             p.get('created_at', '').strftime('%Y-%m-%d %H:%M') if p.get('created_at') else '',

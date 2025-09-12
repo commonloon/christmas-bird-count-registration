@@ -1,10 +1,10 @@
-# Updated by Claude AI at 2025-01-15 14:35:12
+# Updated by Claude AI on 2025-09-12
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, g
 from google.cloud import firestore
 from config.database import get_firestore_client
 from models.participant import ParticipantModel
 from models.area_leader import AreaLeaderModel
-from config.areas import get_area_info, get_all_areas
+from config.areas import get_area_info, get_all_areas, get_public_areas
 from services.email_service import email_service
 import re
 from datetime import datetime
@@ -25,7 +25,10 @@ def load_db():
 @main_bp.route('/')
 def index():
     """Main registration page."""
-    return render_template('index.html')
+    public_areas = get_public_areas()
+    # Pass all query parameters to template for form restoration
+    form_data = dict(request.args)
+    return render_template('index.html', public_areas=public_areas, get_area_info=get_area_info, form_data=form_data)
 
 
 @main_bp.route('/register', methods=['POST'])
@@ -78,7 +81,7 @@ def register():
     if participant_model.email_exists(email):
         errors.append('This email address is already registered for this year')
 
-    # Validate preferred area
+    # Validate preferred area (allow all areas including admin-only for validation)
     valid_areas = get_all_areas() + ['UNASSIGNED']
     if preferred_area not in valid_areas:
         errors.append('Invalid area selection')
@@ -194,7 +197,15 @@ def about():
 @main_bp.route('/areas')
 def areas():
     """Information about count areas."""
-    return render_template('areas.html', areas=get_all_areas())
+    return render_template('areas.html', areas=get_public_areas())
+
+
+@main_bp.route('/area-leader-info')
+def area_leader_info():
+    """Information about area leader responsibilities."""
+    # Pass all query parameters to template for form restoration links
+    form_data = dict(request.args)
+    return render_template('area_leader_info.html', form_data=form_data)
 
 
 def is_valid_email(email):

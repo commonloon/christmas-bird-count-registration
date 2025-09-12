@@ -173,6 +173,14 @@ Admin Digest: 1 unassigned participants, 0 emails sent
 3. **Performance optimization** for large participant counts
 4. **Email templates** refinement and testing
 
+### Security Audit (Post Email Implementation)
+1. **Comprehensive route security audit** - verify all admin/leader routes are properly protected
+2. **Authentication decorator verification** - ensure all data viewing/modification routes use appropriate decorators (@require_admin, @require_leader, @require_auth)
+3. **Unauthenticated access review** - verify no sensitive endpoints are accessible to unauthenticated users
+4. **Blueprint security review** - check route definitions in all Blueprint files (admin.py, leader.py, api.py, auth.py)
+5. **Data modification endpoint security** - ensure all routes that modify participant/leader data require proper authentication
+6. **Test unauthenticated access** - verify admin/leader interfaces are not accessible without proper authentication
+
 ## Environment Configuration
 
 ### Current Deploy Settings

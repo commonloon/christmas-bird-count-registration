@@ -122,14 +122,15 @@ class AreaLeaderModel:
 
         return sorted(all_areas - assigned_areas)
 
-    def assign_leader(self, area_code: str, leader_email: str, leader_name: str,
-                      leader_phone: str, assigned_by: str) -> str:
+    def assign_leader(self, area_code: str, leader_email: str, first_name: str,
+                      last_name: str, cell_phone: str, assigned_by: str) -> str:
         """Assign a leader to an area."""
         leader_data = {
             'area_code': area_code,
             'leader_email': leader_email.lower(),
-            'leader_name': leader_name,
-            'leader_phone': leader_phone,
+            'first_name': first_name,
+            'last_name': last_name,
+            'cell_phone': cell_phone,
             'assigned_by': assigned_by,
             'active': True
         }
@@ -183,8 +184,9 @@ class AreaLeaderModel:
                 leader_data = {
                     'area_code': leader.get('area_code'),
                     'leader_email': leader.get('leader_email'),
-                    'leader_name': leader.get('leader_name'),
-                    'leader_phone': leader.get('leader_phone'),
+                    'first_name': leader.get('first_name') or leader.get('leader_name', '').split(' ', 1)[0],
+                    'last_name': leader.get('last_name') or (leader.get('leader_name', '').split(' ', 1)[1] if len(leader.get('leader_name', '').split(' ', 1)) > 1 else ''),
+                    'cell_phone': leader.get('cell_phone') or leader.get('leader_phone', ''),
                     'assigned_by': assigned_by,
                     'copied_from_year': source_year,
                     'active': True
@@ -219,8 +221,8 @@ class AreaLeaderModel:
             'has_leaders': True,
             'leader_count': len(leaders),
             'emails': [leader.get('leader_email') for leader in leaders],
-            'names': [leader.get('leader_name') for leader in leaders],
-            'phones': [leader.get('leader_phone') for leader in leaders if leader.get('leader_phone')]
+            'names': [f"{leader.get('first_name', '')} {leader.get('last_name', '')}".strip() for leader in leaders],
+            'phones': [leader.get('cell_phone') for leader in leaders if leader.get('cell_phone')]
         }
 
     @classmethod

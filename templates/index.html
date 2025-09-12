@@ -1,4 +1,4 @@
-{# Updated by Claude AI at 2025-01-15 14:35:12 #}
+{# Updated by Claude AI on 2025-09-12 #}
 {% extends "base.html" %}
 
 {% block content %}
@@ -73,30 +73,9 @@
                     <option value="">Choose your preferred area...</option>
                     <option value="UNASSIGNED">Wherever I'm needed most</option>
                     <optgroup label="Count Areas">
-                        <option value="A">A - North Shore West</option>
-                        <option value="B">B - North Shore Coastal</option>
-                        <option value="C">C - Lynn Valley</option>
-                        <option value="D">D - North Vancouver East</option>
-                        <option value="E">E - Burnaby Heights</option>
-                        <option value="F">F - Burnaby Mountain</option>
-                        <option value="G">G - Burnaby South</option>
-                        <option value="H">H - New Westminster</option>
-                        <option value="I">I - South Vancouver East</option>
-                        <option value="J">J - Riley Park/Kensington</option>
-                        <option value="K">K - Mount Pleasant/Grandview</option>
-                        <option value="L">L - Downtown Vancouver</option>
-                        <option value="M">M - Cambie Corridor</option>
-                        <option value="N">N - South Vancouver Central</option>
-                        <option value="O">O - Marpole</option>
-                        <option value="P">P - Kitsilano/Fairview</option>
-                        <option value="Q">Q - Point Grey</option>
-                        <option value="R">R - UBC/Musqueam</option>
-                        <option value="S">S - Fraser River South</option>
-                        <option value="T">T - Richmond East</option>
-                        <option value="U">U - Richmond Central</option>
-                        <option value="V">V - Richmond West</option>
-                        <option value="W">W - Stanley Park</option>
-                        <option value="X">X - Coal Harbour</option>
+                        {% for area_code in public_areas %}
+                        <option value="{{ area_code }}">{{ area_code }} - {{ get_area_info(area_code).name.split(' - ', 1)[1] if ' - ' in get_area_info(area_code).name else get_area_info(area_code).name }}</option>
+                        {% endfor %}
                     </optgroup>
                 </select>
             </div>
@@ -115,7 +94,7 @@
             <div class="mb-3 form-check">
                 <input type="checkbox" class="form-check-input" id="interested_in_leadership" name="interested_in_leadership">
                 <label class="form-check-label" for="interested_in_leadership">
-                    I am interested in being an area leader
+                    I am interested in being an <a href="#" id="area-leader-link" class="text-decoration-none">area leader</a>
                 </label>
             </div>
             
@@ -148,4 +127,46 @@
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/map.js') }}"></script>
 <script src="{{ url_for('static', filename='js/registration.js') }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Restore form data if returning from area leader info page
+    {% if form_data %}
+    const formData = {{ form_data | tojson }};
+    
+    // Restore form values generically
+    for (const [key, value] of Object.entries(formData)) {
+        const element = document.querySelector(`[name="${key}"]`);
+        if (element) {
+            if (element.type === 'checkbox' || element.type === 'radio') {
+                if (value === 'on' || value === element.value) {
+                    element.checked = true;
+                }
+            } else {
+                element.value = value;
+            }
+        }
+    }
+    {% endif %}
+    
+    // Handle area leader info link
+    document.getElementById('area-leader-link').addEventListener('click', function(e) {
+        e.preventDefault();
+        
+        // Collect all form data generically
+        const form = document.querySelector('form');
+        const formData = new FormData(form);
+        const queryParams = new URLSearchParams();
+        
+        // Add all form data to query parameters
+        for (const [key, value] of formData.entries()) {
+            if (value) {
+                queryParams.append(key, value);
+            }
+        }
+        
+        // Navigate to area leader info page with form data
+        window.location.href = '{{ url_for("main.area_leader_info") }}?' + queryParams.toString();
+    });
+});
+</script>
 {% endblock %}

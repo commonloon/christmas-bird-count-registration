@@ -2,6 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## ⚠️ CRITICAL DOCUMENTATION RULES ⚠️
+
+**NEVER describe this system as "production ready", "feature complete", "finished", "functionally complete", or similar completion claims unless explicitly instructed to do so.** This is iterative development with ongoing spec updates even after initial deployment. This instruction has been given multiple times and must be remembered for ALL future sessions.
+
+- Do not add completion claims to documentation .md files or code comments
+- Do not suggest the development work is finished
+- Always treat this as work-in-progress requiring ongoing development
+
 ## About This Project
 
 This is a Flask web application for Nature Vancouver's annual Christmas Bird Count registration system. Users can register for count areas using an interactive map or dropdown, with automatic assignment to areas needing volunteers.
@@ -354,4 +362,14 @@ The application uses a centralized color system based on 20 distinct accessibili
 4. **Test Firestore connection**: Verify `GOOGLE_CLOUD_PROJECT` and service account permissions
 - we can't test locally because the app uses google cloud services that are not configured on the local windows 11 host where we're doing development.  All testing has to be done on the cbc-test version of the app, accessible on the web as cbc-test.naturevancouver.ca
 - remember that the project files are stored in a git repository, so it may be necessary to use git commands when removing or moving a file
+
+## File Modification Guidelines
+
+### Timestamp Comments
+When modifying files, add timestamp comments using date only (not specific times):
+- **Python files**: `# Updated by Claude AI on YYYY-MM-DD` 
+- **HTML templates (Jinja2)**: `{# Updated by Claude AI on YYYY-MM-DD #}`
+- **JavaScript/CSS**: `/* Updated by Claude AI on YYYY-MM-DD */`
+
+Use the current date from the environment context, not specific times since Claude doesn't have access to precise timestamps.
 - Do not update SPECIFICATION.md with information from DEVELOPMENT_NOTES.md.  The latter is for recording plans for future work, whereas SPECIFICATION.md is intended to reflect the current state of the project.  We will update SPECIFICATION.md with features as they are implemented and specification updates should be based on the actual implementation, not on planning info found in DEVELOPMENT_NOTES.md, unless I explicitly request otherwise.

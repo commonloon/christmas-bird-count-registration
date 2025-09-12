@@ -1,4 +1,5 @@
 # Vancouver Christmas Bird Count Registration App - Complete Specification
+{# Updated by Claude AI on 2025-09-12 #}
 
 ## Overview
 Web application for Nature Vancouver's annual Christmas Bird Count registration with interactive map-based area selection. Users can register by clicking count areas on a map or using a dropdown menu, with automatic assignment to areas needing volunteers.
@@ -14,7 +15,7 @@ Web application for Nature Vancouver's annual Christmas Bird Count registration 
 - **Frontend**: Bootstrap 5 + Bootstrap Icons, Leaflet.js for interactive mapping
 - **Deployment**: Google Cloud Run with automated deployment scripts for both environments
 - **Security**: Role-based access control with admin whitelist and area leader database
-- **Data**: 24 count areas (A-X, excluding Y) with GeoJSON polygon boundaries
+- **Data**: 25 count areas (A-Y) with admin-assignment-only flag system for flexible area management
 
 ## Annual Event Architecture
 
@@ -83,13 +84,25 @@ ADMIN_EMAILS = [
 ## Core Features
 
 ### Registration System
-- Collect: name, email, phone, birding skill level, CBC experience, area preference
-- Leadership interest tracking (separate from actual leadership assignment)
-- Dual area selection: interactive map clicking OR dropdown menu
-- Manual assignment option: "Wherever I'm needed most" creates participants with preferred_area="UNASSIGNED" for admin review
-- Consistent terminology: "UNASSIGNED" used throughout system (replaced legacy "ANYWHERE" references)
-- Email validation and duplicate registration prevention (per year)
-- Mobile-responsive design (primary usage)
+- **Personal Information**: First name, last name, email, phone number
+- **Experience Data**: Birding skill level (Newbie|Beginner|Intermediate|Expert), CBC experience (None|1-2 counts|3+ counts)
+- **Participation Options**: 
+  - **Participation Type**: Regular participant or FEEDER counter (mandatory selection)
+  - **Area Selection**: Interactive map clicking OR dropdown menu OR "Wherever I'm needed most"
+- **Equipment Information**: 
+  - Binoculars availability checkbox
+  - Spotting scope availability checkbox ("Can bring spotting scope")
+- **Communication**: Notes to organizers (optional textarea with 500+ character limit)
+- **Leadership Interest**: Checkbox tracking (separate from actual leadership assignment)
+- **FEEDER Participant Constraints**:
+  - Cannot select "UNASSIGNED" (must choose specific area)
+  - Cannot indicate leadership interest (disabled automatically)
+  - Represented ~20% of participant population
+- **Validation Rules**:
+  - Email validation and duplicate registration prevention (per year)
+  - Client-side and server-side validation for FEEDER constraints
+  - Required field validation for all core information
+- **Mobile-responsive design** with touch-optimized form controls
 
 ### Interactive Map
 - Display 24 Vancouver CBC count areas as clickable polygons
@@ -108,10 +121,21 @@ ADMIN_EMAILS = [
 - **Email Testing Section (Test Server Only)**: Manual trigger buttons for testing all three email types with immediate feedback
 
 **Participant Management (`/admin/participants`)**
-- Complete participant list with search and filtering
-- Participant details: contact info, skill level, area assignment, leadership interest
-- Delete participants with confirmation modal and reason logging
-- Direct navigation to area-specific views
+- **Dual-Section Display**: Separate tables for FEEDER and regular participants
+- **In-Page Navigation**: Jump links to quickly access FEEDER or regular participant sections
+- **Area-Based Organization**: Participants grouped alphabetically by area with participant counts in headers
+  - **Area Leader Information**: When leaders are assigned, displays leader name, email, and phone in area headers
+- **Comprehensive Information Display**:
+  - Contact info: name, email, phone with clickable mailto links
+  - Experience data: skill level badges, CBC experience
+  - **Equipment Icons**: Bootstrap binoculars icon, custom SVG spotting scope icon
+  - **Notes Display**: Truncated to 50 characters with full text in hover tooltips
+  - Area assignment with links to area detail views
+  - Leadership status and interest indicators
+  - Registration timestamps
+- **Sorting**: Areas displayed in alphabetical order, participants within each area sorted alphabetically by first name
+- **Actions**: Delete participants with confirmation modal and reason logging
+- **Visual Indicators**: FEEDER participants clearly marked with type indicator
 
 **Unassigned Participant Management (`/admin/unassigned`)**
 - Area capacity overview with color-coded participant counts (fixed to show actual counts)
@@ -143,12 +167,22 @@ ADMIN_EMAILS = [
 - Areas without assigned leaders highlighted on map and listed below
 - Map legend showing counts of areas with/without leaders
 - Enhanced area dropdowns with proper area codes and names
+- **Potential Leaders Assignment**: Dropdown shows all areas (including admin-only areas T, Y) allowing multiple leaders per area
 - Integration logic: auto-assign leader registrations, sync participant promotions
 
 **Export and Reporting**
-- CSV export of all participants with comprehensive data
-- Year-specific exports for historical analysis
-- Email digest system for unassigned participants
+- **Comprehensive CSV Export**: All participant fields including new registration data:
+  - Personal information (name, email, phone)
+  - Experience data (skill level, CBC experience)
+  - Participation type (regular/FEEDER)
+  - Equipment information (binoculars, spotting scope)
+  - Notes to organizers
+  - Area assignments and leadership data
+  - Registration timestamps and year
+- **Export Sorting**: Data sorted alphabetically by area → participation type → first name
+- **Multiple Export Locations**: Available from both dashboard and participants pages
+- **Year-specific exports** for historical analysis
+- **Email digest system** for unassigned participants
 
 ### Area Leader Interface
 - View own area's participant lists (current + historical years)
@@ -211,14 +245,19 @@ ADMIN_EMAILS = [
   skill_level: "Newbie|Beginner|Intermediate|Expert",
   experience: "None|1-2 counts|3+ counts",
   preferred_area: "A-X|UNASSIGNED",
-  interested_in_leadership: boolean,  // From form
-  is_leader: boolean,                 // Admin-assigned only
-  assigned_area_leader: string,       // Which area they lead, if any
-  assigned_by: string,               // Admin who assigned (if assigned)
-  assigned_at: timestamp,            // When assigned (if assigned)
+  participation_type: "regular|FEEDER",     // New: Type of participation
+  has_binoculars: boolean,                   // New: Equipment availability
+  spotting_scope: boolean,                   // New: Can bring spotting scope (shortened from can_bring_spotting_scope)
+  notes_to_organizers: string,               // New: Optional participant notes
+  interested_in_leadership: boolean,         // From form checkbox
+  is_leader: boolean,                        // Admin-assigned only
+  assigned_area_leader: string,              // Which area they lead, if any
+  auto_assigned: boolean,                    // True if auto-assigned from leadership
+  assigned_by: string,                       // Admin who assigned (if assigned)
+  assigned_at: timestamp,                    // When assigned (if assigned)
   created_at: timestamp,
   updated_at: timestamp,
-  year: integer                       // Explicit year field for data integrity
+  year: integer                              // Explicit year field for data integrity
 }
 ```
 
@@ -263,13 +302,56 @@ ADMIN_EMAILS = [
 ```
 
 ## Area Configuration
-24 count areas with no capacity limits (areas can accommodate varying numbers based on habitat and accessibility). Area data includes:
-- Letter code (A-X)
-- Descriptive name and geographic boundaries
-- Difficulty level and terrain type
-- Polygon coordinates for map display
 
-Static configuration in `config/areas.py` (no year dependency).
+### Admin-Assignment-Only Flag System
+The application uses a flexible area management system that allows clubs to designate certain areas as admin-only, which means that only admins can assign participants to the designated areas:
+
+```python
+# config/areas.py
+AREA_CONFIG = {
+    'A': {
+        'name': 'Area A - North Shore West',
+        'description': 'West of the Capilano River, North of the Trans Canada Highway',
+        'difficulty': 'Moderate',
+        'terrain': 'Mountainous, some trails',
+        'admin_assignment_only': False  # Available for public registration
+    },
+    # ... areas B-S, U-X with admin_assignment_only: False
+    'T': {
+        'name': 'Area T - Richmond East',
+        'description': 'Vancouver International Airport and surrounds',
+        'difficulty': 'Easy',
+        'terrain': 'Airport and surrounds',
+        'admin_assignment_only': True   # Restricted access area
+    },
+    'Y': {
+        'name': 'Area Y - Burrard Inlet/English Bay',
+        'description': 'This area is counted from one or more boats',
+        'difficulty': 'Moderate',
+        'terrain': 'Marine, boat-based counting',
+        'admin_assignment_only': True   # Marine area surveyed by boat
+    }
+}
+```
+
+### Area Access Logic
+- **Public Registration**: Uses `get_public_areas()` - shows only areas with `admin_assignment_only: False` (A-S, U-X)
+- **Admin Interfaces**: Uses `get_all_areas()` - shows all areas including admin-only (A-Y)
+- **Multiple Leaders**: All areas support multiple leaders per area (business rule enforced in application)
+- **Map Display**: Public maps show public areas only (based on static boundaries JSON)
+
+### Area Data Structure
+25 count areas with no capacity limits (areas accommodate varying numbers based on habitat and accessibility):
+- Letter codes A-Y (25 areas total)
+- Descriptive names and geographic boundaries  
+- Difficulty level and terrain type
+- Admin-assignment-only flag requires admins to perform participant assignment for some areas, e.g. airports with restricted access or marine areas surveyed by boat
+- Polygon coordinates for map display (restricted areas may not have public map boundaries)
+
+Static configuration in `config/areas.py` (no year dependency) with helper functions:
+- `get_all_areas()`: Returns all area codes A-Y
+- `get_public_areas()`: Returns only public areas (excludes admin-only areas T, Y)
+- `get_area_info(code)`: Returns area configuration details
 
 ## Key Implementation Details
 
@@ -355,14 +437,16 @@ class ParticipantModel:
 
 **Assignment Methods:**
 1. **Manual Entry (Primary)**: Admins directly enter leader information
-   - Creates records only in `area_leaders_YYYY` collection
+   - Creates records only in `area_leaders_YYYY` collection with standardized field names
    - No participant registration required
    - Supports any email address (Google or non-Google)
+   - Uses consistent schema: `first_name`, `last_name`, `cell_phone`, `leader_email`
 
 2. **Participant Promotion (Exceptional)**: Promote existing participants to leaders
    - Updates both `participants` and `area_leaders` collections
    - Changes participant's area assignment to match led area
    - Sets `is_leader=True` in participant record
+   - Creates area leader record with standardized field names
 
 **Integration Logic:**
 - If leader registers as participant → auto-assign to their led area
@@ -462,10 +546,11 @@ templates/
   errors/                      # 404/500 error page templates
 
 static/
-  css/main.css                 # Bootstrap-based responsive styling
+  css/main.css                 # Bootstrap-based responsive styling with CSS custom properties
   js/map.js                    # Leaflet.js interactive map functionality for registration
   js/leaders-map.js            # Leaflet.js interactive map for leaders page with live refresh capability
-  js/registration.js           # Form validation and map-form synchronization
+  js/registration.js           # Enhanced form validation with FEEDER constraint handling and map-form synchronization
+  icons/scope.svg              # Custom spotting scope icon for equipment display
   data/area_boundaries.json    # GeoJSON area polygons for map rendering
 
 test/
@@ -598,6 +683,7 @@ rm client_secret.json             # Remove sensitive file
 - All Firestore operations must include explicit year fields for data integrity
 - Composite indexes required for complex queries (created automatically by setup script)
 - Email deduplication logic prevents duplicate registrations within same year
+- **Consistent Field Names**: All area leader records use standardized schema (`first_name`, `last_name`, `cell_phone`, `leader_email`) across all creation methods
 
 **Security Architecture:**
 - No admin links visible to public users (security by obscurity)
@@ -684,4 +770,22 @@ gcloud run services logs read SERVICE --region=us-west1 --limit=50
 # (Admin dashboard should load without database errors)
 ```
 
-This specification represents a complete, production-ready Christmas Bird Count registration system with comprehensive admin management capabilities.
+## File Modification Guidelines
+
+### Timestamp Comments
+When modifying files, add timestamp comments using date only (not specific times):
+- **Python files**: `# Updated by Claude AI on YYYY-MM-DD` 
+- **HTML templates (Jinja2)**: `{# Updated by Claude AI on YYYY-MM-DD #}`
+- **JavaScript/CSS**: `/* Updated by Claude AI on YYYY-MM-DD */`
+
+Use the current date from the environment context, not specific times since Claude doesn't have access to precise timestamps.
+
+### Documentation Guidelines
+- SPECIFICATION.md reflects current implementation state only
+- Do not include future plans from DEVELOPMENT_NOTES.md in SPECIFICATION.md
+- Update specifications based on actual implementation, not planning documentation
+- Include all implemented features with sufficient technical detail for reproduction
+
+---
+
+This specification represents a Christmas Bird Count registration system with comprehensive admin management capabilities, including enhanced registration data collection, comprehensive participant management interfaces, and flexible admin-assignment-only area system for specialized counting areas.

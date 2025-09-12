@@ -1,3 +1,4 @@
+{# Updated by Claude AI on 2025-09-11 #}
 {% extends "base.html" %}
 
 {% block title %}All Participants - Vancouver Christmas Bird Count{% endblock %}
@@ -54,85 +55,240 @@
     </div>
 </div>
 
-<!-- Participants Table -->
-{% if participants %}
-<div class="card">
-    <div class="card-header">
-        <h5 class="mb-0">Participants ({{ participants|length }})</h5>
-    </div>
+<!-- In-page Navigation -->
+<div class="card mb-4">
     <div class="card-body">
-        <div class="table-responsive">
-            <table class="table table-striped table-hover">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Email</th>
-                        <th>Phone</th>
-                        <th>Skill Level</th>
-                        <th>Experience</th>
-                        <th>Area</th>
-                        <th>Leadership</th>
-                        <th>Registered</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for participant in participants %}
-                    <tr>
-                        <td>
-                            <strong>{{ participant.first_name }} {{ participant.last_name }}</strong>
-                            {% if participant.is_leader %}
-                                <span class="badge bg-success ms-1">Leader</span>
-                            {% endif %}
-                        </td>
-                        <td><a href="mailto:{{ participant.email }}">{{ participant.email }}</a></td>
-                        <td>{{ participant.phone or 'N/A' }}</td>
-                        <td>
-                            <span class="badge bg-{% if participant.skill_level == 'Expert' %}success{% elif participant.skill_level == 'Intermediate' %}primary{% elif participant.skill_level == 'Beginner' %}info{% else %}secondary{% endif %}">
-                                {{ participant.skill_level }}
-                            </span>
-                        </td>
-                        <td>{{ participant.experience }}</td>
-                        <td>
-                            {% if participant.preferred_area == 'UNASSIGNED' %}
-                                <span class="badge bg-secondary">UNASSIGNED</span>
-                            {% elif participant.preferred_area %}
-                                <a href="{{ url_for('admin.area_detail', area_code=participant.preferred_area, year=selected_year) }}" class="btn btn-sm btn-outline-primary">
-                                    {{ participant.preferred_area }}
-                                </a>
-                            {% else %}
-                                <span class="text-muted">Unassigned</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if participant.interested_in_leadership %}
-                                <span class="badge bg-warning">Interested</span>
-                            {% else %}
-                                <span class="text-muted">No</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if participant.created_at %}
-                                {{ participant.created_at.strftime('%m/%d/%y %H:%M') }}
-                            {% else %}
-                                N/A
-                            {% endif %}
-                        </td>
-                        <td>
-                            <div class="btn-group btn-group-sm" role="group">
-                                <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal" 
-                                        data-participant-id="{{ participant.id }}" 
-                                        data-participant-name="{{ participant.first_name }} {{ participant.last_name }}">
-                                    Delete
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+        <h5 class="card-title">Jump to Section</h5>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="#feeder-participants" class="btn btn-outline-primary btn-sm">FEEDER Participants</a>
+            <a href="#regular-participants" class="btn btn-outline-primary btn-sm">Regular Participants</a>
         </div>
     </div>
+</div>
+
+<!-- FEEDER Participants -->
+<div id="feeder-participants" class="mb-5">
+    <h2 class="h3 mb-3">FEEDER Participants</h2>
+    {% if feeder_participants %}
+        {% for area, participants in feeder_participants.items() %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    {% if area == 'UNASSIGNED' %}
+                        UNASSIGNED ({{ participants|length }})
+                    {% else %}
+                        Area {{ area }} ({{ participants|length }})
+                        {% if area_leaders.get(area) %}
+                            {% for leader in area_leaders[area] %}
+                                <br><small class="text-muted">
+                                    • Leader: {{ leader.first_name }} {{ leader.last_name }} 
+                                    (<a href="mailto:{{ leader.leader_email }}">{{ leader.leader_email }}</a>, {{ leader.cell_phone }})
+                                </small>
+                            {% endfor %}
+                        {% endif %}
+                    {% endif %}
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Phone</th>
+                                <th>Skill Level</th>
+                                <th>Experience</th>
+                                <th>Equipment</th>
+                                <th>Notes</th>
+                                <th>Leadership</th>
+                                <th>Registered</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for participant in participants %}
+                            <tr>
+                                <td>
+                                    <strong>{{ participant.first_name }} {{ participant.last_name }}</strong>
+                                    {% if participant.is_leader %}
+                                        <span class="badge bg-success ms-1">Leader</span>
+                                    {% endif %}
+                                    <div class="small text-muted">FEEDER</div>
+                                </td>
+                                <td><a href="mailto:{{ participant.email }}">{{ participant.email }}</a></td>
+                                <td>{{ participant.phone or 'N/A' }}</td>
+                                <td>
+                                    <span class="badge bg-{% if participant.skill_level == 'Expert' %}success{% elif participant.skill_level == 'Intermediate' %}primary{% elif participant.skill_level == 'Beginner' %}info{% else %}secondary{% endif %}">
+                                        {{ participant.skill_level }}
+                                    </span>
+                                </td>
+                                <td>{{ participant.experience }}</td>
+                                <td>
+                                    {% if participant.has_binoculars %}<i class="bi bi-binoculars" title="Has binoculars"></i>{% endif %}
+                                    {% if participant.spotting_scope %}<img src="{{ url_for('static', filename='icons/scope.svg') }}" alt="Spotting scope" title="Can bring spotting scope" class="scope-icon ms-1" style="width: 16px; height: 16px; vertical-align: text-bottom;">{% endif %}
+                                    {% if not participant.has_binoculars and not participant.spotting_scope %}<span class="text-muted">None</span>{% endif %}
+                                </td>
+                                <td>
+                                    {% if participant.notes_to_organizers %}
+                                        <span class="text-truncate d-inline-block" style="max-width: 150px;" title="{{ participant.notes_to_organizers }}">
+                                            {{ participant.notes_to_organizers[:50] }}{% if participant.notes_to_organizers|length > 50 %}...{% endif %}
+                                        </span>
+                                    {% else %}
+                                        <span class="text-muted">None</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if participant.interested_in_leadership %}
+                                        <span class="badge bg-warning">Interested</span>
+                                    {% else %}
+                                        <span class="text-muted">No</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if participant.created_at %}
+                                        {{ participant.created_at.strftime('%m/%d/%y %H:%M') }}
+                                    {% else %}
+                                        N/A
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal" 
+                                                data-participant-id="{{ participant.id }}" 
+                                                data-participant-name="{{ participant.first_name }} {{ participant.last_name }}">
+                                            Delete
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="card">
+            <div class="card-body text-center">
+                <h5>No FEEDER Participants</h5>
+                <p class="text-muted">No FEEDER participants registered for {{ selected_year }} yet.</p>
+            </div>
+        </div>
+    {% endif %}
+</div>
+
+<!-- Regular Participants -->
+<div id="regular-participants">
+    <h2 class="h3 mb-3">Regular Participants</h2>
+    {% if regular_participants %}
+        {% for area, participants in regular_participants.items() %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    {% if area == 'UNASSIGNED' %}
+                        UNASSIGNED ({{ participants|length }})
+                    {% else %}
+                        Area {{ area }} ({{ participants|length }})
+                        {% if area_leaders.get(area) %}
+                            {% for leader in area_leaders[area] %}
+                                <br><small class="text-muted">
+                                    • Leader: {{ leader.first_name }} {{ leader.last_name }} 
+                                    (<a href="mailto:{{ leader.leader_email }}">{{ leader.leader_email }}</a>, {{ leader.cell_phone }})
+                                </small>
+                            {% endfor %}
+                        {% endif %}
+                    {% endif %}
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Phone</th>
+                                <th>Skill Level</th>
+                                <th>Experience</th>
+                                <th>Equipment</th>
+                                <th>Notes</th>
+                                <th>Leadership</th>
+                                <th>Registered</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for participant in participants %}
+                            <tr>
+                                <td>
+                                    <strong>{{ participant.first_name }} {{ participant.last_name }}</strong>
+                                    {% if participant.is_leader %}
+                                        <span class="badge bg-success ms-1">Leader</span>
+                                    {% endif %}
+                                </td>
+                                <td><a href="mailto:{{ participant.email }}">{{ participant.email }}</a></td>
+                                <td>{{ participant.phone or 'N/A' }}</td>
+                                <td>
+                                    <span class="badge bg-{% if participant.skill_level == 'Expert' %}success{% elif participant.skill_level == 'Intermediate' %}primary{% elif participant.skill_level == 'Beginner' %}info{% else %}secondary{% endif %}">
+                                        {{ participant.skill_level }}
+                                    </span>
+                                </td>
+                                <td>{{ participant.experience }}</td>
+                                <td>
+                                    {% if participant.has_binoculars %}<i class="bi bi-binoculars" title="Has binoculars"></i>{% endif %}
+                                    {% if participant.spotting_scope %}<img src="{{ url_for('static', filename='icons/scope.svg') }}" alt="Spotting scope" title="Can bring spotting scope" class="scope-icon ms-1" style="width: 16px; height: 16px; vertical-align: text-bottom;">{% endif %}
+                                    {% if not participant.has_binoculars and not participant.spotting_scope %}<span class="text-muted">None</span>{% endif %}
+                                </td>
+                                <td>
+                                    {% if participant.notes_to_organizers %}
+                                        <span class="text-truncate d-inline-block" style="max-width: 150px;" title="{{ participant.notes_to_organizers }}">
+                                            {{ participant.notes_to_organizers[:50] }}{% if participant.notes_to_organizers|length > 50 %}...{% endif %}
+                                        </span>
+                                    {% else %}
+                                        <span class="text-muted">None</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if participant.interested_in_leadership %}
+                                        <span class="badge bg-warning">Interested</span>
+                                    {% else %}
+                                        <span class="text-muted">No</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if participant.created_at %}
+                                        {{ participant.created_at.strftime('%m/%d/%y %H:%M') }}
+                                    {% else %}
+                                        N/A
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal" 
+                                                data-participant-id="{{ participant.id }}" 
+                                                data-participant-name="{{ participant.first_name }} {{ participant.last_name }}">
+                                            Delete
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="card">
+            <div class="card-body text-center">
+                <h5>No Regular Participants</h5>
+                <p class="text-muted">No regular participants registered for {{ selected_year }} yet.</p>
+            </div>
+        </div>
+    {% endif %}
 </div>
 
 <!-- Delete Confirmation Modal -->
@@ -164,7 +320,7 @@
     </div>
 </div>
 
-{% else %}
+{% if not feeder_participants and not regular_participants %}
 <div class="card">
     <div class="card-body text-center">
         <h5>No Participants</h5>
