@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2025-09-11
+# Updated by Claude AI on 2025-09-12
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response, g, current_app
 from google.cloud import firestore
 from config.database import get_firestore_client
@@ -460,7 +460,7 @@ def export_csv():
     writer.writerow([
         'First Name', 'Last Name', 'Email', 'Phone', 'Skill Level',
         'Experience', 'Area', 'Participation Type', 'Has Binoculars', 'Spotting Scope',
-        'Notes to Organizers', 'Area Leader', 'Leadership Interest',
+        'Notes to Organizers', 'Area Leader', 'Leadership Interest', 'Scribe Interest',
         'Registration Date', 'Year'
     ])
 
@@ -480,6 +480,7 @@ def export_csv():
             p.get('notes_to_organizers', ''),
             'Yes' if p.get('is_leader', False) else 'No',
             'Yes' if p.get('interested_in_leadership', False) else 'No',
+            'Yes' if p.get('interested_in_scribe', False) else 'No',
             p.get('created_at', '').strftime('%Y-%m-%d %H:%M') if p.get('created_at') else '',
             selected_year
         ])

@@ -98,6 +98,13 @@
                 </label>
             </div>
             
+            <div class="mb-3 form-check">
+                <input type="checkbox" class="form-check-input" id="interested_in_scribe" name="interested_in_scribe">
+                <label class="form-check-label" for="interested_in_scribe">
+                    I would like to be a <a href="#" id="scribe-link" class="text-decoration-none">Scribe</a>
+                </label>
+            </div>
+            
             <div class="mb-3">
                 <label for="notes_to_organizers" class="form-label">Notes to Organizers</label>
                 <textarea class="form-control" id="notes_to_organizers" name="notes_to_organizers" 
@@ -166,6 +173,26 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Navigate to area leader info page with form data
         window.location.href = '{{ url_for("main.area_leader_info") }}?' + queryParams.toString();
+    });
+    
+    // Handle scribe info link
+    document.getElementById('scribe-link').addEventListener('click', function(e) {
+        e.preventDefault();
+        
+        // Collect all form data generically
+        const form = document.querySelector('form');
+        const formData = new FormData(form);
+        const queryParams = new URLSearchParams();
+        
+        // Add all form data to query parameters
+        for (const [key, value] of formData.entries()) {
+            if (value) {
+                queryParams.append(key, value);
+            }
+        }
+        
+        // Navigate to scribe info page with form data
+        window.location.href = '{{ url_for("main.scribe_info") }}?' + queryParams.toString();
     });
 });
 </script>

@@ -93,7 +93,9 @@ ADMIN_EMAILS = [
   - Binoculars availability checkbox
   - Spotting scope availability checkbox ("Can bring spotting scope")
 - **Communication**: Notes to organizers (optional textarea with 500+ character limit)
-- **Leadership Interest**: Checkbox tracking (separate from actual leadership assignment)
+- **Role Interest Options**: 
+  - **Leadership Interest**: Checkbox tracking (separate from actual leadership assignment) with clickable link to detailed responsibilities
+  - **Scribe Interest**: Checkbox for new pilot role with clickable link to detailed information and eBird preparation guide
 - **FEEDER Participant Constraints**:
   - Cannot select "UNASSIGNED" (must choose specific area)
   - Cannot indicate leadership interest (disabled automatically)
@@ -103,6 +105,25 @@ ADMIN_EMAILS = [
   - Client-side and server-side validation for FEEDER constraints
   - Required field validation for all core information
 - **Mobile-responsive design** with touch-optimized form controls
+
+### Information Pages with Form Data Preservation
+**Area Leader Information (`/area-leader-info`)**
+- Detailed 7-point list of area leader responsibilities and coordination duties
+- Accessible via clickable "area leader" text in registration form
+- Preserves all form data during navigation using generic form data capture
+
+**Scribe Information (`/scribe-info`)**  
+- Description of new pilot scribe role for partnering with expert birders
+- eBird preparation requirements with direct link to eBird Essentials course
+- Information about pilot program status and leader coordination
+- Accessible via clickable "Scribe" text in registration form
+- Preserves all form data during navigation using generic form data capture
+
+**Form Data Preservation System**
+- Generic FormData() capture automatically handles all form fields
+- Bidirectional navigation maintains user input across page transitions
+- No field-specific code required - automatically adapts to form changes
+- URL parameter-based data passing for reliable form restoration
 
 ### Interactive Map
 - Display 24 Vancouver CBC count areas as clickable polygons
@@ -132,6 +153,7 @@ ADMIN_EMAILS = [
   - **Notes Display**: Truncated to 50 characters with full text in hover tooltips
   - Area assignment with links to area detail views
   - Leadership status and interest indicators
+  - **Scribe Interest Indicators**: Blue "Interested" badges for participants interested in scribe role (regular participants only)
   - Registration timestamps
 - **Sorting**: Areas displayed in alphabetical order, participants within each area sorted alphabetically by first name
 - **Actions**: Delete participants with confirmation modal and reason logging
@@ -250,6 +272,7 @@ ADMIN_EMAILS = [
   spotting_scope: boolean,                   // New: Can bring spotting scope (shortened from can_bring_spotting_scope)
   notes_to_organizers: string,               // New: Optional participant notes
   interested_in_leadership: boolean,         // From form checkbox
+  interested_in_scribe: boolean,             // New: Scribe role interest (pilot program)
   is_leader: boolean,                        // Admin-assigned only
   assigned_area_leader: string,              // Which area they lead, if any
   auto_assigned: boolean,                    // True if auto-assigned from leadership
@@ -468,10 +491,11 @@ class ParticipantModel:
 ### Volunteer Registration
 1. Visit registration page with form and interactive map
 2. Select area by clicking map polygon OR dropdown menu OR "Wherever I'm needed most"
-3. Complete personal information including leadership interest
-4. Submit and receive confirmation
-5. If specific area selected: area leader receives automated notification
-6. If "Wherever I'm needed most" selected: participant created with preferred_area="UNASSIGNED" for admin review
+3. Complete personal information including leadership and scribe interest
+4. **Optional**: Click "area leader" or "Scribe" links to view detailed role information (preserves all form data)
+5. Submit and receive confirmation
+6. If specific area selected: area leader receives automated notification
+7. If "Wherever I'm needed most" selected: participant created with preferred_area="UNASSIGNED" for admin review
 
 ### Admin Management
 1. Authenticate with Google OAuth (whitelisted admin account)
@@ -517,7 +541,7 @@ models/
   removal_log.py               # Year-aware removal tracking for audit
 
 routes/
-  main.py                      # Public registration routes
+  main.py                      # Public registration routes including information pages (/area-leader-info, /scribe-info)
   admin.py                     # Complete admin interface with all management features
   leader.py                    # Area leader interface (to be implemented)
   api.py                       # JSON endpoints for map data and leadership information
@@ -530,6 +554,8 @@ templates/
   base.html                    # Base template with context-aware navigation and Bootstrap Icons
   index.html                   # Registration form with interactive map
   registration_success.html    # Registration confirmation page
+  area_leader_info.html        # Area leader responsibilities information page
+  scribe_info.html             # Scribe role information page with eBird preparation guide
   auth/
     login.html                 # Google OAuth login page
   admin/

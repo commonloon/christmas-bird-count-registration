@@ -1,3 +1,4 @@
+# Updated by Claude AI on 2025-09-12
 from flask import Blueprint, render_template, request, redirect, url_for, flash, make_response, g
 from google.cloud import firestore
 from config.database import get_firestore_client
@@ -137,7 +138,7 @@ def export_area_contacts(area_code):
         
         # Write header
         writer.writerow(['First Name', 'Last Name', 'Email', 'Phone', 
-                        'Skill Level', 'Experience', 'Leadership Interest', 
+                        'Skill Level', 'Experience', 'Leadership Interest', 'Scribe Interest',
                         'Registration Date'])
         
         # Write participant data
@@ -150,6 +151,7 @@ def export_area_contacts(area_code):
                 participant.get('skill_level', ''),
                 participant.get('experience', ''),
                 'Yes' if participant.get('interested_in_leadership', False) else 'No',
+                'Yes' if participant.get('interested_in_scribe', False) else 'No',
                 participant.get('created_at', '').strftime('%Y-%m-%d') if participant.get('created_at') else ''
             ])
         
@@ -188,7 +190,7 @@ def export_area_history(area_code):
         
         # Write header
         writer.writerow(['First Name', 'Last Name', 'Email', 'Phone', 
-                        'Skill Level', 'Experience', 'Leadership Interest', 
+                        'Skill Level', 'Experience', 'Leadership Interest', 'Scribe Interest',
                         'Most Recent Year', 'Registration Date'])
         
         # Write participant data
@@ -201,6 +203,7 @@ def export_area_history(area_code):
                 participant.get('skill_level', ''),
                 participant.get('experience', ''),
                 'Yes' if participant.get('interested_in_leadership', False) else 'No',
+                'Yes' if participant.get('interested_in_scribe', False) else 'No',
                 participant.get('year', ''),
                 participant.get('created_at', '').strftime('%Y-%m-%d') if participant.get('created_at') else ''
             ])

@@ -52,6 +52,7 @@ def register():
     experience = request.form.get('experience', '')
     preferred_area = request.form.get('preferred_area', '')
     interested_in_leadership = request.form.get('interested_in_leadership') == 'on'
+    interested_in_scribe = request.form.get('interested_in_scribe') == 'on'
     
     # Get new fields
     participation_type = request.form.get('participation_type', '')
@@ -121,6 +122,7 @@ def register():
         'experience': experience,
         'preferred_area': preferred_area,
         'interested_in_leadership': interested_in_leadership,
+        'interested_in_scribe': interested_in_scribe,
         'is_leader': bool(leader_areas),  # True if they are an area leader
         'assigned_area_leader': preferred_area if leader_areas else None,
         'auto_assigned': auto_assigned_from_leadership,
@@ -206,6 +208,14 @@ def area_leader_info():
     # Pass all query parameters to template for form restoration links
     form_data = dict(request.args)
     return render_template('area_leader_info.html', form_data=form_data)
+
+
+@main_bp.route('/scribe-info')
+def scribe_info():
+    """Information about scribe responsibilities."""
+    # Pass all query parameters to template for form restoration links
+    form_data = dict(request.args)
+    return render_template('scribe_info.html', form_data=form_data)
 
 
 def is_valid_email(email):

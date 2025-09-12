@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Updated by Claude AI at 2025-01-15 14:35:12
+Updated by Claude AI on 2025-09-12
 Test Participant Data Generator for Christmas Bird Count Registration
 
 This script generates test participants by submitting data to the registration endpoint.
@@ -10,10 +10,11 @@ Usage:
     python generate_test_participants.py [num_regular] [--seq starting_number]
     
 Examples:
-    python generate_test_participants.py                    # 20 regular + 5 leadership
-    python generate_test_participants.py 50                # 50 regular + 5 leadership  
+    python generate_test_participants.py                    # 20 regular + 5 leadership + random scribes
+    python generate_test_participants.py 50                # 50 regular + 5 leadership + random scribes  
     python generate_test_participants.py 10 --seq 100      # 10 regular + 5 leadership, emails start at 0100
     python generate_test_participants.py 0 --seq 5000      # 0 regular + 5 leadership, emails start at 5000
+    python generate_test_participants.py 20 --scribes 5    # 20 regular + 5 leadership + 5 explicit scribes
 """
 
 import argparse
@@ -50,8 +51,10 @@ def generate_phone_number():
 
 
 def generate_email(date_str, sequence_num):
-    """Generate sequential email address."""
-    return f"birdcount-{date_str}-{sequence_num:04d}@{EMAIL_DOMAIN}"
+    """Generate sequential email address with timestamp for uniqueness."""
+    import time
+    timestamp = str(int(time.time()))[-6:]  # Last 6 digits of unix timestamp
+    return f"birdcount-{date_str}-{timestamp}-{sequence_num:04d}@{EMAIL_DOMAIN}"
 
 
 def generate_notes():
@@ -71,7 +74,7 @@ def generate_notes():
     return random.choice(notes_options)
 
 
-def create_participant_data(email, interested_in_leadership=False, force_unassigned=False):
+def create_participant_data(email, interested_in_leadership=False, interested_in_scribe=False, force_unassigned=False):
     """Create realistic participant data with new fields."""
     first_name = fake.first_name()
     last_name = fake.last_name()
@@ -114,6 +117,12 @@ def create_participant_data(email, interested_in_leadership=False, force_unassig
     if interested_in_leadership and participation_type == 'regular':
         data['interested_in_leadership'] = 'on'
     
+    # Add scribe interest for regular participants (pilot program)
+    if participation_type == 'regular':
+        # Either forced scribe interest or 10% random chance
+        if interested_in_scribe or random.random() < 0.1:
+            data['interested_in_scribe'] = 'on'
+    
     return data
 
 
@@ -128,10 +137,15 @@ def submit_registration(session, participant_data):
         )
         
         # Check if registration was successful
-        # The endpoint redirects on success, so check the final URL or response content
-        success = (response.status_code == 200 and 
-                  ('success' in response.url.lower() or 
-                   'registration successful' in response.text.lower()))
+        # The endpoint redirects to /success on successful registration
+        success = (response.status_code == 200 and '/success' in response.url)
+        
+        # Debug: Print response details for failed registrations (comment out when working)
+        # if not success and response.status_code == 200:
+        #     print(f"\nDEBUG: Registration failed but got 200")
+        #     print(f"Final URL: {response.url}")
+        #     print(f"Form data sent: {participant_data}")
+        #     print()
         
         return success, response.status_code, response.url
         
@@ -145,10 +159,11 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    python generate_test_participants.py                    # 20 regular + 5 leadership
-    python generate_test_participants.py 50                # 50 regular + 5 leadership  
+    python generate_test_participants.py                    # 20 regular + 5 leadership + random scribes
+    python generate_test_participants.py 50                # 50 regular + 5 leadership + random scribes  
     python generate_test_participants.py 10 --seq 100      # 10 regular + 5 leadership, emails start at 0100
     python generate_test_participants.py 0 --seq 5000      # 0 regular + 5 leadership, emails start at 5000
+    python generate_test_participants.py 20 --scribes 5    # 20 regular + 5 leadership + 5 explicit scribes
         """
     )
     
@@ -169,6 +184,13 @@ Examples:
         help='Starting sequence number for email addresses (default: 1)'
     )
     
+    parser.add_argument(
+        '--scribes',
+        type=int,
+        default=0,
+        help='Number of participants specifically interested in scribe role (default: 0, relies on random 10%% generation)'
+    )
+    
     args = parser.parse_args()
     
     # Validate arguments
@@ -179,7 +201,8 @@ Examples:
     # Calculate totals
     num_regular = args.num_regular
     num_leadership = 5  # Always create 5 leadership-interested participants
-    total_participants = num_regular + num_leadership
+    num_scribes = args.scribes  # Number of explicitly scribe-interested participants
+    total_participants = num_regular + num_leadership + num_scribes
     starting_seq = args.seq
     
     # Generate current date string
@@ -190,6 +213,7 @@ Examples:
     print(f"Target endpoint: {REGISTRATION_URL}")
     print(f"Regular participants: {num_regular}")
     print(f"Leadership-interested participants: {num_leadership}")
+    print(f"Scribe-interested participants: {num_scribes}")
     print(f"Total participants: {total_participants}")
     print(f"Starting sequence number: {starting_seq}")
     print(f"Email format: birdcount-{current_date}-NNNN@{EMAIL_DOMAIN}")
@@ -216,15 +240,16 @@ Examples:
             participant_data = create_participant_data(email, interested_in_leadership=False, force_unassigned=force_unassigned)
             
             unassigned_indicator = " [UNASSIGNED]" if force_unassigned else ""
-            print(f"  [{current_seq:04d}] {participant_data['first_name']} {participant_data['last_name']} ({email}){unassigned_indicator}", end="")
+            scribe_indicator = " [SCRIBE]" if participant_data.get('interested_in_scribe') == 'on' else ""
+            print(f"  [{current_seq:04d}] {participant_data['first_name']} {participant_data['last_name']} ({email}){unassigned_indicator}{scribe_indicator}", end="")
             
             success, status_code, final_url = submit_registration(session, participant_data)
             
             if success:
-                print(" ✓")
+                print(" OK")
                 successful_registrations += 1
             else:
-                print(f" ✗ (HTTP {status_code})")
+                print(f" FAIL (HTTP {status_code})")
                 failed_registrations += 1
             
             current_seq += 1
@@ -258,6 +283,32 @@ Examples:
         
         # Small delay to be respectful to the server
         time.sleep(0.5)
+    
+    # Create scribe-interested participants
+    if num_scribes > 0:
+        print(f"Creating {num_scribes} scribe-interested participants...")
+        for i in range(num_scribes):
+            email = generate_email(current_date, current_seq)
+            
+            # Scribe participants are regular participants with scribe interest
+            participant_data = create_participant_data(email, interested_in_leadership=False, interested_in_scribe=True, force_unassigned=False)
+            
+            scribe_indicator = " [SCRIBE]"
+            print(f"  [{current_seq:04d}] {participant_data['first_name']} {participant_data['last_name']} ({email}){scribe_indicator}", end="")
+            
+            success, status_code, final_url = submit_registration(session, participant_data)
+            
+            if success:
+                print(" OK")
+                successful_registrations += 1
+            else:
+                print(f" FAIL (HTTP {status_code})")
+                failed_registrations += 1
+            
+            current_seq += 1
+            
+            # Small delay to be respectful to the server
+            time.sleep(0.5)
     
     # Summary
     print()
