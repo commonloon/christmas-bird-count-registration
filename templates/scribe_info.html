@@ -1,0 +1,40 @@
+{# Updated by Claude AI on 2025-09-12 #}
+{% extends "base.html" %}
+
+{% block title %}Scribe Responsibilities - Vancouver Christmas Bird Count{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h1>Scribe Responsibilities</h1>
+                <a href="{{ url_for('main.index', **form_data) }}" class="btn btn-primary">
+                    <i class="bi bi-arrow-left"></i> Back to Registration
+                </a>
+            </div>
+
+            <div class="card">
+                <div class="card-body">
+                    <h3 class="text-primary">What a scribe does</h3>
+                    <p>One way to help out on count day is to act as a scribe, partnering with a more expert birder to record the list of species that they identify. The scribe role is perfect if you're newer to birding and want to participate without the pressure of accurately identifying birds yourself. Scribes who can use eBird are especially valuable.</p>
+
+                    <h3 class="text-primary mt-4">Preparation</h3>
+                    <p>If you aren't familiar with eBird, we strongly recommend that you take the free online <a href="https://academy.allaboutbirds.org/product/ebird-essentials/" target="_blank" class="text-decoration-none">eBird Essentials class</a> to learn the basics. After completing the class, please download the app and practice using it in the field before Count Day.</p>
+
+                    <h3 class="text-primary mt-4">About this new role</h3>
+                    <div class="alert alert-info">
+                        <strong>New for this year:</strong> "Scribe" is a new support role that we're piloting for this year's Vancouver Christmas Bird Count. Not all Area Leaders may need a scribe, but we'll let them know that you are interested in helping out by being a scribe.
+                    </div>
+
+                    <div class="mt-4 text-center">
+                        <a href="{{ url_for('main.index', **form_data) }}" class="btn btn-primary btn-lg">
+                            <i class="bi bi-arrow-left"></i> Return to Registration Form
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
