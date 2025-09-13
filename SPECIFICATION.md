@@ -523,7 +523,7 @@ class ParticipantModel:
 ## File Structure
 ```
 app.py                          # Flask entry point with OAuth initialization
-requirements.txt                # Python dependencies
+requirements.txt                # Python dependencies (Flask, google-cloud-firestore, gunicorn, Flask-WTF, Flask-Limiter)
 Dockerfile                      # Container configuration for Cloud Run
 deploy.sh                       # Automated deployment script (test/production/both)
 
@@ -534,6 +534,7 @@ config/
   colors.py                     # Color palette definitions with 20 distinct accessibility colors
   database.py                   # Database configuration helper for environment-specific databases
   email_settings.py             # Email service configuration and SMTP settings (to be created)
+  rate_limits.py                # Rate limiting configuration with TEST_MODE-aware settings
 
 models/
   participant.py                # Year-aware participant operations with Firestore
@@ -549,6 +550,8 @@ routes/
 
 services/
   email_service.py             # Email service with test mode support
+  security.py                  # Input sanitization and security validation functions
+  limiter.py                   # Shared Flask-Limiter instance for rate limiting
 
 templates/
   base.html                    # Base template with context-aware navigation and Bootstrap Icons
@@ -586,8 +589,8 @@ test/
 utils/
   setup_oauth_secrets.sh       # OAuth credential setup script for Google Secret Manager
   setup_databases.py           # Firestore database creation script with environment-specific databases
-  generate_test_participants.py # Test data generation script with timestamped emails for uniqueness
-  requirements.txt             # Dependencies for utility scripts (requests, faker, firestore)
+  generate_test_participants.py # Test data generation script with timestamped emails for uniqueness and CSRF token support
+  requirements.txt             # Dependencies for utility scripts (requests, faker, firestore, beautifulsoup4)
 
 OAUTH-SETUP.md                  # Complete OAuth setup instructions
 CLAUDE.md                       # AI assistant instructions and troubleshooting guide
@@ -625,13 +628,77 @@ def get_historical_participants(area_code, years_back=3):
 - Low maintenance overhead for volunteer organization
 - Annual deployment cycle with minimal configuration changes
 
-## Security Considerations
-- Google OAuth integration for all authenticated access
-- Admin whitelist maintained in version control
-- Area leader permissions scoped to assigned areas only
-- Historical data protection (read-only access)
-- CSRF protection on all authenticated forms
-- Session management with appropriate timeouts
+## Security Architecture
+
+### Comprehensive Security Implementation
+The application implements multiple layers of security protection against common web application vulnerabilities:
+
+### Input Sanitization & Validation
+**All user inputs are sanitized using functions from `services/security.py`:**
+- **Names**: `sanitize_name()` - max 100 chars, letters/spaces/hyphens/apostrophes, international character support
+- **Emails**: `sanitize_email()` - max 254 chars, lowercase normalization, valid email character validation
+- **Phone Numbers**: `sanitize_phone()` - max 20 chars, digits/spaces/hyphens/parentheses/plus signs only
+- **Notes/Comments**: `sanitize_notes()` - max 1000 chars, allows newlines, removes control characters
+- **Validation Functions**: `validate_area_code()`, `validate_skill_level()`, `validate_experience()`, `validate_participation_type()`
+
+### XSS Prevention
+**Template Security (ALL user input displays):**
+- HTML escaping using `|e` filter: `{{ user_input|e }}`
+- Prevents script injection in names, emails, phone numbers, notes
+- Applied to: `templates/admin/area_detail.html`, `templates/admin/participants.html`, all admin interfaces
+
+### CSRF Protection  
+**Cross-Site Request Forgery prevention:**
+- Flask-WTF CSRFProtect enabled application-wide
+- All POST forms include `{{ csrf_token() }}` hidden input
+- AJAX requests include `csrf_token: '{{ csrf_token() }}'` in JSON payload
+- Automatic validation on all POST endpoints
+
+### Rate Limiting
+**DoS prevention and cost control for Cloud Run:**
+- **Production Limits**: 10 registrations/minute, 20 API calls/minute, 30 admin actions/minute, 5 auth attempts/minute
+- **Test Environment**: 50 registrations/minute (TEST_MODE detection)
+- **Implementation**: Flask-Limiter with in-memory storage
+- **Cloud Run Protection**: Prevents cost runaway during attacks
+- **Configuration**: `config/rate_limits.py` with environment-based limits
+
+### Suspicious Input Detection
+**Attack pattern recognition:**
+- `is_suspicious_input()` function screens for script injection attempts
+- Detects: `<script>`, `javascript:`, event handlers, `eval()`, document manipulation
+- Security event logging with `log_security_event()`
+- Blocks submissions containing suspicious patterns
+
+### Authentication & Authorization
+**Multi-tier access control:**
+- **Public Access**: Registration and information pages (no auth required)
+- **Admin Access**: Google OAuth + email whitelist in `config/admins.py`
+- **Area Leader Access**: Google OAuth + database verification of leadership assignment
+- **Session Management**: Flask sessions with secure cookie settings
+- **Role Determination**: During OAuth callback with session storage
+
+### Data Security
+**Database and data protection:**
+- **Year-based isolation**: Separate collections per year prevent cross-year data corruption
+- **Historical data protection**: Read-only access to previous years via UI validation
+- **Email deduplication**: Prevents duplicate registrations within same year
+- **Area leader scoping**: Leaders can only access assigned areas
+- **Admin audit trail**: All modifications logged with user attribution
+
+### Environment Security
+**Development vs Production separation:**
+- **Database Isolation**: `cbc-test` vs `cbc-register` databases
+- **Email Safety**: Test mode redirects all emails to admin
+- **Secret Management**: Google Secret Manager for OAuth credentials
+- **Environment Detection**: `TEST_MODE` and `FLASK_ENV` variables
+- **Route Protection**: Test-only routes unavailable in production
+
+### Security Testing
+**Comprehensive security validation:**
+- **Test Script Integration**: `utils/generate_test_participants.py` tests all security features
+- **CSRF Testing**: Automatic token fetching and validation testing
+- **Rate Limit Testing**: `--test-rate-limit` flag validates blocking behavior
+- **Error Classification**: Rate limited, CSRF failures, other failures tracked separately
 
 ## Deployment Architecture
 

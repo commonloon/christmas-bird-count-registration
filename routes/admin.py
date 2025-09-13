@@ -9,6 +9,12 @@ from models.removal_log import RemovalLogModel
 from config.areas import get_area_info, get_all_areas, get_public_areas
 from routes.auth import require_admin, get_current_user
 from services.email_service import email_service
+from services.security import (
+    sanitize_name, sanitize_email, sanitize_phone, sanitize_notes,
+    validate_area_code, is_suspicious_input, log_security_event
+)
+from services.limiter import limiter
+from config.rate_limits import RATE_LIMITS, get_rate_limit_message
 from datetime import datetime
 import csv
 import logging
@@ -30,6 +36,7 @@ def load_db():
 
 @admin_bp.route('/')
 @require_admin
+@limiter.limit(RATE_LIMITS['admin_general'])
 def dashboard():
     """Admin dashboard with year selector and overview."""
     if not g.db:
@@ -163,18 +170,31 @@ def unassigned():
 
 @admin_bp.route('/assign_participant', methods=['POST'])
 @require_admin
+@limiter.limit(RATE_LIMITS['admin_modify'], error_message=get_rate_limit_message('admin_modify'))
 def assign_participant():
     """Assign a participant to an area."""
     if not g.db:
         flash('Database unavailable.', 'error')
         return redirect(url_for('admin.unassigned'))
 
-    participant_id = request.form.get('participant_id')
-    area_code = request.form.get('area_code')
+    # Get and sanitize form data
+    participant_id = request.form.get('participant_id', '').strip()
+    area_code = request.form.get('area_code', '').strip().upper()
     selected_year = int(request.form.get('year', datetime.now().year))
+    
+    # Security checks
+    user = get_current_user()
+    if is_suspicious_input(participant_id) or is_suspicious_input(area_code):
+        log_security_event('Suspicious admin input', f'Assign participant attempt with suspicious data', user.get('email'))
+        flash('Invalid input detected.', 'error')
+        return redirect(url_for('admin.unassigned', year=selected_year))
 
     if not participant_id or not area_code:
         flash('Participant ID and area code are required.', 'error')
+        return redirect(url_for('admin.unassigned', year=selected_year))
+        
+    if not validate_area_code(area_code):
+        flash('Invalid area code.', 'error')
         return redirect(url_for('admin.unassigned', year=selected_year))
 
     participant_model = ParticipantModel(g.db, selected_year)
@@ -252,6 +272,7 @@ def leaders():
 
 @admin_bp.route('/add_leader', methods=['POST'])
 @require_admin
+@limiter.limit(RATE_LIMITS['admin_modify'], error_message=get_rate_limit_message('admin_modify'))
 def add_leader():
     """Manually add a new area leader."""
     if not g.db:
@@ -259,21 +280,44 @@ def add_leader():
         return redirect(url_for('admin.leaders'))
 
     selected_year = int(request.form.get('year', datetime.now().year))
-    first_name = request.form.get('first_name', '').strip()
-    last_name = request.form.get('last_name', '').strip()
-    leader_email = request.form.get('leader_email', '').strip().lower()
-    cell_phone = request.form.get('cell_phone', '').strip()
+    
+    # Get and sanitize form data
+    first_name = sanitize_name(request.form.get('first_name', ''))
+    last_name = sanitize_name(request.form.get('last_name', ''))
+    leader_email = sanitize_email(request.form.get('leader_email', ''))
+    cell_phone = sanitize_phone(request.form.get('cell_phone', ''))
     area_code = request.form.get('area_code', '').strip().upper()
-    notes = request.form.get('notes', '').strip()
+    notes = sanitize_notes(request.form.get('notes', ''))
+    
+    # Security checks
+    user = get_current_user()
+    all_text_inputs = [first_name, last_name, cell_phone, notes]
+    for text_input in all_text_inputs:
+        if is_suspicious_input(text_input):
+            log_security_event('Suspicious admin input', f'Add leader attempt with suspicious input', user.get('email'))
+            flash('Invalid input detected. Please check your entries.', 'error')
+            return redirect(url_for('admin.leaders', year=selected_year))
 
     # Validate required fields
     if not all([first_name, last_name, leader_email, cell_phone, area_code]):
         flash('All required fields must be completed.', 'error')
         return redirect(url_for('admin.leaders', year=selected_year))
+        
+    # Length validations
+    if len(first_name) > 100 or len(last_name) > 100:
+        flash('Names must be 100 characters or less.', 'error')
+        return redirect(url_for('admin.leaders', year=selected_year))
+        
+    if len(leader_email) > 254:
+        flash('Email address is too long.', 'error')
+        return redirect(url_for('admin.leaders', year=selected_year))
+        
+    if len(cell_phone) > 20:
+        flash('Phone number must be 20 characters or less.', 'error')
+        return redirect(url_for('admin.leaders', year=selected_year))
 
     # Validate area code
-    from config.areas import get_area_info
-    if not get_area_info(area_code):
+    if not validate_area_code(area_code):
         flash(f'Invalid area code: {area_code}', 'error')
         return redirect(url_for('admin.leaders', year=selected_year))
 
@@ -524,6 +568,7 @@ def send_unassigned_digest():
 
 @admin_bp.route('/edit_leader', methods=['POST'])
 @require_admin
+@limiter.limit(RATE_LIMITS['admin_modify'], error_message=get_rate_limit_message('admin_modify'))
 def edit_leader():
     """Edit leader information with inline editing."""
     if not g.db:
@@ -535,20 +580,39 @@ def edit_leader():
         if not data:
             return jsonify({'success': False, 'message': 'No data provided'})
 
-        leader_id = data.get('leader_id')
+        # Get and sanitize data
+        leader_id = data.get('leader_id', '').strip()
         area_code = data.get('area_code', '').strip().upper()
-        first_name = data.get('first_name', '').strip()
-        last_name = data.get('last_name', '').strip()
-        leader_email = data.get('leader_email', '').strip().lower()
-        cell_phone = data.get('cell_phone', '').strip()
+        first_name = sanitize_name(data.get('first_name', ''))
+        last_name = sanitize_name(data.get('last_name', ''))
+        leader_email = sanitize_email(data.get('leader_email', ''))
+        cell_phone = sanitize_phone(data.get('cell_phone', ''))
         selected_year = int(data.get('year', datetime.now().year))
+        
+        # Security checks
+        user = get_current_user()
+        all_text_inputs = [first_name, last_name, cell_phone]
+        for text_input in all_text_inputs:
+            if is_suspicious_input(text_input):
+                log_security_event('Suspicious admin input', f'Edit leader attempt with suspicious input', user.get('email'))
+                return jsonify({'success': False, 'message': 'Invalid input detected'})
 
         # Validate required fields
         if not all([leader_id, area_code, first_name, last_name, leader_email]):
             return jsonify({'success': False, 'message': 'All fields are required except phone'})
+            
+        # Length validations
+        if len(first_name) > 100 or len(last_name) > 100:
+            return jsonify({'success': False, 'message': 'Names must be 100 characters or less'})
+            
+        if len(leader_email) > 254:
+            return jsonify({'success': False, 'message': 'Email address is too long'})
+            
+        if len(cell_phone) > 20:
+            return jsonify({'success': False, 'message': 'Phone number must be 20 characters or less'})
 
         # Validate area code
-        if not get_area_info(area_code):
+        if not validate_area_code(area_code):
             return jsonify({'success': False, 'message': f'Invalid area code: {area_code}'})
 
         # Initialize models

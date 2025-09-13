@@ -92,11 +92,11 @@
             <div class="col-md-6 mb-3">
                 <div class="card border-success">
                     <div class="card-body">
-                        <h6 class="card-title">{{ leader.first_name }} {{ leader.last_name }}</h6>
+                        <h6 class="card-title">{{ leader.first_name|e }} {{ leader.last_name|e }}</h6>
                         <p class="card-text">
-                            <strong>Email:</strong> <a href="mailto:{{ leader.leader_email }}">{{ leader.leader_email }}</a><br>
+                            <strong>Email:</strong> <a href="mailto:{{ leader.leader_email|e }}">{{ leader.leader_email|e }}</a><br>
                             {% if leader.cell_phone %}
-                            <strong>Phone:</strong> {{ leader.cell_phone }}<br>
+                            <strong>Phone:</strong> {{ leader.cell_phone|e }}<br>
                             {% endif %}
                             <strong>Assigned:</strong> 
                             {% if leader.assigned_at %}
@@ -153,12 +153,12 @@
                     {% for participant in participants %}
                     <tr>
                         <td>
-                            <strong>{{ participant.first_name }} {{ participant.last_name }}</strong>
+                            <strong>{{ participant.first_name|e }} {{ participant.last_name|e }}</strong>
                             {% if participant.is_leader %}
                                 <span class="badge bg-success ms-1">Leader</span>
                             {% endif %}
                         </td>
-                        <td><a href="mailto:{{ participant.email }}">{{ participant.email }}</a></td>
+                        <td><a href="mailto:{{ participant.email|e }}">{{ participant.email|e }}</a></td>
                         <td>{{ participant.phone or 'N/A' }}</td>
                         <td>
                             <span class="badge bg-{% if participant.skill_level == 'Expert' %}success{% elif participant.skill_level == 'Intermediate' %}primary{% elif participant.skill_level == 'Beginner' %}info{% else %}secondary{% endif %}">
@@ -270,8 +270,8 @@
                 <tbody>
                     {% for participant in historical_participants %}
                     <tr>
-                        <td><strong>{{ participant.first_name }} {{ participant.last_name }}</strong></td>
-                        <td><a href="mailto:{{ participant.email }}">{{ participant.email }}</a></td>
+                        <td><strong>{{ participant.first_name|e }} {{ participant.last_name|e }}</strong></td>
+                        <td><a href="mailto:{{ participant.email|e }}">{{ participant.email|e }}</a></td>
                         <td>
                             {% if participant.years_participated %}
                                 <span class="badge bg-secondary">{{ participant.years_participated|join(', ') }}</span>

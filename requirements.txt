@@ -1,4 +1,6 @@
 Flask
+Flask-WTF
+Flask-Limiter
 google-cloud-firestore
 google-cloud-functions
 gunicorn

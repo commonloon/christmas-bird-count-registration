@@ -1,7 +1,9 @@
 # app.py - Flask application entry point
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session, g
+from flask_wtf.csrf import CSRFProtect
 from google.cloud import firestore
 from config.database import get_firestore_client
+from services.limiter import limiter
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 import os
@@ -12,6 +14,12 @@ import logging
 # Initialize Flask app
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')
+
+# Initialize CSRF protection
+csrf = CSRFProtect(app)
+
+# Initialize rate limiter with the app
+limiter.init_app(app)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

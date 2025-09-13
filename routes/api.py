@@ -2,6 +2,8 @@ from flask import Blueprint, jsonify, request
 from google.cloud import firestore
 from config.database import get_firestore_client
 from models.participant import ParticipantModel
+from services.limiter import limiter
+from config.rate_limits import RATE_LIMITS
 import json
 
 api_bp = Blueprint('api', __name__)
@@ -17,6 +19,7 @@ except Exception as e:
 
 
 @api_bp.route('/areas')
+@limiter.limit(RATE_LIMITS['api_general'])
 def get_areas():
     """Get all areas with current registration counts for map display."""
     try:
@@ -55,6 +58,7 @@ def get_areas():
 
 
 @api_bp.route('/area_counts')
+@limiter.limit(RATE_LIMITS['api_general'])
 def get_area_counts():
     """Get current registration counts by area."""
     if not participant_model:
@@ -68,6 +72,7 @@ def get_area_counts():
 
 
 @api_bp.route('/areas_needing_leaders')
+@limiter.limit(RATE_LIMITS['api_general'])
 def get_areas_needing_leaders():
     """Get all areas with leadership status for map display."""
     try:

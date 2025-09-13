@@ -111,14 +111,14 @@
                             {% for participant in participants %}
                             <tr>
                                 <td>
-                                    <strong>{{ participant.first_name }} {{ participant.last_name }}</strong>
+                                    <strong>{{ participant.first_name|e }} {{ participant.last_name|e }}</strong>
                                     {% if participant.is_leader %}
                                         <span class="badge bg-success ms-1">Leader</span>
                                     {% endif %}
                                     <div class="small text-muted">FEEDER</div>
                                 </td>
-                                <td><a href="mailto:{{ participant.email }}">{{ participant.email }}</a></td>
-                                <td>{{ participant.phone or 'N/A' }}</td>
+                                <td><a href="mailto:{{ participant.email|e }}">{{ participant.email|e }}</a></td>
+                                <td>{{ participant.phone|e or 'N/A' }}</td>
                                 <td>
                                     <span class="badge bg-{% if participant.skill_level == 'Expert' %}success{% elif participant.skill_level == 'Intermediate' %}primary{% elif participant.skill_level == 'Beginner' %}info{% else %}secondary{% endif %}">
                                         {{ participant.skill_level }}
@@ -132,8 +132,8 @@
                                 </td>
                                 <td>
                                     {% if participant.notes_to_organizers %}
-                                        <span class="text-truncate d-inline-block" style="max-width: 150px;" title="{{ participant.notes_to_organizers }}">
-                                            {{ participant.notes_to_organizers[:50] }}{% if participant.notes_to_organizers|length > 50 %}...{% endif %}
+                                        <span class="text-truncate d-inline-block" style="max-width: 150px;" title="{{ participant.notes_to_organizers|e }}">
+                                            {{ participant.notes_to_organizers[:50]|e }}{% if participant.notes_to_organizers|length > 50 %}...{% endif %}
                                         </span>
                                     {% else %}
                                         <span class="text-muted">None</span>
@@ -164,7 +164,7 @@
                                     <div class="btn-group btn-group-sm" role="group">
                                         <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal" 
                                                 data-participant-id="{{ participant.id }}" 
-                                                data-participant-name="{{ participant.first_name }} {{ participant.last_name }}">
+                                                data-participant-name="{{ participant.first_name|e }} {{ participant.last_name|e }}">
                                             Delete
                                         </button>
                                     </div>
@@ -232,13 +232,13 @@
                             {% for participant in participants %}
                             <tr>
                                 <td>
-                                    <strong>{{ participant.first_name }} {{ participant.last_name }}</strong>
+                                    <strong>{{ participant.first_name|e }} {{ participant.last_name|e }}</strong>
                                     {% if participant.is_leader %}
                                         <span class="badge bg-success ms-1">Leader</span>
                                     {% endif %}
                                 </td>
-                                <td><a href="mailto:{{ participant.email }}">{{ participant.email }}</a></td>
-                                <td>{{ participant.phone or 'N/A' }}</td>
+                                <td><a href="mailto:{{ participant.email|e }}">{{ participant.email|e }}</a></td>
+                                <td>{{ participant.phone|e or 'N/A' }}</td>
                                 <td>
                                     <span class="badge bg-{% if participant.skill_level == 'Expert' %}success{% elif participant.skill_level == 'Intermediate' %}primary{% elif participant.skill_level == 'Beginner' %}info{% else %}secondary{% endif %}">
                                         {{ participant.skill_level }}
@@ -252,8 +252,8 @@
                                 </td>
                                 <td>
                                     {% if participant.notes_to_organizers %}
-                                        <span class="text-truncate d-inline-block" style="max-width: 150px;" title="{{ participant.notes_to_organizers }}">
-                                            {{ participant.notes_to_organizers[:50] }}{% if participant.notes_to_organizers|length > 50 %}...{% endif %}
+                                        <span class="text-truncate d-inline-block" style="max-width: 150px;" title="{{ participant.notes_to_organizers|e }}">
+                                            {{ participant.notes_to_organizers[:50]|e }}{% if participant.notes_to_organizers|length > 50 %}...{% endif %}
                                         </span>
                                     {% else %}
                                         <span class="text-muted">None</span>
@@ -284,7 +284,7 @@
                                     <div class="btn-group btn-group-sm" role="group">
                                         <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal" 
                                                 data-participant-id="{{ participant.id }}" 
-                                                data-participant-name="{{ participant.first_name }} {{ participant.last_name }}">
+                                                data-participant-name="{{ participant.first_name|e }} {{ participant.last_name|e }}">
                                             Delete
                                         </button>
                                     </div>
@@ -327,6 +327,7 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <form method="POST" id="deleteForm" class="d-inline">
+                    {{ csrf_token() }}
                     <input type="hidden" name="year" value="{{ selected_year }}">
                     <input type="hidden" name="reason" id="deleteReasonInput">
                     <button type="submit" class="btn btn-danger">Delete Participant</button>

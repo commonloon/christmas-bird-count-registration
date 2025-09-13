@@ -19,14 +19,17 @@ Examples:
 
 import argparse
 import random
+import re
 import requests
 import sys
 import time
 from datetime import datetime
 from faker import Faker
+from bs4 import BeautifulSoup
 
 # Configuration
-REGISTRATION_URL = "https://cbc-test.naturevancouver.ca/register"
+BASE_URL = "https://cbc-test.naturevancouver.ca"
+REGISTRATION_URL = f"{BASE_URL}/register"
 EMAIL_DOMAIN = "naturevancouver.ca"
 
 # Initialize faker for realistic names
@@ -48,6 +51,50 @@ def generate_phone_number():
     exchange = random.randint(200, 999)
     number = random.randint(1000, 9999)
     return f"({area_code}) {exchange}-{number}"
+
+
+def get_csrf_token(session):
+    """Fetch CSRF token from the registration page."""
+    try:
+        response = session.get(BASE_URL, timeout=30)
+        if response.status_code != 200:
+            print(f"Warning: Could not fetch registration page (HTTP {response.status_code})")
+            return None
+        
+        # Try BeautifulSoup first (more reliable)
+        try:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            # Look for CSRF token in hidden input or meta tag
+            csrf_input = soup.find('input', {'name': 'csrf_token'})
+            if csrf_input and csrf_input.get('value'):
+                return csrf_input['value']
+            
+            # Alternative: look for csrf_token() function output
+            csrf_meta = soup.find('meta', {'name': 'csrf-token'})
+            if csrf_meta and csrf_meta.get('content'):
+                return csrf_meta['content']
+                
+        except Exception as e:
+            print(f"Warning: BeautifulSoup parsing failed: {e}")
+        
+        # Fallback: regex search for CSRF token patterns
+        csrf_patterns = [
+            r'name="csrf_token"[^>]*value="([^"]+)"',
+            r'csrf_token[\'"]?\s*:\s*[\'"]([^"\']+)[\'"]',
+            r'<input[^>]*name=[\'"]csrf_token[\'"][^>]*value=[\'"]([^"\']+)[\'"]'
+        ]
+        
+        for pattern in csrf_patterns:
+            match = re.search(pattern, response.text, re.IGNORECASE)
+            if match:
+                return match.group(1)
+        
+        print("Warning: Could not find CSRF token in page")
+        return None
+        
+    except requests.exceptions.RequestException as e:
+        print(f"Warning: Failed to fetch CSRF token: {e}")
+        return None
 
 
 def generate_email(date_str, sequence_num):
@@ -126,15 +173,27 @@ def create_participant_data(email, interested_in_leadership=False, interested_in
     return data
 
 
-def submit_registration(session, participant_data):
-    """Submit registration data to the endpoint."""
+def submit_registration(session, participant_data, csrf_token=None):
+    """Submit registration data to the endpoint with CSRF protection."""
     try:
+        # Add CSRF token if provided
+        if csrf_token:
+            participant_data['csrf_token'] = csrf_token
+        
         response = session.post(
             REGISTRATION_URL,
             data=participant_data,
             timeout=30,
             allow_redirects=True
         )
+        
+        # Check for rate limiting
+        if response.status_code == 429:
+            return False, 429, "Rate limited"
+        
+        # Check for CSRF errors
+        if response.status_code == 400 and csrf_token:
+            return False, 400, "CSRF validation failed"
         
         # Check if registration was successful
         # The endpoint redirects to /success on successful registration
@@ -153,6 +212,76 @@ def submit_registration(session, participant_data):
         return False, 0, str(e)
 
 
+def test_rate_limiting(starting_seq=1):
+    """Test rate limiting by sending 100 registrations as fast as possible."""
+    print(f"Rate Limiting Test Mode")
+    print(f"======================")
+    print(f"Target endpoint: {REGISTRATION_URL}")
+    print(f"Sending 100 registrations as fast as possible to test rate limiting...")
+    print(f"Expected: Some registrations should be blocked with HTTP 429 responses")
+    print()
+    
+    # Generate current date string
+    current_date = datetime.now().strftime('%Y-%m-%d')
+    
+    # Create HTTP session
+    session = requests.Session()
+    
+    # Get CSRF token
+    print("Fetching CSRF token...")
+    csrf_token = get_csrf_token(session)
+    if not csrf_token:
+        print("ERROR: Could not fetch CSRF token. Aborting test.")
+        return 1
+    print(f"CSRF token acquired: {csrf_token[:16]}...")
+    print()
+    
+    successful_registrations = 0
+    rate_limited_count = 0
+    other_failures = 0
+    current_seq = starting_seq
+    
+    print("Sending registrations (fast mode - 0.1 second delays):")
+    
+    for i in range(100):
+        # Generate test participant data
+        email = generate_email(current_date, current_seq)
+        participant_data = create_participant_data(email, interested_in_leadership=False)
+        
+        print(f"  [{current_seq:04d}] {participant_data['first_name']} {participant_data['last_name']} ({email})", end="")
+        
+        success, status_code, final_url = submit_registration(session, participant_data, csrf_token)
+        
+        if success:
+            print(" OK")
+            successful_registrations += 1
+        elif status_code == 429:
+            print(" RATE_LIMITED (expected)")
+            rate_limited_count += 1
+        else:
+            print(f" FAIL (HTTP {status_code})")
+            other_failures += 1
+        
+        current_seq += 1
+        
+        # Very short delay to send rapidly
+        time.sleep(0.1)
+    
+    print()
+    print("Rate Limiting Test Results:")
+    print(f"  Successful registrations: {successful_registrations}")
+    print(f"  Rate limited (HTTP 429): {rate_limited_count}")
+    print(f"  Other failures: {other_failures}")
+    print()
+    
+    if rate_limited_count > 0:
+        print("✅ SUCCESS: Rate limiting is working correctly!")
+    else:
+        print("⚠️  WARNING: No rate limiting detected. Check configuration.")
+    
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Generate test participants for Christmas Bird Count registration",
@@ -164,6 +293,7 @@ Examples:
     python generate_test_participants.py 10 --seq 100      # 10 regular + 5 leadership, emails start at 0100
     python generate_test_participants.py 0 --seq 5000      # 0 regular + 5 leadership, emails start at 5000
     python generate_test_participants.py 20 --scribes 5    # 20 regular + 5 leadership + 5 explicit scribes
+    python generate_test_participants.py --test-rate-limit # Send 100 registrations rapidly to test rate limiting
         """
     )
     
@@ -191,12 +321,22 @@ Examples:
         help='Number of participants specifically interested in scribe role (default: 0, relies on random 10%% generation)'
     )
     
+    parser.add_argument(
+        '--test-rate-limit',
+        action='store_true',
+        help='Test rate limiting by sending 100 registrations as fast as possible (ignores other limits)'
+    )
+    
     args = parser.parse_args()
     
     # Validate arguments
     if args.num_regular < 0:
         print("Error: Number of regular participants cannot be negative")
         sys.exit(1)
+    
+    # Special handling for rate limit testing
+    if args.test_rate_limit:
+        return test_rate_limiting(args.seq)
     
     # Calculate totals
     num_regular = args.num_regular
@@ -225,8 +365,20 @@ Examples:
         'User-Agent': 'CBC-Test-Data-Generator/1.0'
     })
     
+    # Get CSRF token
+    print("Fetching CSRF token...")
+    csrf_token = get_csrf_token(session)
+    if not csrf_token:
+        print("ERROR: Could not fetch CSRF token. Registration will likely fail.")
+        print("Continuing anyway to test error handling...")
+    else:
+        print(f"CSRF token acquired: {csrf_token[:16]}...")
+    print()
+    
     successful_registrations = 0
     failed_registrations = 0
+    csrf_failures = 0
+    rate_limited_count = 0
     current_seq = starting_seq
     
     # Create regular participants
@@ -243,19 +395,25 @@ Examples:
             scribe_indicator = " [SCRIBE]" if participant_data.get('interested_in_scribe') == 'on' else ""
             print(f"  [{current_seq:04d}] {participant_data['first_name']} {participant_data['last_name']} ({email}){unassigned_indicator}{scribe_indicator}", end="")
             
-            success, status_code, final_url = submit_registration(session, participant_data)
+            success, status_code, final_url = submit_registration(session, participant_data, csrf_token)
             
             if success:
                 print(" OK")
                 successful_registrations += 1
+            elif status_code == 429:
+                print(" RATE_LIMITED")
+                rate_limited_count += 1
+            elif status_code == 400:
+                print(" CSRF_FAIL")
+                csrf_failures += 1
             else:
                 print(f" FAIL (HTTP {status_code})")
                 failed_registrations += 1
             
             current_seq += 1
             
-            # Small delay to be respectful to the server
-            time.sleep(0.5)
+            # Small delay to respect rate limits (50/minute = 1.2 seconds)
+            time.sleep(1.2)
     
     # Create leadership-interested participants
     print(f"Creating {num_leadership} leadership-interested participants...")
@@ -296,29 +454,42 @@ Examples:
             scribe_indicator = " [SCRIBE]"
             print(f"  [{current_seq:04d}] {participant_data['first_name']} {participant_data['last_name']} ({email}){scribe_indicator}", end="")
             
-            success, status_code, final_url = submit_registration(session, participant_data)
+            success, status_code, final_url = submit_registration(session, participant_data, csrf_token)
             
             if success:
                 print(" OK")
                 successful_registrations += 1
+            elif status_code == 429:
+                print(" RATE_LIMITED")
+                rate_limited_count += 1
+            elif status_code == 400:
+                print(" CSRF_FAIL")
+                csrf_failures += 1
             else:
                 print(f" FAIL (HTTP {status_code})")
                 failed_registrations += 1
             
             current_seq += 1
             
-            # Small delay to be respectful to the server
-            time.sleep(0.5)
+            # Small delay to respect rate limits (50/minute = 1.2 seconds)
+            time.sleep(1.2)
     
     # Summary
     print()
     print("Registration Summary:")
     print(f"  Successful: {successful_registrations}")
-    print(f"  Failed: {failed_registrations}")
+    print(f"  Rate limited (HTTP 429): {rate_limited_count}")
+    print(f"  CSRF failures (HTTP 400): {csrf_failures}")
+    print(f"  Other failures: {failed_registrations}")
     print(f"  Total attempted: {total_participants}")
     
-    if failed_registrations > 0:
+    total_failures = failed_registrations + csrf_failures + rate_limited_count
+    if total_failures > 0:
         print(f"  Success rate: {(successful_registrations/total_participants)*100:.1f}%")
+        if rate_limited_count > 0:
+            print("  Note: Rate limiting is working correctly!")
+        if csrf_failures > 0:
+            print("  Note: CSRF protection is active!")
         sys.exit(1)
     else:
         print("  All registrations completed successfully! ✓")

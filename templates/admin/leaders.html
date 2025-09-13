@@ -152,6 +152,7 @@
         <p>Manually add a leader who is not registered as a participant (primary workflow):</p>
         
         <form method="POST" action="{{ url_for('admin.add_leader') }}">
+            {{ csrf_token() }}
             <input type="hidden" name="year" value="{{ selected_year }}">
             
             <div class="row">
@@ -255,6 +256,7 @@
                         </td>
                         <td>
                             <form method="POST" action="{{ url_for('admin.assign_leader') }}" class="d-inline">
+                                {{ csrf_token() }}
                                 <input type="hidden" name="participant_id" value="{{ participant.id }}">
                                 <input type="hidden" name="year" value="{{ selected_year }}">
                                 <select name="area_code" class="form-select form-select-sm d-inline w-auto" required>
@@ -408,7 +410,8 @@ document.addEventListener('DOMContentLoaded', function() {
             last_name: row.querySelector('.last-name-input').value.trim(),
             leader_email: row.querySelector('.email-input').value.trim(),
             cell_phone: row.querySelector('.phone-input').value.trim(),
-            year: {{ selected_year }}
+            year: {{ selected_year }},
+            csrf_token: '{{ csrf_token() }}'
         };
         
         // Basic validation

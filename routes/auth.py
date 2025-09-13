@@ -7,6 +7,8 @@ import logging
 
 from config.admins import is_admin
 from models.area_leader import AreaLeaderModel
+from services.limiter import limiter
+from config.rate_limits import RATE_LIMITS, get_rate_limit_message
 
 auth_bp = Blueprint('auth', __name__)
 logger = logging.getLogger(__name__)
@@ -86,6 +88,7 @@ def require_leader(f):
 
 
 @auth_bp.route('/login')
+@limiter.limit(RATE_LIMITS['auth'])
 def login():
     """Initiate Google OAuth login."""
     # In a real implementation, this would redirect to Google OAuth
@@ -97,6 +100,7 @@ def login():
 
 
 @auth_bp.route('/oauth/callback', methods=['POST'])
+@limiter.limit(RATE_LIMITS['auth'], error_message=get_rate_limit_message('auth'))
 def oauth_callback():
     """Handle Google OAuth callback."""
     try:

@@ -1,6 +1,6 @@
 # Email Automation System - Development Notes
 
-## Current Development Status (As of 2025-09-10)
+## Current Development Status (As of 2025-09-12)
 
 ### ✅ Completed Features
 
@@ -36,6 +36,22 @@
 - **Buttons**: Manual trigger for all three email types
 - **Feedback**: JSON response with success/failure details
 - **Logging**: Detailed logs for debugging in Cloud Run
+
+#### 6. Security Implementation (Implemented, Not Yet Deployed)
+- **Input Sanitization**: Created `services/security.py` with sanitization functions for names, emails, phone numbers, notes
+- **CSRF Protection**: Implemented Flask-WTF across all forms (registration, admin interfaces)
+- **Rate Limiting**: Added Flask-Limiter with TEST_MODE-aware configuration (50/min test, 10/min production for registration)
+- **XSS Prevention**: Added HTML escaping throughout admin templates using `|e` filter
+- **Security Integration**: Updated test script (`utils/generate_test_participants.py`) to fetch CSRF tokens with BeautifulSoup
+- **Files Created**: `services/security.py`, `services/limiter.py`, `config/rate_limits.py`
+- **Dependencies Added**: Flask-WTF, Flask-Limiter (main), beautifulsoup4 (utils)
+
+**Implementation Decisions**:
+- Used Flask-WTF for CSRF protection (integrates well with existing Flask app)
+- TEST_MODE-aware rate limits to allow efficient testing while maintaining production security
+- Security code in `services/` (deployed) not `utils/` (excluded by .gcloudignore)
+- Chose to test full security stack rather than bypass it in test environment
+- Input sanitization preserves data integrity while preventing injection attacks
 
 ### ❌ Pending Implementation
 
@@ -154,7 +170,15 @@ Admin Digest: 1 unassigned participants, 0 emails sent
 
 ## Next Development Session Tasks
 
-### Immediate Priority (Email API Setup)
+### Immediate Priority (Security Deployment & Testing)
+1. **Deploy security changes** to test environment (`./deploy.sh test`)
+2. **Test CSRF protection** - verify registration form requires valid CSRF token
+3. **Test rate limiting** - verify limits work correctly on Cloud Run infrastructure
+4. **Test updated test script** - ensure CSRF token fetching works with BeautifulSoup
+5. **Validate input sanitization** - check that malicious inputs are properly cleaned
+6. **Monitor security logs** - check for any rate limit violations or security events
+
+### Secondary Priority (Email API Setup)
 1. **Enable Google Cloud Email API** in project console
 2. **Create service account** with necessary permissions
 3. **Update email service** to use Cloud Email API
@@ -173,7 +197,15 @@ Admin Digest: 1 unassigned participants, 0 emails sent
 3. **Performance optimization** for large participant counts
 4. **Email templates** refinement and testing
 
-### Security Audit (Post Email Implementation)
+### Security Monitoring and Refinement (Post Security Deployment)
+1. **Rate limit adjustment** - Monitor actual usage patterns and adjust limits if needed
+2. **Security log analysis** - Regular review of rate limit violations and blocked requests
+3. **Input sanitization testing** - Test edge cases and malicious input patterns
+4. **CSRF token monitoring** - Check for any CSRF-related failures in logs
+5. **Performance impact assessment** - Ensure security features don't significantly impact response times
+6. **Advanced rate limiting** - Consider implementing more sophisticated rate limiting if simple limits prove insufficient
+
+### Authentication Security Audit (Post Email Implementation)
 1. **Comprehensive route security audit** - verify all admin/leader routes are properly protected
 2. **Authentication decorator verification** - ensure all data viewing/modification routes use appropriate decorators (@require_admin, @require_leader, @require_auth)
 3. **Unauthenticated access review** - verify no sensitive endpoints are accessible to unauthenticated users
@@ -199,7 +231,12 @@ FLASK_ENV=production,DISPLAY_TIMEZONE=$DISPLAY_TIMEZONE
 ```
 # requirements.txt additions
 pytz                          # For timezone handling
+Flask-WTF                     # For CSRF protection
+Flask-Limiter                 # For rate limiting
 google-cloud-email           # TODO: Add for Email API
+
+# utils/requirements.txt additions  
+beautifulsoup4               # For CSRF token parsing in test scripts
 ```
 
 ## Debugging Information
@@ -214,6 +251,10 @@ gcloud run services describe cbc-test --region=us-west1
 
 # Test email triggers (on cbc-test.naturevancouver.ca)
 curl -X POST https://cbc-test.naturevancouver.ca/admin/test/trigger-team-updates
+
+# Test security features
+python utils/generate_test_participants.py 5 --test-rate-limit  # Test rate limiting
+python utils/generate_test_participants.py 20                  # Test normal CSRF operation
 ```
 
 ### Key Log Patterns
@@ -221,15 +262,19 @@ curl -X POST https://cbc-test.naturevancouver.ca/admin/test/trigger-team-updates
 - `ERROR:services.email_service:SMTP credentials not configured` - Email API missing
 - `INFO:test.email_generator:Team update emails completed` - Function completion stats
 - `INFO:services.email_service:Email service initialized in TEST MODE` - Test mode confirmation
+- `ERROR:werkzeug:429 Too Many Requests` - Rate limiting triggered
+- `ERROR:werkzeug:400 Bad Request` - CSRF token validation failed
 
 ### File System Investigation (Container)
-The email system files are properly deployed to the container:
+Files are properly deployed to the container:
 ```
 /app/test/email_generator.py     ✅ Present
 /app/services/email_service.py   ✅ Present  
+/app/services/security.py        ✅ Present (implemented, not yet deployed)
+/app/services/limiter.py         ✅ Present (implemented, not yet deployed)
+/app/config/rate_limits.py       ✅ Present (implemented, not yet deployed)
 /app/templates/emails/           ✅ Present
-/app/utils/                      ❌ Excluded by .gcloudignore (correct)
-```
+/app/utils/                      ❌ Excluded by .gcloudignore (correct - security code moved to services/)
 
 ## Architecture Decisions Made
 
@@ -237,6 +282,8 @@ The email system files are properly deployed to the container:
 - Test routes only exist in test mode
 - Production servers have no test endpoints
 - Email addresses validated before sending
+- Security code placed in `services/` (deployed) rather than `utils/` (excluded)
+- Full security stack testing rather than bypass mechanisms
 
 ### 2. Timezone Strategy  
 - UTC for all storage and calculations
@@ -252,6 +299,13 @@ The email system files are properly deployed to the container:
 - Log errors but continue processing other areas
 - Return detailed status information for debugging
 - Fail gracefully without breaking the main application
+
+### 5. Security Implementation Strategy
+- Flask-WTF chosen for CSRF protection (integrates well with existing Flask architecture)
+- TEST_MODE-aware rate limits to balance testing efficiency with production security
+- Input sanitization preserves data integrity while preventing injection attacks
+- HTML escaping in templates using `|e` filter for XSS prevention
+- Rate limiting with in-memory storage suitable for single-instance Cloud Run deployment
 
 ## Development Status Summary
 

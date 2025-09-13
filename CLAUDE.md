@@ -10,6 +10,48 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Do not suggest the development work is finished
 - Always treat this as work-in-progress requiring ongoing development
 
+## ⚠️ CRITICAL DEPLOYMENT CONSTRAINT ⚠️
+
+**NEVER place application code in the `utils/` directory.** The `utils/` directory contains development-time utilities that run on the development computer and are NOT deployed to Google Cloud Run. Any code needed by the live application must be placed in directories that are included in the deployment (e.g., `services/`, `models/`, `config/`, or the root directory). This constraint must be remembered for ALL future sessions.
+
+## ⚠️ CRITICAL SECURITY REQUIREMENTS ⚠️
+
+**ALL form inputs MUST be properly sanitized and validated.** This application has comprehensive security protections that must be maintained:
+
+### **Input Sanitization (MANDATORY)**
+- **ALL user inputs** must use functions from `services/security.py`
+- **Names**: Use `sanitize_name()` - max 100 chars, letters/spaces/hyphens/apostrophes only
+- **Emails**: Use `sanitize_email()` - max 254 chars, lowercase, valid email chars only  
+- **Phone numbers**: Use `sanitize_phone()` - max 20 chars, digits/spaces/hyphens/parentheses/plus only
+- **Notes/text**: Use `sanitize_notes()` - max 1000 chars, allows newlines
+- **NEVER accept raw form input** without sanitization
+
+### **Template Security (MANDATORY)**
+- **ALL user input displays** must use `|e` filter for HTML escaping: `{{ user_input|e }}`
+- **Required for**: names, emails, phone numbers, notes, any user-generated content
+- **XSS Prevention**: This prevents script injection attacks
+
+### **CSRF Protection (MANDATORY)**
+- **ALL POST forms** must include `{{ csrf_token() }}` in templates
+- **AJAX requests** must include `csrf_token: '{{ csrf_token() }}'` in JSON payload
+- **Already configured**: Flask-WTF automatically validates tokens
+
+### **Rate Limiting (CONFIGURED)**
+- **Current limits**: 10/minute registration (production), 50/minute (TEST_MODE)
+- **DO NOT modify** rate limits without considering cost implications for Cloud Run
+- **Located in**: `config/rate_limits.py` with TEST_MODE detection
+
+### **Security Validation Functions**
+Always use these validation functions from `services/security.py`:
+- `validate_area_code()`, `validate_skill_level()`, `validate_experience()`, `validate_participation_type()`
+- `is_suspicious_input()` - flags potential attack patterns  
+- `log_security_event()` - logs security events for monitoring
+
+### **Testing Security**
+- **Test script updated**: `utils/generate_test_participants.py` tests all security features
+- **Rate limit testing**: Use `--test-rate-limit` flag to validate rate limiting works
+- **CSRF testing**: Script automatically tests CSRF token validation
+
 ## About This Project
 
 This is a Flask web application for Nature Vancouver's annual Christmas Bird Count registration system. Users can register for count areas using an interactive map or dropdown, with automatic assignment to areas needing volunteers.

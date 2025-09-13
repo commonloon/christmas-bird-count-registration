@@ -6,6 +6,13 @@ from models.participant import ParticipantModel
 from models.area_leader import AreaLeaderModel
 from config.areas import get_area_info, get_all_areas, get_public_areas
 from services.email_service import email_service
+from services.security import (
+    sanitize_name, sanitize_email, sanitize_phone, sanitize_notes,
+    validate_area_code, validate_skill_level, validate_experience, 
+    validate_participation_type, is_suspicious_input, log_security_event
+)
+from services.limiter import limiter
+from config.rate_limits import RATE_LIMITS, get_rate_limit_message
 import re
 from datetime import datetime
 
@@ -32,6 +39,7 @@ def index():
 
 
 @main_bp.route('/register', methods=['POST'])
+@limiter.limit(RATE_LIMITS['registration'], error_message=get_rate_limit_message('registration'))
 def register():
     """Handle registration form submission."""
     if not g.db:
@@ -43,49 +51,78 @@ def register():
     participant_model = ParticipantModel(g.db, current_year)
     area_leader_model = AreaLeaderModel(g.db, current_year)
 
-    # Get form data
-    first_name = request.form.get('first_name', '').strip()
-    last_name = request.form.get('last_name', '').strip()
-    email = request.form.get('email', '').strip().lower()
-    phone = request.form.get('phone', '').strip()
-    skill_level = request.form.get('skill_level', '')
-    experience = request.form.get('experience', '')
-    preferred_area = request.form.get('preferred_area', '')
+    # Get and sanitize form data
+    first_name = sanitize_name(request.form.get('first_name', ''))
+    last_name = sanitize_name(request.form.get('last_name', ''))
+    email = sanitize_email(request.form.get('email', ''))
+    phone = sanitize_phone(request.form.get('phone', ''))
+    skill_level = request.form.get('skill_level', '').strip()
+    experience = request.form.get('experience', '').strip()
+    preferred_area = request.form.get('preferred_area', '').strip().upper()
     interested_in_leadership = request.form.get('interested_in_leadership') == 'on'
     interested_in_scribe = request.form.get('interested_in_scribe') == 'on'
     
-    # Get new fields
-    participation_type = request.form.get('participation_type', '')
+    # Get and sanitize new fields
+    participation_type = request.form.get('participation_type', '').strip()
     has_binoculars = request.form.get('has_binoculars') == 'on'
     spotting_scope = request.form.get('spotting_scope') == 'on'
-    notes_to_organizers = request.form.get('notes_to_organizers', '').strip()
+    notes_to_organizers = sanitize_notes(request.form.get('notes_to_organizers', ''))
+    
+    # Security check for suspicious input patterns
+    all_text_inputs = [first_name, last_name, phone, notes_to_organizers]
+    for text_input in all_text_inputs:
+        if is_suspicious_input(text_input):
+            log_security_event('Suspicious input detected', f'Registration attempt with suspicious input: {text_input[:50]}...', email)
+            flash('Invalid input detected. Please check your entries and try again.', 'error')
+            return redirect(url_for('main.index'))
 
-    # Basic validation
+    # Enhanced validation with security checks
     errors = []
 
     if not first_name:
         errors.append('First name is required')
+    elif len(first_name) > 100:
+        errors.append('First name must be 100 characters or less')
+        
     if not last_name:
         errors.append('Last name is required')
+    elif len(last_name) > 100:
+        errors.append('Last name must be 100 characters or less')
+        
     if not email or not is_valid_email(email):
         errors.append('Valid email address is required')
+    elif len(email) > 254:
+        errors.append('Email address is too long')
+        
+    if phone and len(phone) > 20:
+        errors.append('Phone number must be 20 characters or less')
+        
     if not skill_level:
         errors.append('Birding skill level is required')
+    elif not validate_skill_level(skill_level):
+        errors.append('Invalid birding skill level selection')
+        
     if not experience:
         errors.append('CBC experience level is required')
+    elif not validate_experience(experience):
+        errors.append('Invalid CBC experience level selection')
+        
     if not preferred_area:
         errors.append('Area selection is required')
-    if not participation_type or participation_type not in ['regular', 'FEEDER']:
+    elif not validate_area_code(preferred_area):
+        errors.append('Invalid area selection')
+        
+    if not participation_type:
         errors.append('Please select how you would like to participate')
+    elif not validate_participation_type(participation_type):
+        errors.append('Invalid participation type selection')
+        
+    if notes_to_organizers and len(notes_to_organizers) > 1000:
+        errors.append('Notes to organizers must be 1000 characters or less')
 
     # Check if email already registered for current year
     if participant_model.email_exists(email):
         errors.append('This email address is already registered for this year')
-
-    # Validate preferred area (allow all areas including admin-only for validation)
-    valid_areas = get_all_areas() + ['UNASSIGNED']
-    if preferred_area not in valid_areas:
-        errors.append('Invalid area selection')
         
     # Validate FEEDER participant constraints
     if participation_type == 'FEEDER':
