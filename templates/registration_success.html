@@ -1,3 +1,4 @@
+{# Updated by Claude AI on 2025-09-12 #}
 {% extends "base.html" %}
 
 {% block content %}
@@ -5,30 +6,53 @@
     <div class="col-md-8">
         <div class="alert alert-success">
             <h2>Registration Successful!</h2>
-            <p class="mb-0">You have been registered for <strong>{{ area_info.name }}</strong>.</p>
+            {% if area == 'UNASSIGNED' %}
+                <p class="mb-0">You have been registered for assignment wherever you're needed most.</p>
+            {% else %}
+                <p class="mb-0">You have been registered for <strong>{{ area_info.name }}</strong>.</p>
+            {% endif %}
         </div>
         
         <div class="card">
             <div class="card-header">
-                <h3>Area {{ area }} Details</h3>
+                {% if area == 'UNASSIGNED' %}
+                    <h3>Next Steps</h3>
+                {% else %}
+                    <h3>Area {{ area }} Details</h3>
+                {% endif %}
             </div>
             <div class="card-body">
-                <p><strong>Description:</strong> {{ area_info.description }}</p>
-                <p><strong>Terrain:</strong> {{ area_info.terrain }}</p>
-                <p><strong>Difficulty:</strong> {{ area_info.difficulty }}</p>
-                
-                <hr>
+                {% if area != 'UNASSIGNED' %}
+                    <p><strong>Description:</strong> {{ area_info.description }}</p>
+                    <p><strong>Terrain:</strong> {{ area_info.terrain }}</p>
+
+                    <hr>
+                {% endif %}
                 
                 <h4>What's Next?</h4>
                 <ul>
-                    <li>You will receive a confirmation email with count details</li>
-                    <li>Your area leader will contact you with meeting information</li>
-                    <li>The count typically begins early in the morning</li>
-                    <li>Bring warm clothes, binoculars, and a sense of adventure!</li>
+                    {% if area == 'UNASSIGNED' %}
+                        <li>You will receive an email when an administrator has assigned you to a count area, probably within the next week.
+                        <li>Once assigned, your area leader will be your main contact for information about count day. They will contact you to let you know where to meet, areas you'll survey, etc.
+                    {% else %}
+                        <li>Your area leader is your main contact for information about count day. They will contact you to let you know where to meet, areas you'll survey, etc.
+                    {% endif %}
+                    <li>The count typically begins early in the morning, and lasts until dusk. Please let your area leader know if you aren't available for the full day.
+                    <li>The Christmas Bird Count happens rain or shine. Dress to stay warm and dry.
+                    <li>Bring binoculars and a sense of adventure!
+
                 </ul>
                 
                 <div class="alert alert-info">
-                    <strong>Important:</strong> Please check your email regularly as your area leader will send count day details closer to the event.
+                    {% if area == 'UNASSIGNED' %}
+                        <strong>Important:</strong> Please check your email regularly for area assignment updates and count day details.
+                    {% else %}
+                        <strong>Important:</strong> Please check your email regularly as your area leader will send count day details closer to the event.
+                    {% endif %}
+                </div>
+                
+                <div class="alert alert-secondary">
+                    <strong>Need to make changes?</strong> If you need to cancel your participation or update your contact information, please email <a href="mailto:cbc@naturevancouver.ca">cbc@naturevancouver.ca</a>
                 </div>
             </div>
         </div>

@@ -586,7 +586,7 @@ test/
 utils/
   setup_oauth_secrets.sh       # OAuth credential setup script for Google Secret Manager
   setup_databases.py           # Firestore database creation script with environment-specific databases
-  generate_test_participants.py # Test data generation script for development/testing
+  generate_test_participants.py # Test data generation script with timestamped emails for uniqueness
   requirements.txt             # Dependencies for utility scripts (requests, faker, firestore)
 
 OAUTH-SETUP.md                  # Complete OAuth setup instructions
@@ -703,7 +703,9 @@ rm client_secret.json             # Remove sensitive file
 - Google Identity Services (not traditional OAuth redirect flow)
 - Client credentials must be stored in Google Secret Manager (never in code)
 - OAuth consent screen must be **published** for authentication to work
-- **Common Issue**: Trailing newlines in client ID secrets cause "invalid_client" errors
+- **Common Issues**: 
+   - Trailing newlines in client ID secrets cause "invalid_client" errors
+   - Duplicate email addresses cause registration failures (test script now uses timestamped emails for uniqueness)
 
 **Database Design:**
 - All Firestore operations must include explicit year fields for data integrity
@@ -764,11 +766,14 @@ python setup_databases.py --force        # Recreate all databases (with confirma
 ### Test Data Generation
 For development and testing purposes:
 ```bash
-# Generate test participants
-python generate_test_participants.py                    # 20 regular + 5 leadership
-python generate_test_participants.py 50                # 50 regular + 5 leadership  
+# Generate test participants with unique timestamped emails
+python generate_test_participants.py                    # 20 regular + 5 leadership + random scribes
+python generate_test_participants.py 50                # 50 regular + 5 leadership + random scribes  
 python generate_test_participants.py 10 --seq 100      # 10 regular + 5 leadership, start at email 0100
 python generate_test_participants.py 0 --seq 5000      # 0 regular + 5 leadership, start at email 5000
+python generate_test_participants.py 20 --scribes 5    # 20 regular + 5 leadership + 5 explicit scribes
+
+# Email format includes timestamp for uniqueness: birdcount-YYYY-MM-DD-TIMESTAMP-NNNN@naturevancouver.ca
 ```
 
 ### Testing and Validation
@@ -794,6 +799,9 @@ gcloud run services logs read SERVICE --region=us-west1 --limit=50
 
 # Verify Firestore connectivity and permissions
 # (Admin dashboard should load without database errors)
+
+# Test participant registration
+python utils/generate_test_participants.py 2 --scribes 1  # Should create 2 regular + 5 leadership + 1 scribe participants
 ```
 
 ## File Modification Guidelines
