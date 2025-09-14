@@ -152,7 +152,7 @@
         <p>Manually add a leader who is not registered as a participant (primary workflow):</p>
         
         <form method="POST" action="{{ url_for('admin.add_leader') }}">
-            {{ csrf_token() }}
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="year" value="{{ selected_year }}">
             
             <div class="row">
@@ -256,7 +256,7 @@
                         </td>
                         <td>
                             <form method="POST" action="{{ url_for('admin.assign_leader') }}" class="d-inline">
-                                {{ csrf_token() }}
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <input type="hidden" name="participant_id" value="{{ participant.id }}">
                                 <input type="hidden" name="year" value="{{ selected_year }}">
                                 <select name="area_code" class="form-select form-select-sm d-inline w-auto" required>
@@ -437,7 +437,8 @@ document.addEventListener('DOMContentLoaded', function() {
         fetch('{{ url_for("admin.edit_leader") }}', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-CSRFToken': formData.csrf_token
             },
             body: JSON.stringify(formData)
         })
@@ -491,7 +492,8 @@ document.addEventListener('DOMContentLoaded', function() {
         fetch('{{ url_for("admin.delete_leader") }}', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
             },
             body: JSON.stringify({
                 leader_id: leaderId,

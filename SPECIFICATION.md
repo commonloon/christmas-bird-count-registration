@@ -360,6 +360,7 @@ AREA_CONFIG = {
 ### Area Access Logic
 - **Public Registration**: Uses `get_public_areas()` - shows only areas with `admin_assignment_only: False` (A-S, U-X)
 - **Admin Interfaces**: Uses `get_all_areas()` - shows all areas including admin-only (A-Y)
+- **Dynamic Validation**: `validate_area_code()` automatically validates against current `AREA_CONFIG` keys, making the system portable for other clubs with different area naming schemes (numbers, custom codes, etc.)
 - **Multiple Leaders**: All areas support multiple leaders per area (business rule enforced in application)
 - **Map Display**: Public maps show public areas only (based on static boundaries JSON)
 
@@ -372,9 +373,11 @@ AREA_CONFIG = {
 - Polygon coordinates for map display (restricted areas may not have public map boundaries)
 
 Static configuration in `config/areas.py` (no year dependency) with helper functions:
-- `get_all_areas()`: Returns all area codes A-Y
-- `get_public_areas()`: Returns only public areas (excludes admin-only areas T, Y)
+- `get_all_areas()`: Returns all configured area codes (dynamically reads from `AREA_CONFIG.keys()`)
+- `get_public_areas()`: Returns only public areas (excludes admin-only areas)
 - `get_area_info(code)`: Returns area configuration details
+
+**Portability Design**: The system uses dynamic area validation based on `AREA_CONFIG` keys rather than hardcoded patterns, making it easy to adapt for other Christmas Bird Count clubs with different area naming schemes (numbers, regions, custom codes).
 
 ## Key Implementation Details
 
@@ -639,7 +642,9 @@ The application implements multiple layers of security protection against common
 - **Emails**: `sanitize_email()` - max 254 chars, lowercase normalization, valid email character validation
 - **Phone Numbers**: `sanitize_phone()` - max 20 chars, digits/spaces/hyphens/parentheses/plus signs only
 - **Notes/Comments**: `sanitize_notes()` - max 1000 chars, allows newlines, removes control characters
-- **Validation Functions**: `validate_area_code()`, `validate_skill_level()`, `validate_experience()`, `validate_participation_type()`
+- **Validation Functions**:
+  - `validate_area_code()` - Dynamic validation against `AREA_CONFIG` keys (supports any naming scheme)
+  - `validate_skill_level()`, `validate_experience()`, `validate_participation_type()` - Predefined value validation
 
 ### XSS Prevention
 **Template Security (ALL user input displays):**

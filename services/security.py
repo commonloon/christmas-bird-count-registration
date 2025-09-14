@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2025-09-12
+# Updated by Claude AI on 2025-09-13
 """
 Security utilities for input sanitization and validation.
 Provides functions to prevent XSS attacks and ensure data integrity.
@@ -8,6 +8,7 @@ import html
 import re
 from typing import Optional, Any
 import logging
+from config.areas import get_all_areas
 
 logger = logging.getLogger(__name__)
 
@@ -159,20 +160,20 @@ def sanitize_notes(notes: str) -> str:
 
 def validate_area_code(area_code: str) -> bool:
     """
-    Validate area code format.
-    
+    Validate area code against configured areas.
+
     Args:
         area_code: Area code to validate
-        
+
     Returns:
-        True if valid area code format
+        True if valid area code (exists in AREA_CONFIG or is "UNASSIGNED")
     """
     if not isinstance(area_code, str):
         return False
-    
-    # Valid area codes are A-X or UNASSIGNED
-    pattern = r'^[A-X]$|^UNASSIGNED$'
-    return bool(re.match(pattern, area_code.upper()))
+
+    # Valid area codes are any configured area or UNASSIGNED
+    valid_areas = get_all_areas()
+    return area_code in valid_areas or area_code == "UNASSIGNED"
 
 def validate_skill_level(skill_level: str) -> bool:
     """
