@@ -87,9 +87,9 @@ def dashboard():
 def participants():
     """View and manage all participants."""
     if not g.db:
-        return render_template('admin/participants.html', 
-                             feeder_participants=[], 
-                             regular_participants=[], 
+        return render_template('admin/participants.html',
+                             participants=[],
+                             area_leaders={},
                              error="Database unavailable")
 
     selected_year = int(request.args.get('year', datetime.now().year))
@@ -109,37 +109,8 @@ def participants():
                 area_leaders[area] = []
             area_leaders[area].append(leader)
     
-    # Group participants by type and area, then sort
-    feeder_participants = {}
-    regular_participants = {}
-    
-    for participant in all_participants:
-        participation_type = participant.get('participation_type', 'regular')
-        area = participant.get('preferred_area', 'UNASSIGNED')
-        
-        if participation_type == 'FEEDER':
-            if area not in feeder_participants:
-                feeder_participants[area] = []
-            feeder_participants[area].append(participant)
-        else:
-            if area not in regular_participants:
-                regular_participants[area] = []
-            regular_participants[area].append(participant)
-    
-    # Sort areas alphabetically and participants within each area by first name
-    def sort_area_dict(area_dict):
-        sorted_dict = {}
-        for area in sorted(area_dict.keys()):
-            sorted_dict[area] = sorted(area_dict[area], 
-                                     key=lambda p: (p.get('first_name', '').lower(), p.get('last_name', '').lower()))
-        return sorted_dict
-    
-    feeder_participants = sort_area_dict(feeder_participants)
-    regular_participants = sort_area_dict(regular_participants)
-
     return render_template('admin/participants.html',
-                           feeder_participants=feeder_participants,
-                           regular_participants=regular_participants,
+                           participants=all_participants,
                            area_leaders=area_leaders,
                            selected_year=selected_year,
                            available_years=available_years,
