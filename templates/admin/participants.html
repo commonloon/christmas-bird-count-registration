@@ -212,7 +212,7 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <form method="POST" id="deleteForm" class="d-inline">
-                    {{ csrf_token() }}
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="year" value="{{ selected_year }}">
                     <input type="hidden" name="reason" id="deleteReasonInput">
                     <button type="submit" class="btn btn-danger">Delete Participant</button>

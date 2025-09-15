@@ -10,6 +10,9 @@ from models.area_leader import AreaLeaderModel
 from services.limiter import limiter
 from config.rate_limits import RATE_LIMITS, get_rate_limit_message
 
+# Import CSRF protection instance
+from app import csrf
+
 auth_bp = Blueprint('auth', __name__)
 logger = logging.getLogger(__name__)
 
@@ -100,6 +103,7 @@ def login():
 
 
 @auth_bp.route('/oauth/callback', methods=['POST'])
+@csrf.exempt
 @limiter.limit(RATE_LIMITS['auth'], error_message=get_rate_limit_message('auth'))
 def oauth_callback():
     """Handle Google OAuth callback."""
