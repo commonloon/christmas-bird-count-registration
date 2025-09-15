@@ -191,15 +191,15 @@ def validate_skill_level(skill_level: str) -> bool:
 def validate_experience(experience: str) -> bool:
     """
     Validate CBC experience selection.
-    
+
     Args:
         experience: Experience level to validate
-        
+
     Returns:
         True if valid experience level
     """
-    valid_experience = ['first_time', 'occasional', 'regular', 'veteran']
-    return experience.lower() in valid_experience
+    valid_experience = ['None', '1-2 counts', '3+ counts']
+    return experience in valid_experience
 
 def validate_participation_type(participation_type: str) -> bool:
     """

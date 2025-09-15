@@ -2,6 +2,7 @@
 let map;
 let areaLayers = {};
 let selectedArea = null;
+let isUpdatingProgrammatically = false;
 
 // Initialize map when page loads
 document.addEventListener('DOMContentLoaded', function() {
@@ -134,10 +135,18 @@ function updateAreaSelection(areaCode, areaName) {
     // Update dropdown
     const dropdown = document.getElementById('preferred_area');
     if (dropdown) {
+        // Set flag to prevent recursive calls
+        isUpdatingProgrammatically = true;
+        window.isUpdatingProgrammatically = true;
+
         dropdown.value = areaCode;
 
         // Trigger change event for any listeners
         dropdown.dispatchEvent(new Event('change'));
+
+        // Reset flag
+        isUpdatingProgrammatically = false;
+        window.isUpdatingProgrammatically = false;
     }
 
     // Update visual feedback
@@ -204,5 +213,6 @@ function highlightAreaFromDropdown(areaCode) {
     }
 }
 
-// Export function for use by other scripts
+// Export function and flag for use by other scripts
 window.highlightAreaFromDropdown = highlightAreaFromDropdown;
+window.isUpdatingProgrammatically = isUpdatingProgrammatically;

@@ -134,7 +134,15 @@ def register():
     if errors:
         for error in errors:
             flash(error, 'error')
-        return redirect(url_for('main.index'))
+
+        # Preserve all form data programmatically for restoration
+        form_data = request.form.to_dict()
+
+        public_areas = get_public_areas()
+        return render_template('index.html',
+                             public_areas=public_areas,
+                             get_area_info=get_area_info,
+                             form_data=form_data)
 
     # Check if this email belongs to an existing area leader
     # If so, auto-assign them to their led area

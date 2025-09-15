@@ -13,6 +13,11 @@ function initializeFormHandlers() {
     // Handle dropdown changes
     if (areaDropdown) {
         areaDropdown.addEventListener('change', function(e) {
+            // Skip processing if this is a programmatic update from the map
+            if (window.isUpdatingProgrammatically) {
+                return;
+            }
+
             const selectedValue = e.target.value;
 
             if (selectedValue && typeof window.highlightAreaFromDropdown === 'function') {
