@@ -41,8 +41,11 @@
 <!-- Current Leaders -->
 {% if all_leaders %}
 <div class="card mb-4">
-    <div class="card-header">
+    <div class="card-header d-flex justify-content-between align-items-center">
         <h5 class="mb-0">Current Area Leaders ({{ all_leaders|length }})</h5>
+        <a href="{{ url_for('admin.leaders', year=selected_year, format='csv') }}" class="btn btn-success btn-sm">
+            <i class="fas fa-download"></i> Export CSV
+        </a>
     </div>
     <div class="card-body">
         <div class="table-responsive">

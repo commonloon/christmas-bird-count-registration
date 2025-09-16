@@ -230,6 +230,41 @@ def leaders():
     leadership_interested = participant_model.get_participants_interested_in_leadership()
     all_areas = get_all_areas()
 
+    # Check if CSV export is requested
+    if request.args.get('format') == 'csv':
+        # Create CSV in memory
+        output = StringIO()
+        writer = csv.writer(output)
+
+        if all_leaders:
+            # Get all field names from the first leader record
+            fieldnames = list(all_leaders[0].keys())
+
+            # Write CSV header
+            writer.writerow(fieldnames)
+
+            # Sort leaders by area code
+            sorted_leaders = sorted(all_leaders, key=lambda x: x.get('area_code', ''))
+
+            # Write leader data
+            for leader in sorted_leaders:
+                row = []
+                for field in fieldnames:
+                    value = leader.get(field, '')
+                    # Handle datetime objects
+                    if hasattr(value, 'strftime'):
+                        value = value.strftime('%Y-%m-%d %H:%M:%S')
+                    row.append(value)
+                writer.writerow(row)
+
+        # Create response
+        output.seek(0)
+        response = make_response(output.getvalue())
+        response.headers['Content-Disposition'] = f'attachment; filename=area_leaders_{selected_year}_{datetime.now().strftime("%Y%m%d")}.csv'
+        response.headers['Content-type'] = 'text/csv'
+
+        return response
+
     return render_template('admin/leaders.html',
                            all_leaders=all_leaders,
                            areas_without_leaders=areas_without_leaders,
