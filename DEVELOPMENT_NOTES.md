@@ -185,11 +185,18 @@ Admin Digest: 1 unassigned participants, 0 emails sent
 4. **Test email delivery** end-to-end
 5. **Verify test mode** redirects work correctly
 
-### Secondary Priority (Data Investigation)  
+### Secondary Priority (Data Investigation)
 1. **Investigate area leader distribution** - why only 4 areas?
 2. **Add better error handling** for email failures
 3. **Improve logging** for debugging email issues
 4. **Test with more realistic data** distribution
+
+### Bug: Missing Area Y Boundary Data (2025-09-15)
+- **Issue**: `static/data/area_boundaries.json` contains 24 areas (A-X) but `config/areas.py` defines 25 areas (A-Y)
+- **Area Y**: "Burrard Inlet/English Bay" - boat-based marine counting area (admin-only)
+- **Impact**: Caused off-by-one error in leaders map legend (showed 4 instead of 5 areas with leaders)
+- **Current Fix**: JavaScript now uses areas.py count for legend calculations
+- **TODO**: Add Area Y boundary data to area_boundaries.json (marine boundary polygon)
 
 ### Future Sessions (Production Features)
 1. **Cloud Scheduler** setup for automated triggers

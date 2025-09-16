@@ -322,6 +322,9 @@ window.leaderData["{{ leader.area_code }}"].push("{{ leader.first_name }} {{ lea
 {% endfor %}
 {% endif %}
 
+// Make all areas list available to the map JavaScript
+window.allAreas = {{ all_areas | tojson }};
+
 // Inline editing functionality for leaders table
 document.addEventListener('DOMContentLoaded', function() {
     let leaderIdToDelete = null;

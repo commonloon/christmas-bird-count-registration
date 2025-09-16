@@ -118,8 +118,9 @@ function displayAreasNeedingLeaders(allAreas, areasWithoutLeaders) {
         };
     });
 
-    // Update legend
-    updateLeadersMapLegend(areasWithoutLeaders.length, allAreas.length - areasWithoutLeaders.length);
+    // Update legend - use window.allAreas for consistent total count
+    const totalAreas = window.allAreas ? window.allAreas.length : allAreas.length;
+    updateLeadersMapLegend(areasWithoutLeaders.length, totalAreas - areasWithoutLeaders.length);
 }
 
 function getLeadershipStyle(needsLeader) {
@@ -253,7 +254,13 @@ function clearMapLayers() {
 
 // Calculate areas needing leaders from current window.leaderData
 function calculateAreasNeedingLeaders() {
-    const allAreas = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X'];
+    // Use areas list provided by template
+    const allAreas = window.allAreas;
+    if (!allAreas || allAreas.length === 0) {
+        console.error('Areas not configured properly in areas.py');
+        return [];
+    }
+
     const areasWithLeaders = new Set();
     
     // Check which areas have leaders based on current window.leaderData
