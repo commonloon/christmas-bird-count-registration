@@ -1,5 +1,5 @@
 # Vancouver Christmas Bird Count Registration App - Complete Specification
-{# Updated by Claude AI on 2025-09-12 #}
+{# Updated by Claude AI on 2025-09-15 #}
 
 ## Overview
 Web application for Nature Vancouver's annual Christmas Bird Count registration with interactive map-based area selection. Users can register by clicking count areas on a map or using a dropdown menu, with automatic assignment to areas needing volunteers.
@@ -99,7 +99,10 @@ ADMIN_EMAILS = [
 - **FEEDER Participant Constraints**:
   - Cannot select "UNASSIGNED" (must choose specific area)
   - Cannot indicate leadership interest (disabled automatically)
-  - Represented ~20% of participant population
+- **Form Data Preservation**:
+  - Validation errors preserve all user input using `request.form.to_dict()`
+  - Template restoration via JavaScript handles all form field types automatically
+  - Prevents user frustration from losing form data on validation errors
 - **Validation Rules**:
   - Email validation and duplicate registration prevention (per year)
   - Client-side and server-side validation for FEEDER constraints
@@ -187,18 +190,21 @@ ADMIN_EMAILS = [
 - Manual leader entry form with validation and business rule enforcement (primary workflow)
 - Participant-to-leader promotion from "Potential Leaders" list (exceptional case)
 - Areas without assigned leaders highlighted on map and listed below
-- Map legend showing counts of areas with/without leaders
+- Map legend showing accurate counts of areas with/without leaders (template-driven from areas.py configuration)
 - Enhanced area dropdowns with proper area codes and names
 - **Potential Leaders Assignment**: Dropdown shows all areas (including admin-only areas T, Y) allowing multiple leaders per area
 - Integration logic: auto-assign leader registrations, sync participant promotions
 
 **Export and Reporting**
-- **Comprehensive CSV Export**: All participant fields including new registration data:
-  - Personal information (name, email, phone)
-  - Experience data (skill level, CBC experience)
-  - Participation type (regular/FEEDER)
-  - Equipment information (binoculars, spotting scope)
-  - Notes to organizers
+- **Participants CSV Export**: Dynamic export of all participant fields via `/export_csv` route
+  - Programmatic field inclusion - automatically adapts to model changes
+  - Sorted by area → participation type → first name for logical organization
+  - Filename format: `cbc_participants_YYYY_MMDD.csv`
+  - Includes all registration data, contact information, and preferences
+- **Leaders CSV Export**: Dynamic export of all leader fields via `?format=csv` parameter
+  - Programmatic field inclusion - automatically adapts to model changes
+  - Sorted by area code for logical organization
+  - Filename format: `area_leaders_YYYY_MMDD.csv`
   - Area assignments and leadership data
   - Registration timestamps and year
 - **Export Sorting**: Data sorted alphabetically by area → participation type → first name
@@ -330,46 +336,42 @@ ADMIN_EMAILS = [
 The application uses a flexible area management system that allows clubs to designate certain areas as admin-only, which means that only admins can assign participants to the designated areas:
 
 ```python
-# config/areas.py
+# config/areas.py - Example structure (actual definitions organization-specific)
 AREA_CONFIG = {
-    'A': {
-        'name': 'Area A - North Shore West',
-        'description': 'West of the Capilano River, North of the Trans Canada Highway',
-        'difficulty': 'Moderate',
-        'terrain': 'Mountainous, some trails',
-        'admin_assignment_only': False  # Available for public registration
+    '[CODE]': {
+        'name': '[Area Name]',
+        'description': '[Area description]',
+        'difficulty': 'Easy|Moderate|Difficult',
+        'terrain': '[Terrain type description]',
+        'admin_assignment_only': False  # Public registration allowed
     },
-    # ... areas B-S, U-X with admin_assignment_only: False
-    'T': {
-        'name': 'Area T - Richmond East',
-        'description': 'Vancouver International Airport and surrounds',
-        'difficulty': 'Easy',
-        'terrain': 'Airport and surrounds',
-        'admin_assignment_only': True   # Restricted access area
-    },
-    'Y': {
-        'name': 'Area Y - Burrard Inlet/English Bay',
-        'description': 'This area is counted from one or more boats',
-        'difficulty': 'Moderate',
-        'terrain': 'Marine, boat-based counting',
-        'admin_assignment_only': True   # Marine area surveyed by boat
+    '[CODE]': {
+        'name': '[Restricted Area Name]',
+        'description': '[Area description]',
+        'difficulty': '[Level]',
+        'terrain': '[Terrain type]',
+        'admin_assignment_only': True   # Admin assignment required (restricted access)
     }
+    # Area codes and structure depend on organization's count circle design
 }
 ```
 
 ### Area Access Logic
-- **Public Registration**: Uses `get_public_areas()` - shows only areas with `admin_assignment_only: False` (A-S, U-X)
-- **Admin Interfaces**: Uses `get_all_areas()` - shows all areas including admin-only (A-Y)
+- **Public Registration**: Uses `get_public_areas()` - shows only areas with `admin_assignment_only: False`
+- **Admin Interfaces**: Uses `get_all_areas()` - shows all areas including admin-only assignments
 - **Dynamic Validation**: `validate_area_code()` automatically validates against current `AREA_CONFIG` keys, making the system portable for other clubs with different area naming schemes (numbers, custom codes, etc.)
+- **Boundary Matching**: All areas in `config/areas.py` must have corresponding boundaries in `static/data/area_boundaries.json` for map rendering
+  - Map JavaScript uses template-driven area counts to avoid discrepancies
+  - Admin-assignment-only areas may omit boundaries if they don't need public map display
 - **Multiple Leaders**: All areas support multiple leaders per area (business rule enforced in application)
 - **Map Display**: Public maps show public areas only (based on static boundaries JSON)
 
 ### Area Data Structure
-25 count areas with no capacity limits (areas accommodate varying numbers based on habitat and accessibility):
-- Letter codes A-Y (25 areas total)
-- Descriptive names and geographic boundaries  
-- Difficulty level and terrain type
-- Admin-assignment-only flag requires admins to perform participant assignment for some areas, e.g. airports with restricted access or marine areas surveyed by boat
+Count areas with no capacity limits (areas accommodate varying numbers based on habitat and accessibility):
+- Area definitions configured in `config/areas.py` with letter code keys
+- Geographic boundaries must match in `static/data/area_boundaries.json` for map rendering
+- Each area includes: descriptive name, description, difficulty level, terrain type
+- Admin-assignment-only flag requires admins to perform participant assignment for restricted areas (e.g. airports, marine boat-based areas)
 - Polygon coordinates for map display (restricted areas may not have public map boundaries)
 
 Static configuration in `config/areas.py` (no year dependency) with helper functions:
@@ -531,7 +533,7 @@ Dockerfile                      # Container configuration for Cloud Run
 deploy.sh                       # Automated deployment script (test/production/both)
 
 config/
-  areas.py                      # Static area definitions (24 areas A-X)
+  areas.py                      # Static area definitions with letter code keys (e.g. A-Y for Nature Vancouver)
   settings.py                   # Environment configuration
   admins.py                     # Admin email whitelist
   colors.py                     # Color palette definitions with 20 distinct accessibility colors
@@ -580,7 +582,7 @@ templates/
 static/
   css/main.css                 # Bootstrap-based responsive styling with CSS custom properties
   js/map.js                    # Leaflet.js interactive map functionality for registration
-  js/leaders-map.js            # Leaflet.js interactive map for leaders page with live refresh capability
+  js/leaders-map.js            # Leaflet.js interactive map for leaders page with live refresh capability and template-driven area list integration
   js/registration.js           # Enhanced form validation with FEEDER constraint handling and map-form synchronization
   icons/scope.svg              # Custom spotting scope icon for equipment display
   data/area_boundaries.json    # GeoJSON area polygons for map rendering
@@ -652,11 +654,12 @@ The application implements multiple layers of security protection against common
 - Prevents script injection in names, emails, phone numbers, notes
 - Applied to: `templates/admin/area_detail.html`, `templates/admin/participants.html`, all admin interfaces
 
-### CSRF Protection  
+### CSRF Protection
 **Cross-Site Request Forgery prevention:**
 - Flask-WTF CSRFProtect enabled application-wide
-- All POST forms include `{{ csrf_token() }}` hidden input
+- All POST forms include `<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">`
 - AJAX requests include `csrf_token: '{{ csrf_token() }}'` in JSON payload
+- OAuth callback exempt from CSRF (secure via JWT cryptographic validation)
 - Automatic validation on all POST endpoints
 
 ### Rate Limiting

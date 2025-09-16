@@ -506,34 +506,26 @@ def export_csv():
     
     sorted_participants = sorted(participants, key=sort_key)
 
-    # Write header
-    writer.writerow([
-        'First Name', 'Last Name', 'Email', 'Phone', 'Skill Level',
-        'Experience', 'Area', 'Participation Type', 'Has Binoculars', 'Spotting Scope',
-        'Notes to Organizers', 'Area Leader', 'Leadership Interest', 'Scribe Interest',
-        'Registration Date', 'Year'
-    ])
+    if sorted_participants:
+        # Get all field names from the first participant record
+        fieldnames = list(sorted_participants[0].keys())
 
-    # Write participant data
-    for p in sorted_participants:
-        writer.writerow([
-            p.get('first_name', ''),
-            p.get('last_name', ''),
-            p.get('email', ''),
-            p.get('phone', ''),
-            p.get('skill_level', ''),
-            p.get('experience', ''),
-            p.get('preferred_area', ''),
-            p.get('participation_type', 'regular'),
-            'Yes' if p.get('has_binoculars', False) else 'No',
-            'Yes' if p.get('spotting_scope', False) else 'No',
-            p.get('notes_to_organizers', ''),
-            'Yes' if p.get('is_leader', False) else 'No',
-            'Yes' if p.get('interested_in_leadership', False) else 'No',
-            'Yes' if p.get('interested_in_scribe', False) else 'No',
-            p.get('created_at', '').strftime('%Y-%m-%d %H:%M') if p.get('created_at') else '',
-            selected_year
-        ])
+        # Write CSV header
+        writer.writerow(fieldnames)
+
+        # Write participant data
+        for p in sorted_participants:
+            row = []
+            for field in fieldnames:
+                value = p.get(field, '')
+                # Handle datetime objects
+                if hasattr(value, 'strftime'):
+                    value = value.strftime('%Y-%m-%d %H:%M')
+                # Handle boolean values
+                elif isinstance(value, bool):
+                    value = 'Yes' if value else 'No'
+                row.append(value)
+            writer.writerow(row)
 
     # Prepare response
     response = make_response(output.getvalue())

@@ -380,3 +380,14 @@ The email automation system has made significant progress with most core feature
 - **Error Handling**: Graceful failure with detailed logging
 
 **Next Session Requirements**: Focus on Google Cloud Email API setup, production automation configuration, and email service integration.
+
+### CSV Export Field Enumeration Risk (2025-09-15)
+- **Current Implementation**: Both participant and leader CSV exports use dynamic field enumeration from first record
+- **Benefit**: Automatically adapts when model fields change without code updates
+- **Risk**: NoSQL database has no schema enforcement - if first record is missing fields that exist in other records, those fields won't appear in CSV output
+- **Additional Risk**: Complicates providing sensible default values for missing fields (e.g., 'No' for boolean fields, formatted dates)
+- **Mitigation**: Current data entry process ensures consistent field presence, but this could become problematic with:
+  - Historical data migration
+  - Manual database edits
+  - Schema evolution over time
+- **Future Consideration**: May need to return to explicit field enumeration with default value handling for production robustness
