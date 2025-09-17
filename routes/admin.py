@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2025-09-12
+# Updated by Claude AI on 2025-09-17
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response, g, current_app
 from google.cloud import firestore
 from config.database import get_firestore_client
@@ -104,6 +104,46 @@ def participants():
     from config.fields import normalize_participant_record, get_participant_fields, get_participant_display_name
     normalized_participants = [normalize_participant_record(p) for p in all_participants]
 
+    # Convert manually added leaders to participant-like records for display
+    leader_as_participants = []
+    for leader in all_leaders:
+        # Check if leader already exists as participant (avoid duplication)
+        leader_email = leader.get('leader_email', '').lower()
+        existing = next((p for p in normalized_participants
+                        if p.get('email', '').lower() == leader_email), None)
+
+        if not existing and leader_email:  # Only add if not already a participant and has email
+            leader_participant = {
+                'id': leader.get('id'),
+                'first_name': leader.get('first_name', ''),
+                'last_name': leader.get('last_name', ''),
+                'email': leader.get('leader_email', ''),
+                'phone': leader.get('cell_phone', ''),
+                'phone2': '',  # Leaders don't have secondary phone
+                'preferred_area': leader.get('area_code', ''),
+                'skill_level': 'Area Leader',  # Special designation for leaders
+                'experience': 'Area Leader',
+                'participation_type': 'regular',
+                'has_binoculars': False,
+                'spotting_scope': False,
+                'interested_in_leadership': True,  # Assumed for leaders
+                'interested_in_scribe': False,
+                'notes_to_organizers': leader.get('notes', ''),
+                'is_leader': True,
+                'assigned_area_leader': None,
+                'auto_assigned': False,
+                'assigned_by': leader.get('assigned_by', ''),
+                'assigned_at': leader.get('assigned_at'),
+                'created_at': leader.get('assigned_at'),  # Use assignment time as creation time
+                'updated_at': None,
+                'year': leader.get('year', selected_year)
+            }
+            # Normalize the leader record to ensure all fields are present
+            leader_as_participants.append(normalize_participant_record(leader_participant))
+
+    # Combine participants and leader-participants
+    combined_participants = normalized_participants + leader_as_participants
+
     # Create area leader lookup
     area_leaders = {}
     for leader in all_leaders:
@@ -119,7 +159,7 @@ def participants():
                      'interested_in_leadership', 'interested_in_scribe', 'notes_to_organizers', 'created_at']
 
     return render_template('admin/participants.html',
-                           participants=normalized_participants,
+                           participants=combined_participants,
                            area_leaders=area_leaders,
                            display_fields=display_fields,
                            get_display_name=get_participant_display_name,

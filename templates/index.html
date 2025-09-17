@@ -1,4 +1,4 @@
-{# Updated by Claude AI on 2025-09-16 #}
+{# Updated by Claude AI on 2025-09-17 #}
 {% extends "base.html" %}
 
 {% block content %}
@@ -113,11 +113,17 @@
             
             <div class="mb-3">
                 <label for="notes_to_organizers" class="form-label">Notes to Organizers</label>
-                <textarea class="form-control" id="notes_to_organizers" name="notes_to_organizers" 
-                          placeholder="I would like to car pool to the meeting point&#10;I would prefer to be assigned to an area in East Vancouver" 
+                <textarea class="form-control" id="notes_to_organizers" name="notes_to_organizers"
+                          placeholder="I would like to car pool to the meeting point&#10;I would prefer to be assigned to an area in East Vancouver"
                           rows="3"></textarea>
             </div>
-            
+
+            <div class="mb-4 p-3 bg-light border rounded">
+                <h6 class="fw-bold">Privacy Information</h6>
+                <p class="mb-2"><strong>Compliance with Provincial Privacy Act:</strong> In accordance with Section 2 of the Provincial Privacy Act, the email address and phone number you provide when you sign up to be an Area Leader or a member of a Survey Team will only be made available to the CBC Coordinator and Compiler, as well as to the members of the team surveying the Area for which you've signed up, and this information is to be used strictly for ease of communication for Vancouver Christmas Bird Counts. Lists of Area Participants will be sent to Area Leaders once per week or upon request.</p>
+                <p class="mb-0"><strong>Note:</strong> Please direct any questions, suggestions, etc., to <a href="mailto:{{ count_contact }}">{{ count_contact }}</a></p>
+            </div>
+
             <button type="submit" class="btn btn-primary btn-lg">Register</button>
         </form>
     </div>

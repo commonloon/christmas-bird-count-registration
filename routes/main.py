@@ -1,10 +1,11 @@
-# Updated by Claude AI on 2025-09-16
+# Updated by Claude AI on 2025-09-17
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, g
 from google.cloud import firestore
 from config.database import get_firestore_client
 from models.participant import ParticipantModel
 from models.area_leader import AreaLeaderModel
 from config.areas import get_area_info, get_all_areas, get_public_areas
+from config.organization import COUNT_CONTACT
 from services.email_service import email_service
 from services.security import (
     sanitize_name, sanitize_email, sanitize_phone, sanitize_notes,
@@ -35,7 +36,7 @@ def index():
     public_areas = get_public_areas()
     # Pass all query parameters to template for form restoration
     form_data = dict(request.args)
-    return render_template('index.html', public_areas=public_areas, get_area_info=get_area_info, form_data=form_data)
+    return render_template('index.html', public_areas=public_areas, get_area_info=get_area_info, form_data=form_data, count_contact=COUNT_CONTACT)
 
 
 @main_bp.route('/register', methods=['POST'])
