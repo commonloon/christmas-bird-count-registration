@@ -1,4 +1,4 @@
-# Updated by Claude AI at 2025-01-15 14:35:12
+# Updated by Claude AI on 2025-09-16
 from google.cloud import firestore
 from datetime import datetime
 from typing import List, Dict, Optional
@@ -143,6 +143,15 @@ class ParticipantModel:
     def email_exists(self, email: str) -> bool:
         """Check if an email is already registered for the current year."""
         query = self.db.collection(self.collection).where('email', '==', email.lower())
+        docs = list(query.stream())
+        return len(docs) > 0
+
+    def email_name_exists(self, email: str, first_name: str, last_name: str) -> bool:
+        """Check if email+name combination exists for current year."""
+        query = (self.db.collection(self.collection)
+                .where('email', '==', email.lower())
+                .where('first_name', '==', first_name)
+                .where('last_name', '==', last_name))
         docs = list(query.stream())
         return len(docs) > 0
 

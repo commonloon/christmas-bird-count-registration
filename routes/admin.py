@@ -99,7 +99,11 @@ def participants():
 
     all_participants = participant_model.get_all_participants()
     all_leaders = area_leader_model.get_all_leaders()
-    
+
+    # Normalize participant data to ensure all fields are present
+    from config.fields import normalize_participant_record, get_participant_fields, get_participant_display_name
+    normalized_participants = [normalize_participant_record(p) for p in all_participants]
+
     # Create area leader lookup
     area_leaders = {}
     for leader in all_leaders:
@@ -108,10 +112,17 @@ def participants():
             if area not in area_leaders:
                 area_leaders[area] = []
             area_leaders[area].append(leader)
-    
+
+    # Define which fields to display in the table (subset of all fields for readability)
+    display_fields = ['first_name', 'last_name', 'email', 'phone', 'phone2', 'skill_level',
+                     'experience', 'participation_type', 'has_binoculars', 'spotting_scope',
+                     'interested_in_leadership', 'interested_in_scribe', 'notes_to_organizers', 'created_at']
+
     return render_template('admin/participants.html',
-                           participants=all_participants,
+                           participants=normalized_participants,
                            area_leaders=area_leaders,
+                           display_fields=display_fields,
+                           get_display_name=get_participant_display_name,
                            selected_year=selected_year,
                            available_years=available_years,
                            current_user=get_current_user())
@@ -230,30 +241,39 @@ def leaders():
     leadership_interested = participant_model.get_participants_interested_in_leadership()
     all_areas = get_all_areas()
 
+    # Normalize leader data to ensure all fields are present
+    from config.fields import normalize_area_leader_record
+    normalized_leaders = [normalize_area_leader_record(leader) for leader in all_leaders]
+
     # Check if CSV export is requested
     if request.args.get('format') == 'csv':
         # Create CSV in memory
         output = StringIO()
         writer = csv.writer(output)
 
-        if all_leaders:
-            # Get all field names from the first leader record
-            fieldnames = list(all_leaders[0].keys())
+        if normalized_leaders:
+            # Use centralized field definition to ensure consistent ordering and complete fields
+            from config.fields import get_area_leader_csv_fields
+            fieldnames = get_area_leader_csv_fields()
 
             # Write CSV header
             writer.writerow(fieldnames)
 
             # Sort leaders by area code
-            sorted_leaders = sorted(all_leaders, key=lambda x: x.get('area_code', ''))
+            sorted_leaders = sorted(normalized_leaders, key=lambda x: x.get('area_code', ''))
 
             # Write leader data
+            from config.fields import get_area_leader_field_default
             for leader in sorted_leaders:
                 row = []
                 for field in fieldnames:
-                    value = leader.get(field, '')
+                    value = leader.get(field, get_area_leader_field_default(field))
                     # Handle datetime objects
                     if hasattr(value, 'strftime'):
                         value = value.strftime('%Y-%m-%d %H:%M:%S')
+                    # Handle boolean values
+                    elif isinstance(value, bool):
+                        value = 'Yes' if value else 'No'
                     row.append(value)
                 writer.writerow(row)
 
@@ -266,7 +286,7 @@ def leaders():
         return response
 
     return render_template('admin/leaders.html',
-                           all_leaders=all_leaders,
+                           all_leaders=normalized_leaders,
                            areas_without_leaders=areas_without_leaders,
                            leadership_interested=leadership_interested,
                            all_areas=all_areas,
@@ -507,17 +527,19 @@ def export_csv():
     sorted_participants = sorted(participants, key=sort_key)
 
     if sorted_participants:
-        # Get all field names from the first participant record
-        fieldnames = list(sorted_participants[0].keys())
+        # Use centralized field definition to ensure consistent ordering and complete fields
+        from config.fields import get_participant_csv_fields
+        fieldnames = get_participant_csv_fields()
 
         # Write CSV header
         writer.writerow(fieldnames)
 
         # Write participant data
+        from config.fields import get_participant_field_default
         for p in sorted_participants:
             row = []
             for field in fieldnames:
-                value = p.get(field, '')
+                value = p.get(field, get_participant_field_default(field))
                 # Handle datetime objects
                 if hasattr(value, 'strftime'):
                     value = value.strftime('%Y-%m-%d %H:%M')

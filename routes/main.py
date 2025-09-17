@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2025-09-12
+# Updated by Claude AI on 2025-09-16
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, g
 from google.cloud import firestore
 from config.database import get_firestore_client
@@ -56,6 +56,7 @@ def register():
     last_name = sanitize_name(request.form.get('last_name', ''))
     email = sanitize_email(request.form.get('email', ''))
     phone = sanitize_phone(request.form.get('phone', ''))
+    phone2 = sanitize_phone(request.form.get('phone2', ''))
     skill_level = request.form.get('skill_level', '').strip()
     experience = request.form.get('experience', '').strip()
     preferred_area = request.form.get('preferred_area', '').strip().upper()
@@ -69,7 +70,7 @@ def register():
     notes_to_organizers = sanitize_notes(request.form.get('notes_to_organizers', ''))
     
     # Security check for suspicious input patterns
-    all_text_inputs = [first_name, last_name, phone, notes_to_organizers]
+    all_text_inputs = [first_name, last_name, phone, phone2, notes_to_organizers]
     for text_input in all_text_inputs:
         if is_suspicious_input(text_input):
             log_security_event('Suspicious input detected', f'Registration attempt with suspicious input: {text_input[:50]}...', email)
@@ -95,7 +96,10 @@ def register():
         errors.append('Email address is too long')
         
     if phone and len(phone) > 20:
-        errors.append('Phone number must be 20 characters or less')
+        errors.append('Primary phone number must be 20 characters or less')
+
+    if phone2 and len(phone2) > 20:
+        errors.append('Secondary phone number must be 20 characters or less')
         
     if not skill_level:
         errors.append('Birding skill level is required')
@@ -120,9 +124,9 @@ def register():
     if notes_to_organizers and len(notes_to_organizers) > 1000:
         errors.append('Notes to organizers must be 1000 characters or less')
 
-    # Check if email already registered for current year
-    if participant_model.email_exists(email):
-        errors.append('This email address is already registered for this year')
+    # Check if email+name combination already registered for current year
+    if participant_model.email_name_exists(email, first_name, last_name):
+        errors.append('This name and email combination is already registered for this year')
         
     # Validate FEEDER participant constraints
     if participation_type == 'FEEDER':
@@ -163,6 +167,7 @@ def register():
         'last_name': last_name,
         'email': email,
         'phone': phone,
+        'phone2': phone2,
         'skill_level': skill_level,
         'experience': experience,
         'preferred_area': preferred_area,

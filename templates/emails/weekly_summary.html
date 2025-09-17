@@ -128,6 +128,7 @@
                 <strong>{{ participant.first_name }} {{ participant.last_name }}</strong><br>
                 <strong>Email:</strong> {{ participant.email }}<br>
                 <strong>Phone:</strong> {{ participant.phone or 'Not provided' }}<br>
+                <strong>Secondary Phone:</strong> {{ participant.get('phone2') or 'None' }}<br>
                 <strong>Skill:</strong> {{ participant.skill_level or 'Not specified' }} | 
                 <strong>Experience:</strong> {{ participant.experience or 'Not specified' }}
                 {% if participant.interested_in_leadership %}

@@ -1,5 +1,5 @@
 # Vancouver Christmas Bird Count Registration App - Complete Specification
-{# Updated by Claude AI on 2025-09-15 #}
+{# Updated by Claude AI on 2025-09-16 #}
 
 ## Overview
 Web application for Nature Vancouver's annual Christmas Bird Count registration with interactive map-based area selection. Users can register by clicking count areas on a map or using a dropdown menu, with automatic assignment to areas needing volunteers.
@@ -84,7 +84,7 @@ ADMIN_EMAILS = [
 ## Core Features
 
 ### Registration System
-- **Personal Information**: First name, last name, email, phone number
+- **Personal Information**: First name, last name, email, primary phone number (labeled "Cell Number"), optional secondary phone number
 - **Experience Data**: Birding skill level (Newbie|Beginner|Intermediate|Expert), CBC experience (None|1-2 counts|3+ counts)
 - **Participation Options**: 
   - **Participation Type**: Regular participant or FEEDER counter (mandatory selection)
@@ -196,13 +196,20 @@ ADMIN_EMAILS = [
 - Integration logic: auto-assign leader registrations, sync participant promotions
 
 **Export and Reporting**
-- **Participants CSV Export**: Dynamic export of all participant fields via `/export_csv` route
-  - Programmatic field inclusion - automatically adapts to model changes
+- **Centralized Field Management**: All participant and leader fields defined in `config/fields.py` with ordered lists, defaults, and display names
+  - **Schema Evolution Safety**: New fields guaranteed to appear in all outputs regardless of existing data
+  - **Consistent Ordering**: Predictable field order across CSV exports and admin interfaces
+  - **Default Value Management**: Missing fields get proper defaults instead of empty values
+  - **Normalization Functions**: `normalize_participant_record()` and `normalize_area_leader_record()` ensure all records have all fields
+- **Participants CSV Export**: Centralized field enumeration via `/export_csv` route
+  - Uses `get_participant_csv_fields()` for consistent field ordering
+  - Automatic inclusion of all defined fields with proper defaults
   - Sorted by area → participation type → first name for logical organization
   - Filename format: `cbc_participants_YYYY_MMDD.csv`
   - Includes all registration data, contact information, and preferences
-- **Leaders CSV Export**: Dynamic export of all leader fields via `?format=csv` parameter
-  - Programmatic field inclusion - automatically adapts to model changes
+- **Leaders CSV Export**: Centralized field enumeration via `?format=csv` parameter
+  - Uses `get_area_leader_csv_fields()` for consistent field ordering
+  - Automatic inclusion of all defined fields with proper defaults
   - Sorted by area code for logical organization
   - Filename format: `area_leaders_YYYY_MMDD.csv`
   - Area assignments and leadership data
@@ -269,7 +276,8 @@ ADMIN_EMAILS = [
   first_name: string,
   last_name: string, 
   email: string,
-  phone: string,
+  phone: string,                         // Primary phone (labeled "Cell Number")
+  phone2: string,                        // Secondary phone (optional)
   skill_level: "Newbie|Beginner|Intermediate|Expert",
   experience: "None|1-2 counts|3+ counts",
   preferred_area: "A-X|UNASSIGNED",
@@ -538,6 +546,7 @@ config/
   admins.py                     # Admin email whitelist
   colors.py                     # Color palette definitions with 20 distinct accessibility colors
   database.py                   # Database configuration helper for environment-specific databases
+  fields.py                     # Centralized field definitions for participants and leaders with defaults and ordering
   email_settings.py             # Email service configuration and SMTP settings (to be created)
   rate_limits.py                # Rate limiting configuration with TEST_MODE-aware settings
 

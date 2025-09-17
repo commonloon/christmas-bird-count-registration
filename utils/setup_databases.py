@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Updated by Claude AI at 2025-01-15 14:35:12
+Updated by Claude AI on 2025-09-16
 Firestore Database Setup Script
 
 This script creates the required Firestore databases for the Christmas Bird Count
@@ -59,8 +59,18 @@ REQUIRED_INDEXES = {
             ],
             'query_scope': Index.QueryScope.COLLECTION
         }
+    ],
+    'participants_2025': [
+        {
+            'fields': [
+                {'field_path': 'email', 'order': Index.IndexField.Order.ASCENDING},
+                {'field_path': 'first_name', 'order': Index.IndexField.Order.ASCENDING},
+                {'field_path': 'last_name', 'order': Index.IndexField.Order.ASCENDING},
+                {'field_path': '__name__', 'order': Index.IndexField.Order.ASCENDING}
+            ],
+            'query_scope': Index.QueryScope.COLLECTION
+        }
     ]
-    # participants_2025 indexes are single-field and created automatically by Firestore
 }
 
 

@@ -1,10 +1,36 @@
-# Email Automation System - Development Notes
+# Christmas Bird Count Registration System - Development Notes
 
-## Current Development Status (As of 2025-09-12)
+## Current Development Status (As of 2025-09-16)
 
-### ✅ Completed Features
+### ✅ Recently Completed Features
 
-#### 1. Email Generation Logic
+#### 1. Secondary Phone Number Field Implementation (2025-09-16)
+- **Registration Form**: Added optional secondary phone field labeled "Secondary Phone Number"
+- **Primary Phone**: Relabeled to "Cell Number" for clarity
+- **Data Model**: Added `phone2` field to participant model with validation
+- **Admin Interface**: Displays secondary phone when present, hidden when empty
+- **Email Templates**: Updated to include secondary phone information
+- **Validation**: Same 20-character limit as primary phone with sanitization
+- **Security**: Secondary phone included in suspicious input checking
+- **CSV Export**: Automatically includes phone2 field with proper defaults
+
+#### 2. Shared Email Address Support (2025-09-16)
+- **Problem Solved**: Multiple participants can now share the same email address (household registrations)
+- **Uniqueness Constraint**: Changed from email-only to email+name combination
+- **Database Index**: Added composite index for email+first_name+last_name in `setup_databases.py`
+- **Validation**: Updated `validate_skill_level()` to match form options (Newbie, Beginner, Intermediate, Expert)
+- **Use Case**: Couples or families can register with shared email as long as names differ
+
+#### 3. Centralized Field Management System (2025-09-16)
+- **New Architecture**: Created `config/fields.py` for centralized field definitions
+- **Schema Evolution Safety**: New fields guaranteed to appear in all outputs
+- **Field Definitions**: Ordered lists with defaults, display names, and CSV ordering
+- **Normalization Functions**: `normalize_participant_record()` and `normalize_area_leader_record()`
+- **CSV Export Enhancement**: Uses explicit field enumeration instead of dynamic discovery
+- **Problem Solved**: Eliminates risk of missing fields in CSV exports when first record lacks new fields
+- **Admin Interface**: Both participants and leaders use normalized data for consistent field presence
+
+#### 4. Email Generation Logic
 - **Location**: `test/email_generator.py` (moved from `utils/` for security)
 - **Three Email Types**: Team updates, weekly summaries, admin digest
 - **Features**: 
@@ -55,7 +81,15 @@
 
 ### ❌ Pending Implementation
 
-#### 1. Google Cloud Email API Configuration
+#### 1. Email Template Enhancement for Shared Addresses
+- **Current Status**: Email templates show secondary phone but still send multiple emails to shared addresses
+- **Enhancement Needed**: Combine participants with same email into single email with multiple names
+- **Template Changes**: Update email generation to group by email address before sending
+- **Addressing Format**: "Dear John and Jane Doe" instead of separate emails
+- **Implementation**: Modify email generation logic in `test/email_generator.py`
+- **Location**: Should be implemented in email branch, not main branch
+
+#### 2. Google Cloud Email API Configuration
 **Current Issue**: Email service uses SMTP but needs Google Cloud Email API
 
 **Required Steps**:
@@ -121,16 +155,33 @@ class EmailService:
 
 ### New/Modified Files
 ```
+config/
+  fields.py                   # NEW: Centralized field definitions with defaults and ordering
+  settings.py                 # MODIFIED: Added timezone helper functions
+
+models/
+  participant.py              # MODIFIED: Added email_name_exists() validation method
+
+routes/
+  main.py                     # MODIFIED: Added phone2 field handling and email+name validation
+  admin.py                    # MODIFIED: Updated CSV exports to use centralized field definitions
+
+templates/
+  index.html                  # MODIFIED: Added secondary phone field, relabeled primary to "Cell Number"
+  admin/participants.html     # MODIFIED: Display secondary phone when present
+  emails/*.html               # MODIFIED: Include secondary phone information
+
 test/
   __init__.py                 # NEW: Package initialization
   email_generator.py          # MOVED: From utils/email_generator.py
 
 services/
-  __init__.py                 # NEW: Package initialization  
+  __init__.py                 # NEW: Package initialization
   email_service.py            # MODIFIED: Needs Email API integration
+  security.py                 # MODIFIED: Fixed validate_skill_level() to match form options
 
-config/
-  settings.py                 # MODIFIED: Added timezone helper functions
+utils/
+  setup_databases.py          # MODIFIED: Added composite index for email+first_name+last_name
 
 deploy.sh                     # MODIFIED: Added DISPLAY_TIMEZONE configuration
 requirements.txt              # MODIFIED: Added pytz dependency
@@ -169,6 +220,12 @@ Admin Digest: 1 unassigned participants, 0 emails sent
 - ❌ Email delivery fails at SMTP stage
 
 ## Next Development Session Tasks
+
+### Immediate Priority (Database Index Creation & Testing)
+1. **Deploy database index** for email+name uniqueness: `python utils/setup_databases.py`
+2. **Test shared email registration** - verify multiple participants can share email with different names
+3. **Verify phone2 field** in admin interface and CSV exports
+4. **Test validation fixes** - ensure "Newbie" skill level validates correctly
 
 ### Immediate Priority (Security Deployment & Testing)
 1. **Deploy security changes** to test environment (`./deploy.sh test`)
@@ -381,13 +438,14 @@ The email automation system has made significant progress with most core feature
 
 **Next Session Requirements**: Focus on Google Cloud Email API setup, production automation configuration, and email service integration.
 
-### CSV Export Field Enumeration Risk (2025-09-15)
-- **Current Implementation**: Both participant and leader CSV exports use dynamic field enumeration from first record
-- **Benefit**: Automatically adapts when model fields change without code updates
-- **Risk**: NoSQL database has no schema enforcement - if first record is missing fields that exist in other records, those fields won't appear in CSV output
-- **Additional Risk**: Complicates providing sensible default values for missing fields (e.g., 'No' for boolean fields, formatted dates)
-- **Mitigation**: Current data entry process ensures consistent field presence, but this could become problematic with:
-  - Historical data migration
-  - Manual database edits
-  - Schema evolution over time
-- **Future Consideration**: May need to return to explicit field enumeration with default value handling for production robustness
+### ✅ Recently Resolved Issues
+
+#### CSV Export Field Enumeration Risk (Resolved 2025-09-16)
+- **Problem**: Dynamic field enumeration from first record risked missing fields in CSV exports
+- **Solution**: Implemented centralized field management in `config/fields.py`
+- **Implementation**:
+  - Explicit field enumeration with ordered lists
+  - Normalization functions ensure all records have all fields
+  - Default value management for missing fields
+  - Both CSV exports and admin interfaces use centralized definitions
+- **Result**: Schema evolution safety - new fields guaranteed to appear in all outputs

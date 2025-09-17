@@ -1,4 +1,4 @@
-{# Updated by Claude AI on 2025-09-13 #}
+{# Updated by Claude AI on 2025-09-16 #}
 {% extends "base.html" %}
 
 {% block title %}All Participants - Vancouver Christmas Bird Count{% endblock %}
@@ -131,7 +131,12 @@
                                 {% endif %}
                             </td>
                             <td><a href="mailto:{{ participant.email|e }}">{{ participant.email|e }}</a></td>
-                            <td>{{ participant.phone|e or 'N/A' }}</td>
+                            <td>
+                                {{ participant.phone|e or 'N/A' }}
+                                {% if participant.get('phone2') %}
+                                    <div class="small text-muted">{{ participant.phone2|e }}</div>
+                                {% endif %}
+                            </td>
                             <td>
                                 <span class="badge bg-{% if participant.skill_level == 'Expert' %}success{% elif participant.skill_level == 'Intermediate' %}primary{% elif participant.skill_level == 'Beginner' %}info{% else %}secondary{% endif %}">
                                     {{ participant.skill_level }}

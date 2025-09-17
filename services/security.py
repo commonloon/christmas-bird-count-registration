@@ -185,8 +185,8 @@ def validate_skill_level(skill_level: str) -> bool:
     Returns:
         True if valid skill level
     """
-    valid_levels = ['beginner', 'intermediate', 'advanced', 'expert']
-    return skill_level.lower() in valid_levels
+    valid_levels = ['Newbie', 'Beginner', 'Intermediate', 'Expert']
+    return skill_level in valid_levels
 
 def validate_experience(experience: str) -> bool:
     """
