@@ -1,5 +1,5 @@
 # Vancouver Christmas Bird Count Registration App - Complete Specification
-{# Updated by Claude AI on 2025-09-16 #}
+{# Updated by Claude AI on 2025-09-17 #}
 
 ## Overview
 Web application for Nature Vancouver's annual Christmas Bird Count registration with interactive map-based area selection. Users can register by clicking count areas on a map or using a dropdown menu, with automatic assignment to areas needing volunteers.
@@ -93,7 +93,8 @@ ADMIN_EMAILS = [
   - Binoculars availability checkbox
   - Spotting scope availability checkbox ("Can bring spotting scope")
 - **Communication**: Notes to organizers (optional textarea with 500+ character limit)
-- **Role Interest Options**: 
+- **Privacy Information**: Provincial Privacy Act compliance statement with dynamic contact email from organization configuration
+- **Role Interest Options**:
   - **Leadership Interest**: Checkbox tracking (separate from actual leadership assignment) with clickable link to detailed responsibilities
   - **Scribe Interest**: Checkbox for new pilot role with clickable link to detailed information and eBird preparation guide
 - **FEEDER Participant Constraints**:
@@ -145,8 +146,12 @@ ADMIN_EMAILS = [
 - **Email Testing Section (Test Server Only)**: Manual trigger buttons for testing all three email types with immediate feedback
 
 **Participant Management (`/admin/participants`)**
-- **Dual-Section Display**: Separate tables for FEEDER and regular participants
-- **In-Page Navigation**: Jump links to quickly access FEEDER or regular participant sections
+- **Combined Data Sources**: Displays all participants including manually added area leaders
+  - **Regular Participants**: From `participants_2025` collection (form registrations)
+  - **Leaders-as-Participants**: From `area_leaders_2025` collection (manually added leaders converted to participant format)
+  - **Deduplication Logic**: Prevents duplicate display when leaders also registered as participants (email-based matching)
+- **Dual-Section Display**: Separate tables for FEEDER and regular participants within each area
+- **In-Page Navigation**: Jump links to quickly access areas with participant counts in headers
 - **Area-Based Organization**: Participants grouped alphabetically by area with participant counts in headers
   - **Area Leader Information**: When leaders are assigned, displays leader name, email, and phone in area headers
 - **Comprehensive Information Display**:
@@ -548,6 +553,7 @@ config/
   database.py                   # Database configuration helper for environment-specific databases
   fields.py                     # Centralized field definitions for participants and leaders with defaults and ordering
   email_settings.py             # Email service configuration and SMTP settings (to be created)
+  organization.py               # Club-specific settings for contact emails and organization details
   rate_limits.py                # Rate limiting configuration with TEST_MODE-aware settings
 
 models/

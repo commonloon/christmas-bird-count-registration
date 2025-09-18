@@ -1,10 +1,23 @@
 # Christmas Bird Count Registration System - Development Notes
 
-## Current Development Status (As of 2025-09-16)
+## Current Development Status (As of 2025-09-17)
 
 ### ✅ Recently Completed Features
 
-#### 1. Secondary Phone Number Field Implementation (2025-09-16)
+#### 1. Combined Participants View Enhancement (2025-09-17)
+- **Problem Solved**: Manually added area leaders were invisible in admin/participants view
+- **Root Issue**: Leaders added via admin/leaders only existed in `area_leaders_2025` collection, not `participants_2025`
+- **Solution**: Modified admin/participants route to combine both data sources
+- **Implementation**:
+  - Convert area leaders to participant-like records for display
+  - Prevent duplication with email-based deduplication logic
+  - Map leader fields to participant fields (`leader_email` → `email`, `cell_phone` → `phone`)
+  - Set appropriate defaults for leader-sourced records ("Area Leader" skill/experience)
+- **Result**: All people involved in count now visible in single participants view
+- **Files Modified**: `routes/admin.py`
+- **Benefit**: Admins can now see complete participant list including manually added leaders like Neill Vanhinsberg (Area Q)
+
+#### 2. Secondary Phone Number Field Implementation (2025-09-16)
 - **Registration Form**: Added optional secondary phone field labeled "Secondary Phone Number"
 - **Primary Phone**: Relabeled to "Cell Number" for clarity
 - **Data Model**: Added `phone2` field to participant model with validation
@@ -81,7 +94,88 @@
 
 ### ❌ Pending Implementation
 
-#### 1. Email Template Enhancement for Shared Addresses
+#### 1. Inline Edit/Delete Functionality for Participants Table (2025-09-17)
+
+**Objective**: Add the same inline edit/delete functionality to the participants table that exists for the leaders table.
+
+**Complexity**: Recent implementation (2025-09-17) that combines participants from two data sources complicates this:
+- **Regular Participants**: From `participants_2025` collection (form registrations)
+- **Leaders-as-Participants**: From `area_leaders_2025` collection (manually added leaders)
+
+**Implementation Plan**:
+
+**Phase 1: Template Updates** (`templates/admin/participants.html`)
+- Replace simple delete button with edit/delete button group similar to leaders
+- Add data attributes for source detection (`data-source="participant|leader"`) and original ID
+- Add hidden edit inputs for key fields:
+  - Name fields (first_name, last_name)
+  - Email and phone (primary only for leaders)
+  - Area assignment dropdown
+  - Skill level and experience dropdowns
+  - Equipment checkboxes (has_binoculars, spotting_scope)
+  - Leadership/scribe interest checkboxes
+- Add visual indicators to distinguish leader-sourced participants
+
+**Phase 2: JavaScript Client-Side Logic** (`static/js/participants.js` - new file)
+- Edit mode toggle functionality (show/hide edit controls)
+- Data source routing (detect source type and format requests appropriately)
+- Client-side field validation for required fields
+- UI state management (edit/save/cancel states)
+- Similar patterns to existing `leaders-map.js` implementation
+
+**Phase 3: Backend API Routes** (`routes/admin.py`)
+- **Update Participant Route**: `PUT /admin/edit_participant/<participant_id>`
+  - Route to participant model for regular participants
+  - Route to leader model for leader-sourced participants
+  - Handle field mapping between different collection schemas
+- **Enhanced Delete Route**: Extend existing `DELETE /admin/delete_participant/<participant_id>`
+  - Add source detection and appropriate collection routing
+  - Handle leader-participant synchronization for promoted leaders
+  - Maintain audit trail with removal logging
+
+**Phase 4: Data Synchronization Logic**
+Handle four main scenarios:
+1. **Edit Regular Participant**: Update `participants` collection only
+2. **Edit Leader-as-Participant**: Update `area_leaders` collection, sync to `participants` if promoted
+3. **Delete Regular Participant**: Remove from `participants`, log removal
+4. **Delete Leader-as-Participant**: Remove from `area_leaders`, clean up `participants` if promoted
+
+**Phase 5: Field Mapping Strategy**
+Leader → Participant field mappings:
+```
+leader_email → email
+cell_phone → phone
+(no phone2 for leaders)
+area_code → preferred_area
+"Area Leader" → skill_level (read-only)
+"Area Leader" → experience (read-only)
+```
+
+Editable fields by source:
+- **Regular Participants**: All fields editable except `is_leader`
+- **Leader-as-Participants**: Limited fields (name, email, phone, area only)
+
+**Phase 6: Enhanced User Experience**
+- Gray out non-editable fields for leader-sourced records
+- Pre-populate dropdowns with current values
+- Clear user feedback for validation errors
+- Confirmation dialogs before deleting leaders or participants with special roles
+
+**Business Logic Considerations**:
+- Prevent deleting leaders with teams (offer conversion instead)
+- Maintain data consistency between collections
+- Preserve audit trail with removal logging
+- Handle edge cases for promoted participants who become leaders
+
+**Benefits**:
+- **Unified Interface**: All participants editable from single location
+- **Data Integrity**: Proper synchronization between collections
+- **Admin Efficiency**: No need to switch between participants and leaders pages
+- **Consistency**: Same UX pattern as existing leaders edit functionality
+
+**Implementation Priority**: Deferred - requires significant development effort for complex dual-source data handling.
+
+#### 2. Email Template Enhancement for Shared Addresses
 - **Current Status**: Email templates show secondary phone but still send multiple emails to shared addresses
 - **Enhancement Needed**: Combine participants with same email into single email with multiple names
 - **Template Changes**: Update email generation to group by email address before sending
