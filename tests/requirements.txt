@@ -1,0 +1,47 @@
+# Test Suite Dependencies for CBC Registration System
+# Updated by Claude AI on 2025-09-22
+
+# Core testing framework
+pytest>=7.4.0
+pytest-html>=3.2.0          # HTML test reports
+pytest-xdist>=3.3.0         # Parallel test execution
+pytest-mock>=3.11.0         # Mocking support
+
+# Browser automation
+selenium>=4.15.0
+webdriver-manager>=4.0.0    # Automatic driver management
+
+# HTTP requests and API testing
+requests>=2.31.0
+urllib3>=2.0.0
+
+# Google Cloud services
+google-cloud-firestore>=2.13.0
+google-cloud-secret-manager>=2.16.0
+
+# Data handling and validation
+pandas>=2.1.0               # CSV validation and analysis
+openpyxl>=3.1.0            # Excel file handling (if needed)
+
+# Retry logic and resilience
+tenacity>=8.2.0            # Retry decorators with exponential backoff
+
+# Fake data generation
+faker>=19.0.0              # Realistic test data generation
+
+# HTML parsing and content validation
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+
+# Time and date handling
+pytz>=2023.3               # Timezone handling for testing
+
+# Configuration and environment
+python-dotenv>=1.0.0       # Environment variable management
+
+# Logging and monitoring
+colorlog>=6.7.0            # Colored log output
+
+# Development and debugging
+ipdb>=0.13.0               # Debugging support
+pytest-sugar>=0.9.7        # Better test output formatting

@@ -4,6 +4,7 @@
 .venv/
 __pycache__/
 *.pyc
+tests/
 utils/
 /*.md
 client_secret.json

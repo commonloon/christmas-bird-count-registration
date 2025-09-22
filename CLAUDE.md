@@ -16,6 +16,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## ⚠️ CRITICAL SECURITY REQUIREMENTS ⚠️
 
+**NEVER, EVER include passwords, API keys, or any credentials in files that could be checked into version control and published on GitHub.** This includes:
+- Code files (.py, .js, .html, etc.)
+- Documentation files (.md files)
+- Configuration files (.json, .yaml, .ini, etc.)
+- ANY file that gets committed to the repository
+
+**If credentials are needed for new chat sessions:**
+- Tell the user the information needs to be passed by a different method
+- Suggest using environment variables, Google Secret Manager, or secure communication channels
+- NEVER write credentials in documentation even if "needed for resuming work"
+
 **ALL form inputs MUST be properly sanitized and validated.** This application has comprehensive security protections that must be maintained:
 
 ### **Input Sanitization (MANDATORY)**
@@ -415,3 +426,33 @@ When modifying files, add timestamp comments using date only (not specific times
 
 Use the current date from the environment context, not specific times since Claude doesn't have access to precise timestamps.
 - Do not update SPECIFICATION.md with information from DEVELOPMENT_NOTES.md.  The latter is for recording plans for future work, whereas SPECIFICATION.md is intended to reflect the current state of the project.  We will update SPECIFICATION.md with features as they are implemented and specification updates should be based on the actual implementation, not on planning info found in DEVELOPMENT_NOTES.md, unless I explicitly request otherwise.
+
+## Test Suite Development Status (As of 2025-09-22)
+
+**COMPLETED:**
+- ✅ **Test Suite Architecture**: Complete framework design documented in TEST_SUITE_SPEC.md
+- ✅ **Configuration Files**: tests/config.py, tests/conftest.py, tests/pytest.ini, tests/requirements.txt
+- ✅ **Test Utilities**: auth_utils.py (OAuth automation), database_utils.py (state management)
+- ✅ **Google Secret Manager**: Test account passwords stored securely (test-admin1-password, test-admin2-password, test-leader1-password)
+- ✅ **Documentation**: TEST_SETUP.md (complete setup), TESTING.md (execution guide), TEST_SUITE_SPEC.md (requirements)
+- ✅ **Test Accounts**: Google Workspace accounts created (cbc-test-admin1@, cbc-test-admin2@, cbc-test-leader1@naturevancouver.ca)
+
+**NEXT STEPS FOR RESUMING TEST SUITE DEVELOPMENT:**
+1. **Bug Fixing Session**: Fix known data consistency issues (leader management, Clive Roberts scenario)
+2. **First Test Implementation**: Create basic registration test to validate framework
+3. **Test Data Generation**: Extend utils/generate_test_participants.py for test datasets
+4. **Critical Tests**: Implement Phase 1 tests (registration, authentication, data consistency)
+5. **CSV Export Validation**: Implement comprehensive export testing
+
+**KEY TEST PRIORITIES:**
+- Leader promotion → deletion → re-addition workflow (Clive Roberts bug)
+- Participant/leader data synchronization across collections
+- Registration flow with FEEDER constraints
+- CSV export validation (primary validation mechanism)
+- Admin authentication and role-based access
+
+**IMPORTANT NOTES:**
+- Test suite must run against cloud environments (cbc-test.naturevancouver.ca)
+- Current year used for functional testing, year 2000 for isolation testing
+- Test accounts passwords in Secret Manager, usernames documented in config files
+- Framework designed for incremental implementation (start with working example, build utilities as needed)

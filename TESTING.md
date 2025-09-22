@@ -1,0 +1,401 @@
+# Test Execution Guide
+{# Updated by Claude AI on 2025-09-22 #}
+
+## Overview
+
+This document provides instructions for running the Christmas Bird Count registration test suite. The test suite validates critical workflows, data integrity, and admin operations against cloud environments.
+
+## Quick Start
+
+### Basic Test Execution
+```bash
+# Navigate to project root
+cd C:\AndroidStudioProjects\christmas-bird-count-registration
+
+# Run all tests with verbose output
+pytest tests/ -v
+
+# Run critical tests only
+pytest tests/ -m critical -v
+
+# Run with HTML report
+pytest tests/ -v --html=test_reports/report.html --self-contained-html
+```
+
+### Test Categories
+
+#### Critical Tests (Priority 1)
+```bash
+# Registration and authentication workflows
+pytest tests/ -m critical -v
+
+# Specific critical test files
+pytest tests/test_registration.py -v
+pytest tests/test_authentication.py -v
+pytest tests/test_data_consistency.py -v
+```
+
+#### Admin Operations (Priority 2)
+```bash
+# Admin interface functionality
+pytest tests/ -m admin -v
+
+# CSV export validation
+pytest tests/ -m csv -v
+
+# Participant management
+pytest tests/test_admin_workflows.py -v
+```
+
+#### Security Tests (Priority 3)
+```bash
+# Security validation
+pytest tests/ -m security -v
+
+# Input sanitization and CSRF protection
+pytest tests/test_security.py -v
+```
+
+## Test Execution Options
+
+### Target Environment Selection
+```bash
+# Test against test environment (default)
+set TEST_TARGET=test
+pytest tests/ -v
+
+# Test against production (read-only verification)
+set TEST_TARGET=production
+pytest tests/ -m "not destructive" -v
+```
+
+### Test Filtering and Selection
+
+#### Run Specific Tests
+```bash
+# Single test file
+pytest tests/test_registration.py -v
+
+# Single test function
+pytest tests/test_registration.py::test_basic_registration -v
+
+# Multiple test files
+pytest tests/test_registration.py tests/test_authentication.py -v
+```
+
+#### Filter by Markers
+```bash
+# Critical functionality only
+pytest tests/ -m critical
+
+# Admin tests only
+pytest tests/ -m admin
+
+# Exclude slow tests
+pytest tests/ -m "not slow"
+
+# Security tests only
+pytest tests/ -m security
+
+# Browser tests only
+pytest tests/ -m browser
+```
+
+#### Filter by Keywords
+```bash
+# Tests containing "registration" in name
+pytest tests/ -k registration -v
+
+# Tests containing "csv" or "export"
+pytest tests/ -k "csv or export" -v
+
+# Exclude database tests
+pytest tests/ -k "not database" -v
+```
+
+### Parallel Execution
+```bash
+# Run tests in parallel (when pytest-xdist is installed)
+pytest tests/ -n auto -v
+
+# Run with specific number of workers
+pytest tests/ -n 4 -v
+
+# Note: Be careful with parallel execution for database tests
+```
+
+## Test Reports and Output
+
+### HTML Reports
+```bash
+# Generate detailed HTML report
+pytest tests/ -v --html=test_reports/report.html --self-contained-html
+
+# Open report in browser (Windows)
+start test_reports/report.html
+```
+
+### Console Output Formatting
+```bash
+# Verbose output with test details
+pytest tests/ -v
+
+# Show test durations
+pytest tests/ --durations=10
+
+# Show only failures
+pytest tests/ --tb=short
+
+# Quiet mode (minimal output)
+pytest tests/ -q
+```
+
+### Logging and Debugging
+```bash
+# Enable debug logging
+pytest tests/ --log-cli-level=DEBUG -v
+
+# Capture and display print statements
+pytest tests/ -s -v
+
+# Save output to file
+pytest tests/ -v > test_results.log 2>&1
+```
+
+## Test Data Management
+
+### Database State Control
+```bash
+# [TO BE IMPLEMENTED]
+# Tests automatically manage database state via fixtures
+
+# Manual database cleanup (if needed)
+python -c "
+from tests.utils.database_utils import create_database_manager
+from google.cloud import firestore
+db = firestore.Client()
+manager = create_database_manager(db)
+manager.clear_test_collections()
+print('Test collections cleared')
+"
+```
+
+### Test Dataset Generation
+```bash
+# [TO BE IMPLEMENTED]
+# Generate small test dataset
+python tests/utils/dataset_generator.py --size small
+
+# Generate large test dataset (350+ participants)
+python tests/utils/dataset_generator.py --size large
+
+# Generate edge case datasets
+python tests/utils/dataset_generator.py --scenario edge_cases
+```
+
+## Debugging Failed Tests
+
+### Browser Debugging
+```bash
+# Run with visible browser (set headless: False in config)
+# Edit tests/config.py: TEST_CONFIG['headless'] = False
+pytest tests/test_registration.py::test_basic_registration -v -s
+```
+
+### Step-by-Step Debugging
+```bash
+# Run single test with maximum verbosity
+pytest tests/test_registration.py::test_basic_registration -vvv -s --tb=long
+
+# Add Python debugger breakpoints in test code:
+# import pdb; pdb.set_trace()
+```
+
+### Database State Inspection
+```bash
+# [TO BE IMPLEMENTED]
+# Check current database state
+python -c "
+from tests.utils.database_utils import create_database_manager
+from google.cloud import firestore
+db = firestore.Client()
+manager = create_database_manager(db)
+stats = manager.get_database_stats()
+print('Database Stats:', stats)
+consistency = manager.verify_data_consistency()
+print('Data Consistency:', consistency)
+"
+```
+
+## Performance Testing
+
+### Large Dataset Testing
+```bash
+# [TO BE IMPLEMENTED]
+# Test with realistic data volumes
+pytest tests/ -m "slow" -v --timeout=300
+
+# CSV export performance
+pytest tests/test_csv_export.py -k large_dataset -v
+```
+
+### Concurrent Operations
+```bash
+# [TO BE IMPLEMENTED]
+# Test race conditions and concurrent admin operations
+pytest tests/test_race_conditions.py -v
+```
+
+## Continuous Integration (Future)
+
+### Test Suite Validation
+```bash
+# [PLACEHOLDER FOR FUTURE CI INTEGRATION]
+# Run full test suite for deployment validation
+pytest tests/ -m "critical or admin" --html=ci_report.html
+
+# Production smoke tests (read-only)
+set TEST_TARGET=production
+pytest tests/ -m "smoke and not destructive" -v
+```
+
+## Test Maintenance
+
+### Test Suite Health Checks
+```bash
+# [TO BE IMPLEMENTED]
+# Verify test configuration
+python tests/validate_test_config.py
+
+# Check test account access
+python tests/verify_test_accounts.py
+
+# Validate test environment connectivity
+python tests/health_check.py
+```
+
+### Updating Test Data
+```bash
+# [TO BE IMPLEMENTED]
+# Regenerate test datasets after schema changes
+python tests/utils/regenerate_test_datasets.py
+
+# Update expected CSV outputs
+python tests/utils/update_csv_expectations.py
+```
+
+## Common Test Scenarios
+
+### Registration Workflow Testing
+```bash
+# [TO BE IMPLEMENTED]
+# Basic registration flow
+pytest tests/test_registration.py::test_basic_registration -v
+
+# FEEDER participant constraints
+pytest tests/test_registration.py::test_feeder_constraints -v
+
+# Form validation and error handling
+pytest tests/test_registration.py::test_form_validation -v
+```
+
+### Admin Workflow Testing
+```bash
+# [TO BE IMPLEMENTED]
+# Leader management workflow
+pytest tests/test_admin_workflows.py::test_leader_promotion_deletion -v
+
+# Participant management operations
+pytest tests/test_admin_workflows.py::test_participant_assignment -v
+
+# CSV export validation
+pytest tests/test_csv_export.py -v
+```
+
+### Data Consistency Testing
+```bash
+# [TO BE IMPLEMENTED]
+# Clive Roberts scenario (leader promotion/deletion bug)
+pytest tests/test_data_consistency.py::test_leader_promotion_deletion_cycle -v
+
+# Cross-collection synchronization
+pytest tests/test_data_consistency.py::test_participant_leader_sync -v
+```
+
+## Troubleshooting
+
+### Common Test Failures
+
+#### Authentication Issues
+```bash
+# Check Secret Manager access
+gcloud secrets list --filter="name~test-"
+
+# Verify admin whitelist on test environment
+# Check config/admins.py includes test accounts
+
+# OAuth debugging with visible browser
+# Set headless: False in tests/config.py
+```
+
+#### Database Connection Issues
+```bash
+# Verify Firestore connection
+python -c "from google.cloud import firestore; firestore.Client().collection('test').limit(1).get()"
+
+# Check project configuration
+gcloud config get-value project
+```
+
+#### Browser Issues
+```bash
+# Update Chrome browser
+# Install latest Chrome from https://www.google.com/chrome/
+
+# Clear browser cache and data
+# May require manual browser reset
+```
+
+### Test Environment Issues
+
+#### Test Environment Unavailable
+```bash
+# Check test environment status
+curl -I https://cbc-test.naturevancouver.ca
+
+# Monitor Cloud Run logs
+gcloud run services logs read cbc-test --region=us-west1 --limit=20
+```
+
+#### Rate Limiting
+```bash
+# Reduce test execution speed
+# Edit tests/config.py to increase delays
+
+# Use smaller test datasets
+# Modify TEST_CONFIG batch sizes
+```
+
+## Best Practices
+
+### Test Development
+- **Start Small**: Begin with single, focused test cases
+- **Use Fixtures**: Leverage database and browser fixtures for consistency
+- **Test Isolation**: Ensure tests don't depend on execution order
+- **Clear Assertions**: Use descriptive assertion messages
+
+### Test Execution
+- **Run Critical Tests First**: Get fast feedback on core functionality
+- **Use Appropriate Markers**: Tag tests for efficient filtering
+- **Monitor Resources**: Watch browser memory and Cloud Run usage
+- **Save Reports**: Keep HTML reports for analysis and sharing
+
+### Debugging
+- **Enable Verbose Logging**: Use DEBUG level for detailed OAuth and database operations
+- **Use Visible Browser**: Set headless=False for visual debugging
+- **Check Database State**: Verify data consistency after failed tests
+- **Isolate Failures**: Run failing tests individually to understand root causes
+
+---
+
+This testing guide provides comprehensive instructions for executing and maintaining the Christmas Bird Count registration test suite. Refer to TEST_SETUP.md for initial setup and TEST_SUITE_SPEC.md for complete test requirements and scope.
