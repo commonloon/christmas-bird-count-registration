@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Updated by Claude AI on 2025-09-16
+Updated by Claude AI on 2025-09-23
 Firestore Database Setup Script
 
 This script creates the required Firestore databases for the Christmas Bird Count
@@ -50,22 +50,22 @@ LOCATION_ID = 'us-west1'  # Oregon region
 # Note: Single-field indexes are automatically created by Firestore and don't need to be defined here
 # Only composite indexes (multiple fields) need to be explicitly created
 REQUIRED_INDEXES = {
-    'area_leaders_2025': [
-        {
-            'fields': [
-                {'field_path': 'active', 'order': Index.IndexField.Order.ASCENDING},
-                {'field_path': 'area_code', 'order': Index.IndexField.Order.ASCENDING},
-                {'field_path': '__name__', 'order': Index.IndexField.Order.ASCENDING}
-            ],
-            'query_scope': Index.QueryScope.COLLECTION
-        }
-    ],
     'participants_2025': [
+        # Identity-based queries: email + first_name + last_name
         {
             'fields': [
                 {'field_path': 'email', 'order': Index.IndexField.Order.ASCENDING},
                 {'field_path': 'first_name', 'order': Index.IndexField.Order.ASCENDING},
                 {'field_path': 'last_name', 'order': Index.IndexField.Order.ASCENDING},
+                {'field_path': '__name__', 'order': Index.IndexField.Order.ASCENDING}
+            ],
+            'query_scope': Index.QueryScope.COLLECTION
+        },
+        # Leadership queries: is_leader + assigned_area_leader
+        {
+            'fields': [
+                {'field_path': 'is_leader', 'order': Index.IndexField.Order.ASCENDING},
+                {'field_path': 'assigned_area_leader', 'order': Index.IndexField.Order.ASCENDING},
                 {'field_path': '__name__', 'order': Index.IndexField.Order.ASCENDING}
             ],
             'query_scope': Index.QueryScope.COLLECTION

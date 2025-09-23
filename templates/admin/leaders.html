@@ -1,3 +1,4 @@
+{# Updated by Claude AI on 2025-09-23 #}
 {% extends "base.html" %}
 
 {% block title %}Manage Leaders - Vancouver Christmas Bird Count{% endblock %}
@@ -62,15 +63,15 @@
                 </thead>
                 <tbody>
                     {% for leader in all_leaders %}
-                    <tr data-leader-id="{{ leader.id }}" data-leader-email="{{ leader.leader_email }}" data-created-from-participant="{{ leader.created_from_participant or false }}">
+                    <tr data-leader-id="{{ leader.id }}" data-leader-email="{{ leader.email }}" data-created-from-participant="true">
                         <td>
                             <div class="area-display">
-                                <strong>{{ leader.area_code }}</strong>
+                                <strong>{{ leader.assigned_area_leader }}</strong>
                             </div>
                             <div class="area-edit" style="display: none;">
                                 <select class="form-select form-select-sm area-select">
                                     {% for area in all_areas %}
-                                    <option value="{{ area }}" {% if area == leader.area_code %}selected{% endif %}>{{ area }} - {{ get_area_info(area).name }}</option>
+                                    <option value="{{ area }}" {% if area == leader.assigned_area_leader %}selected{% endif %}>{{ area }} - {{ get_area_info(area).name }}</option>
                                     {% endfor %}
                                 </select>
                             </div>
@@ -78,11 +79,7 @@
                         <td>
                             <div class="name-display">
                                 <span class="leader-name">{{ leader.first_name }} {{ leader.last_name }}</span>
-                                {% if leader.created_from_participant %}
-                                    <span class="badge bg-info ms-1" title="Promoted from participant">Participant</span>
-                                {% else %}
-                                    <span class="badge bg-secondary ms-1" title="Manually entered">Manual</span>
-                                {% endif %}
+                                <span class="badge bg-info ms-1" title="All leaders are participants in single-table design">Participant</span>
                             </div>
                             <div class="name-edit" style="display: none;">
                                 <div class="d-flex gap-1">
@@ -98,10 +95,10 @@
                         </td>
                         <td>
                             <div class="email-display">
-                                <a href="mailto:{{ leader.leader_email }}">{{ leader.leader_email }}</a>
+                                <a href="mailto:{{ leader.email }}">{{ leader.email }}</a>
                             </div>
                             <div class="email-edit" style="display: none;">
-                                <input type="email" class="form-control form-control-sm email-input" value="{{ leader.leader_email }}">
+                                <input type="email" class="form-control form-control-sm email-input" value="{{ leader.email }}">
                             </div>
                         </td>
                         <td>
@@ -113,10 +110,8 @@
                             </div>
                         </td>
                         <td>
-                            {% if leader.assigned_at %}
-                                {{ leader.assigned_at.strftime('%m/%d/%y') }}
-                            {% elif leader.assigned_date %}
-                                {{ leader.assigned_date.strftime('%m/%d/%y') }}
+                            {% if leader.leadership_assigned_at %}
+                                {{ leader.leadership_assigned_at.strftime('%m/%d/%y') }}
                             {% else %}
                                 N/A
                             {% endif %}
@@ -168,8 +163,8 @@
                     <input type="text" class="form-control" id="last_name" name="last_name" required>
                 </div>
                 <div class="col-md-3">
-                    <label for="leader_email" class="form-label">Email *</label>
-                    <input type="email" class="form-control" id="leader_email" name="leader_email" required>
+                    <label for="email" class="form-label">Email *</label>
+                    <input type="email" class="form-control" id="email" name="email" required>
                 </div>
                 <div class="col-md-3">
                     <label for="cell_phone" class="form-label">Cell Phone *</label>
@@ -318,10 +313,10 @@
 window.leaderData = {};
 {% if all_leaders %}
 {% for leader in all_leaders %}
-if (!window.leaderData["{{ leader.area_code }}"]) {
-    window.leaderData["{{ leader.area_code }}"] = [];
+if (!window.leaderData["{{ leader.assigned_area_leader }}"]) {
+    window.leaderData["{{ leader.assigned_area_leader }}"] = [];
 }
-window.leaderData["{{ leader.area_code }}"].push("{{ leader.first_name }} {{ leader.last_name }}");
+window.leaderData["{{ leader.assigned_area_leader }}"].push("{{ leader.first_name }} {{ leader.last_name }}");
 {% endfor %}
 {% endif %}
 
@@ -410,25 +405,25 @@ document.addEventListener('DOMContentLoaded', function() {
     function saveLeaderChanges(row) {
         const leaderId = row.dataset.leaderId;
         const formData = {
-            leader_id: leaderId,
+            participant_id: leaderId,
             area_code: row.querySelector('.area-select').value,
             first_name: row.querySelector('.first-name-input').value.trim(),
             last_name: row.querySelector('.last-name-input').value.trim(),
-            leader_email: row.querySelector('.email-input').value.trim(),
+            email: row.querySelector('.email-input').value.trim(),
             cell_phone: row.querySelector('.phone-input').value.trim(),
             year: {{ selected_year }},
             csrf_token: '{{ csrf_token() }}'
         };
         
         // Basic validation
-        if (!formData.first_name || !formData.last_name || !formData.leader_email || !formData.area_code) {
+        if (!formData.first_name || !formData.last_name || !formData.email || !formData.area_code) {
             alert('Please fill in all required fields (First Name, Last Name, Email, Area).');
             return;
         }
-        
+
         // Email validation
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(formData.leader_email)) {
+        if (!emailRegex.test(formData.email)) {
             alert('Please enter a valid email address.');
             return;
         }
@@ -458,12 +453,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Update display values
                 row.querySelector('.area-display strong').textContent = formData.area_code;
                 row.querySelector('.leader-name').textContent = newLeaderName;
-                row.querySelector('.email-display a').textContent = formData.leader_email;
-                row.querySelector('.email-display a').href = 'mailto:' + formData.leader_email;
+                row.querySelector('.email-display a').textContent = formData.email;
+                row.querySelector('.email-display a').href = 'mailto:' + formData.email;
                 row.querySelector('.phone-display').textContent = formData.cell_phone || 'N/A';
-                
+
                 // Update row data
-                row.dataset.leaderEmail = formData.leader_email;
+                row.dataset.leaderEmail = formData.email;
                 
                 // Update window.leaderData for map refresh
                 updateLeaderDataAfterEdit(oldAreaCode, formData.area_code, oldLeaderName, newLeaderName);
@@ -502,7 +497,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 'X-CSRFToken': '{{ csrf_token() }}'
             },
             body: JSON.stringify({
-                leader_id: leaderId,
+                participant_id: leaderId,
                 year: {{ selected_year }}
             })
         })

@@ -82,12 +82,11 @@ def get_areas_needing_leaders():
 
         # Get areas without leaders from current year
         from datetime import datetime
-        from models.area_leader import AreaLeaderModel
-        
+
         if db:
             current_year = datetime.now().year
-            area_leader_model = AreaLeaderModel(db, current_year)
-            areas_without_leaders = area_leader_model.get_areas_without_leaders()
+            current_year_participant_model = ParticipantModel(db, current_year)
+            areas_without_leaders = current_year_participant_model.get_areas_without_leaders()
         else:
             areas_without_leaders = []
 

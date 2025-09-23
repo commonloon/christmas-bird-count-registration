@@ -1,3 +1,4 @@
+{# Updated by Claude AI on 2025-09-23 #}
 {% extends "base.html" %}
 
 {% block title %}Area {{ area_code }} - Vancouver Christmas Bird Count{% endblock %}
@@ -94,13 +95,13 @@
                     <div class="card-body">
                         <h6 class="card-title">{{ leader.first_name|e }} {{ leader.last_name|e }}</h6>
                         <p class="card-text">
-                            <strong>Email:</strong> <a href="mailto:{{ leader.leader_email|e }}">{{ leader.leader_email|e }}</a><br>
+                            <strong>Email:</strong> <a href="mailto:{{ leader.email|e }}">{{ leader.email|e }}</a><br>
                             {% if leader.cell_phone %}
                             <strong>Phone:</strong> {{ leader.cell_phone|e }}<br>
                             {% endif %}
                             <strong>Assigned:</strong> 
-                            {% if leader.assigned_at %}
-                                {{ leader.assigned_at.strftime('%B %d, %Y') }}
+                            {% if leader.leadership_assigned_at %}
+                                {{ leader.leadership_assigned_at.strftime('%B %d, %Y') }}
                             {% else %}
                                 N/A
                             {% endif %}

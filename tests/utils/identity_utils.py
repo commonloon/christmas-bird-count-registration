@@ -18,7 +18,6 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 sys.path.insert(0, project_root)
 
 from models.participant import ParticipantModel
-from models.area_leader import AreaLeaderModel
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +30,6 @@ class IdentityTestHelper:
         self.db = db_client
         self.test_year = test_year or datetime.now().year
         self.participant_model = ParticipantModel(db_client, self.test_year)
-        self.area_leader_model = AreaLeaderModel(db_client, self.test_year)
 
     def create_family_scenario(self, family_email: str, members: List[Dict[str, Any]]) -> Dict[str, List[str]]:
         """
@@ -77,30 +75,20 @@ class IdentityTestHelper:
             participant_ids.append(participant_id)
             logger.info(f"Created participant: {member['first_name']} {member['last_name']} (ID: {participant_id})")
 
-            # Create leader record if specified
+            # Assign leadership if specified
             if member.get('role') == 'leader':
-                leader_data = {
-                    'area_code': member.get('area', 'A'),
-                    'leader_email': family_email,
-                    'first_name': member['first_name'],
-                    'last_name': member['last_name'],
-                    'cell_phone': f"555-FAM-{i+1:03d}",
-                    'assigned_by': 'test-family-setup@test.ca',
-                    'active': True,
-                    'created_from_participant': True,
-                    'notes': f'Test family leader {i+1}'
-                }
+                # Assign leadership through participant model
+                success = self.participant_model.assign_area_leadership(
+                    participant_id,
+                    member.get('area', 'A'),
+                    'test-family-setup@test.ca'
+                )
 
-                leader_id = self.area_leader_model.add_leader(leader_data)
-                leader_ids.append(leader_id)
-
-                # Update participant to mark as leader
-                self.participant_model.update_participant(participant_id, {
-                    'is_leader': True,
-                    'assigned_area_leader': member.get('area', 'A')
-                })
-
-                logger.info(f"Created leader: {member['first_name']} {member['last_name']} (ID: {leader_id})")
+                if success:
+                    leader_ids.append(participant_id)  # Use participant ID as leader reference
+                    logger.info(f"Assigned leadership: {member['first_name']} {member['last_name']} (Area: {member.get('area', 'A')})")
+                else:
+                    logger.error(f"Failed to assign leadership to {member['first_name']} {member['last_name']}")
 
         return {
             'participant_ids': participant_ids,
@@ -133,7 +121,7 @@ class IdentityTestHelper:
         ]
 
         # Get leader records using identity-based lookup
-        matching_leaders = self.area_leader_model.get_leaders_by_identity(first_name, last_name, email)
+        matching_leaders = self.participant_model.get_leaders_by_identity(first_name, last_name, email)
 
         # Check synchronization status
         sync_status = {
@@ -213,7 +201,7 @@ class IdentityTestHelper:
                 }
 
                 # Check leader records
-                leaders = self.area_leader_model.get_leaders_by_identity(
+                leaders = self.participant_model.get_leaders_by_identity(
                     identity[0], identity[1], identity[2]
                 )
                 before_state[identity]['leader_count'] = len(leaders)
@@ -248,7 +236,7 @@ class IdentityTestHelper:
                         if identity in before_state and identity != first_identity:
                             # This family member should be unaffected
                             before = before_state[identity]
-                            current_leaders = self.area_leader_model.get_leaders_by_identity(
+                            current_leaders = self.participant_model.get_leaders_by_identity(
                                 identity[0], identity[1], identity[2]
                             )
 
@@ -310,20 +298,40 @@ class IdentityTestHelper:
             logger.info(f"Created test participant: {participant_id}")
 
         if role in ['leader', 'both']:
-            leader_data = {
-                'area_code': area,
-                'leader_email': email,
-                'first_name': first_name,
-                'last_name': last_name,
-                'cell_phone': f'555-TEST-{timestamp}',
-                'assigned_by': 'test-identity-helper',
-                'active': True,
-                'created_from_participant': role == 'both',
-                'notes': f'Test leader for {role} testing'
-            }
+            # Assign leadership if participant exists, otherwise create participant first
+            if not participant_id:
+                # Create participant record first
+                participant_data = {
+                    'first_name': first_name,
+                    'last_name': last_name,
+                    'email': email,
+                    'phone': f'555-TEST-{timestamp}',
+                    'phone2': '',
+                    'skill_level': 'Expert',
+                    'experience': '3+ counts',
+                    'preferred_area': area,
+                    'participation_type': 'regular',
+                    'has_binoculars': True,
+                    'spotting_scope': False,
+                    'notes_to_organizers': f'Test leader-only identity',
+                    'interested_in_leadership': True,
+                    'interested_in_scribe': False,
+                    'is_leader': False,  # Will be set by assign_area_leadership
+                    'assigned_area_leader': None,
+                    'auto_assigned': False,
+                    'assigned_by': '',
+                    'assigned_at': None
+                }
+                participant_id = self.participant_model.add_participant(participant_data)
+                logger.info(f"Created participant for leader role: {participant_id}")
 
-            leader_id = self.area_leader_model.add_leader(leader_data)
-            logger.info(f"Created test leader: {leader_id}")
+            # Assign leadership
+            if self.participant_model.assign_area_leadership(participant_id, area, 'test-identity-helper'):
+                leader_id = participant_id  # Use participant ID as leader reference
+                logger.info(f"Assigned test leadership: {leader_id}")
+            else:
+                logger.error(f"Failed to assign leadership to participant {participant_id}")
+                leader_id = None
 
         return participant_id, leader_id
 
@@ -348,14 +356,8 @@ class IdentityTestHelper:
                     cleanup_count += 1
                     logger.info(f"Cleaned up test participant: {participant.get('first_name')} {participant.get('last_name')}")
 
-        # Clean up leaders
-        all_leaders = self.area_leader_model.get_all_leaders()
-        for leader in all_leaders:
-            email = leader.get('leader_email', '')
-            if test_email_pattern in email:
-                if self.area_leader_model.remove_leader(leader['id'], 'test-cleanup'):
-                    cleanup_count += 1
-                    logger.info(f"Cleaned up test leader: {leader.get('first_name')} {leader.get('last_name')}")
+        # Clean up leaders (now handled via participant cleanup since it's single-table)
+        # Leadership cleanup is automatically handled when participants are deleted
 
         logger.info(f"Cleaned up {cleanup_count} test identity records")
         return cleanup_count

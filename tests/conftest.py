@@ -173,11 +173,12 @@ def clean_database(firestore_client):
     collections_to_clear = [
         f'participants_{current_year}',
         f'participants_{isolation_year}',
-        f'area_leaders_{current_year}',
-        f'area_leaders_{isolation_year}',
         f'removal_log_{current_year}',
         f'removal_log_{isolation_year}'
     ]
+
+    # Note: area_leaders collections are preserved for migration utilities
+    # Leadership data is now stored in participants collections with is_leader flag
 
     def clear_collections():
         """Clear specified collections."""

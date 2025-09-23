@@ -6,7 +6,7 @@ import os
 import logging
 
 from config.admins import is_admin
-from models.area_leader import AreaLeaderModel
+from models.participant import ParticipantModel
 from services.limiter import limiter
 from config.rate_limits import RATE_LIMITS, get_rate_limit_message
 
@@ -32,8 +32,8 @@ def get_user_role(email, db_client, year=None):
 
     # Check area leader status
     try:
-        area_leader_model = AreaLeaderModel(db_client, year)
-        if area_leader_model.is_area_leader(email):
+        participant_model = ParticipantModel(db_client, year)
+        if participant_model.is_area_leader(email):
             return 'leader'
     except Exception as e:
         logger.warning(f"Could not check area leader status for {email}: {e}")

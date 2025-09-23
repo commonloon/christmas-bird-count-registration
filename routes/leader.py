@@ -3,7 +3,6 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from google.cloud import firestore
 from config.database import get_firestore_client
 from models.participant import ParticipantModel
-from models.area_leader import AreaLeaderModel
 from routes.auth import require_leader
 from config.areas import get_area_info, get_all_areas
 from datetime import datetime
@@ -20,8 +19,13 @@ def load_leader_areas():
         try:
             db, _ = get_firestore_client()
             current_year = datetime.now().year
-            leader_model = AreaLeaderModel(db, current_year)
-            g.leader_areas = leader_model.get_leader_areas(g.user_email)
+            leader_model = ParticipantModel(db, current_year)
+            # For auth purposes, check all leaders with this email (family sharing supported)
+            all_leaders = leader_model.get_leaders()
+            g.leader_areas = []
+            for leader in all_leaders:
+                if leader.get('email') == g.user_email and leader.get('assigned_area_leader'):
+                    g.leader_areas.append(leader.get('assigned_area_leader'))
         except Exception as e:
             g.leader_areas = []
             flash(f"Error loading leader areas: {e}", 'error')
@@ -226,10 +230,15 @@ def profile():
     try:
         db, _ = get_firestore_client()
         current_year = datetime.now().year
-        leader_model = AreaLeaderModel(db, current_year)
-        
-        # Get leader information
-        leader_info = leader_model.get_leader_info(g.user_email)
+        leader_model = ParticipantModel(db, current_year)
+
+        # Get leader information (use first result for email-based lookup)
+        all_leaders = leader_model.get_leaders()
+        leader_info = None
+        for leader in all_leaders:
+            if leader.get('email') == g.user_email:
+                leader_info = leader
+                break
         
         return render_template('leader/profile.html',
                              leader_info=leader_info,

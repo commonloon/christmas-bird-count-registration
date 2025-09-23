@@ -3,7 +3,6 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from google.cloud import firestore
 from config.database import get_firestore_client
 from models.participant import ParticipantModel
-from models.area_leader import AreaLeaderModel
 from config.areas import get_area_info, get_all_areas, get_public_areas
 from config.organization import COUNT_CONTACT
 from services.email_service import email_service
@@ -50,7 +49,6 @@ def register():
     # Initialize year-aware models
     current_year = datetime.now().year
     participant_model = ParticipantModel(g.db, current_year)
-    area_leader_model = AreaLeaderModel(g.db, current_year)
 
     # Get and sanitize form data
     first_name = sanitize_name(request.form.get('first_name', ''))
@@ -149,18 +147,6 @@ def register():
                              get_area_info=get_area_info,
                              form_data=form_data)
 
-    # Check if this email belongs to an existing area leader
-    # If so, auto-assign them to their led area
-    leader_areas = area_leader_model.get_areas_by_leader_email(email)
-    auto_assigned_from_leadership = False
-    
-    if leader_areas:
-        # Leader found - auto-assign to their led area
-        led_area = leader_areas[0].get('area_code')
-        if led_area and led_area != preferred_area:
-            preferred_area = led_area
-            auto_assigned_from_leadership = True
-            flash(f'As an area leader for Area {led_area}, you have been automatically assigned to your area.', 'info')
 
     # Create participant record
     participant_data = {
@@ -174,9 +160,8 @@ def register():
         'preferred_area': preferred_area,
         'interested_in_leadership': interested_in_leadership,
         'interested_in_scribe': interested_in_scribe,
-        'is_leader': bool(leader_areas),  # True if they are an area leader
-        'assigned_area_leader': preferred_area if leader_areas else None,
-        'auto_assigned': auto_assigned_from_leadership,
+        'is_leader': False,  # Only admins can assign leadership
+        'assigned_area_leader': None,
         'participation_type': participation_type,
         'has_binoculars': has_binoculars,
         'spotting_scope': spotting_scope,
@@ -197,10 +182,7 @@ def register():
                 "will be assigned by organizers"
             )
         else:
-            if auto_assigned_from_leadership:
-                flash(f'Registration successful! As the area leader for Area {preferred_area}, you have been registered for your own area.', 'success')
-            else:
-                flash(f'Registration successful! You have been registered for Area {preferred_area}.', 'success')
+            flash(f'Registration successful! You have been registered for Area {preferred_area}.', 'success')
             
             # Send confirmation email
             email_service.send_registration_confirmation(

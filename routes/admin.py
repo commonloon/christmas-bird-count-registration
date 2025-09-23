@@ -4,7 +4,6 @@ from google.cloud import firestore
 from config.database import get_firestore_client
 from config.email_settings import is_test_server
 from models.participant import ParticipantModel
-from models.area_leader import AreaLeaderModel
 from models.removal_log import RemovalLogModel
 from config.areas import get_area_info, get_all_areas, get_public_areas
 from routes.auth import require_admin, get_current_user
@@ -47,7 +46,6 @@ def dashboard():
 
     # Initialize models for selected year
     participant_model = ParticipantModel(g.db, selected_year)
-    area_leader_model = AreaLeaderModel(g.db, selected_year)
     removal_model = RemovalLogModel(g.db, selected_year)
 
     # Get available years
@@ -57,7 +55,7 @@ def dashboard():
     participants = participant_model.get_all_participants()
     unassigned_participants = participant_model.get_unassigned_participants()
     area_counts = participant_model.get_area_counts()
-    areas_without_leaders = area_leader_model.get_areas_without_leaders()
+    areas_without_leaders = participant_model.get_areas_without_leaders()
     leadership_interested = participant_model.get_participants_interested_in_leadership()
     recent_removals = removal_model.get_recent_removals(7)
 
@@ -94,11 +92,10 @@ def participants():
 
     selected_year = int(request.args.get('year', datetime.now().year))
     participant_model = ParticipantModel(g.db, selected_year)
-    area_leader_model = AreaLeaderModel(g.db, selected_year)
     available_years = ParticipantModel.get_available_years(g.db)
 
     all_participants = participant_model.get_all_participants()
-    all_leaders = area_leader_model.get_all_leaders()
+    all_leaders = participant_model.get_leaders()
 
     # Normalize participant data to ensure all fields are present
     from config.fields import normalize_participant_record, get_participant_fields, get_participant_display_name
@@ -152,7 +149,7 @@ def participants():
     # Create area leader lookup
     area_leaders = {}
     for leader in all_leaders:
-        area = leader.get('area_code')
+        area = leader.get('assigned_area_leader')
         if area:
             if area not in area_leaders:
                 area_leaders[area] = []
@@ -244,11 +241,10 @@ def area_detail(area_code):
 
     selected_year = int(request.args.get('year', datetime.now().year))
     participant_model = ParticipantModel(g.db, selected_year)
-    area_leader_model = AreaLeaderModel(g.db, selected_year)
     available_years = ParticipantModel.get_available_years(g.db)
 
     participants = participant_model.get_participants_by_area(area_code)
-    area_leaders = area_leader_model.get_leaders_by_area(area_code)
+    area_leaders = participant_model.get_leaders_by_area(area_code)
     area_info = get_area_info(area_code)
 
     # Get historical participants if requested
@@ -277,12 +273,11 @@ def leaders():
         return render_template('admin/leaders.html', error="Database unavailable")
 
     selected_year = int(request.args.get('year', datetime.now().year))
-    area_leader_model = AreaLeaderModel(g.db, selected_year)
     participant_model = ParticipantModel(g.db, selected_year)
-    available_years = AreaLeaderModel.get_available_years(g.db)
+    available_years = ParticipantModel.get_available_years(g.db)
 
-    all_leaders = area_leader_model.get_all_leaders()
-    areas_without_leaders = area_leader_model.get_areas_without_leaders()
+    all_leaders = participant_model.get_leaders()
+    areas_without_leaders = participant_model.get_areas_without_leaders()
     leadership_interested = participant_model.get_participants_interested_in_leadership()
     all_areas = get_all_areas()
 
@@ -392,19 +387,18 @@ def add_leader():
         flash(f'Invalid area code: {area_code}', 'error')
         return redirect(url_for('admin.leaders', year=selected_year))
 
-    area_leader_model = AreaLeaderModel(g.db, selected_year)
     user = get_current_user()
 
     try:
         # Check if this exact person (identity) is already assigned to this area
-        existing_leaders_for_person = area_leader_model.get_leaders_by_identity(first_name, last_name, leader_email)
+        existing_leaders_for_person = participant_model.get_leaders_by_identity(first_name, last_name, leader_email)
         for leader in existing_leaders_for_person:
             if leader.get('area_code') == area_code:
                 flash(f'{first_name} {last_name} is already assigned as a leader for Area {area_code}.', 'warning')
                 return redirect(url_for('admin.leaders', year=selected_year))
 
         # Check if this person (identity) is already leading another area (one area per person rule)
-        current_leader_areas = area_leader_model.get_areas_by_identity(first_name, last_name, leader_email)
+        current_leader_areas = participant_model.get_leaders_by_identity(first_name, last_name, leader_email)
         if current_leader_areas:
             existing_area = current_leader_areas[0]['area_code']
             flash(f'{first_name} {last_name} is already leading Area {existing_area}. Each person can only lead one area.', 'error')
@@ -425,7 +419,7 @@ def add_leader():
             'notes': notes if notes else None
         }
 
-        leader_id = area_leader_model.add_leader(leader_data)
+        leader_id = participant_model.add_leader(leader_data)
         
         if leader_id:
             flash(f'Successfully added {first_name} {last_name} as leader for Area {area_code}.', 'success')
@@ -462,7 +456,6 @@ def assign_leader():
         return redirect(url_for('admin.leaders', year=selected_year))
 
     participant_model = ParticipantModel(g.db, selected_year)
-    area_leader_model = AreaLeaderModel(g.db, selected_year)
     user = get_current_user()
 
     # Get participant details
@@ -472,26 +465,18 @@ def assign_leader():
         return redirect(url_for('admin.leaders', year=selected_year))
 
     try:
-        # Check if this email is already leading another area (one area per leader rule)
+        # Check if this person (identity) is already leading another area (one area per leader rule)
+        first_name = participant['first_name']
+        last_name = participant['last_name']
         participant_email = participant['email']
-        leader_areas = area_leader_model.get_areas_by_leader_email(participant_email)
+        leader_areas = participant_model.get_leaders_by_identity(first_name, last_name, participant_email)
         if leader_areas:
-            existing_area = leader_areas[0]['area_code']
-            flash(f'{participant_email} is already leading Area {existing_area}. Leaders can only lead one area.', 'error')
+            existing_area = leader_areas[0]['assigned_area_leader']
+            flash(f'{first_name} {last_name} is already leading Area {existing_area}. Leaders can only lead one area.', 'error')
             return redirect(url_for('admin.leaders', year=selected_year))
 
-        # Update participant record
-        participant_model.assign_leadership(participant_id, area_code, user['email'])
-
-        # Create area leader record
-        area_leader_model.assign_leader(
-            area_code=area_code,
-            leader_email=participant['email'],
-            first_name=participant['first_name'],
-            last_name=participant['last_name'],
-            cell_phone=participant.get('phone', ''),
-            assigned_by=user['email']
-        )
+        # Update participant record with leadership
+        participant_model.assign_area_leadership(participant_id, area_code, user['email'])
 
         flash(f"Assigned {participant['first_name']} {participant['last_name']} as leader for Area {area_code}.",
               'success')
@@ -542,13 +527,12 @@ def delete_participant(participant_id):
 
         # If participant was also a leader, deactivate corresponding leader records
         if is_leader:
-            area_leader_model = AreaLeaderModel(g.db, selected_year)
             first_name = participant.get('first_name', '')
             last_name = participant.get('last_name', '')
             email = participant.get('email', '')
 
             if first_name and last_name and email:
-                if area_leader_model.deactivate_leaders_by_identity(first_name, last_name, email, user['email']):
+                if participant_model.deactivate_leaders_by_identity(first_name, last_name, email, user['email']):
                     flash(f'Participant {participant_name} and corresponding leader records removed successfully.', 'success')
                 else:
                     flash(f'Participant {participant_name} removed, but failed to deactivate leader records. Please check leader management.', 'warning')
@@ -700,65 +684,44 @@ def edit_leader():
             return jsonify({'success': False, 'message': f'Invalid area code: {area_code}'})
 
         # Initialize models
-        area_leader_model = AreaLeaderModel(g.db, selected_year)
-        participant_model = ParticipantModel(g.db, selected_year)
+            participant_model = ParticipantModel(g.db, selected_year)
         user = get_current_user()
 
         # Get current leader data
-        current_leader = area_leader_model.get_area_leader(leader_id)
+        current_leader = participant_model.get_participant(leader_id)
         if not current_leader:
             return jsonify({'success': False, 'message': 'Leader not found'})
 
-        current_email = current_leader.get('leader_email')
-        current_area = current_leader.get('area_code')
+        current_email = current_leader.get('email')
+        current_first_name = current_leader.get('first_name')
+        current_last_name = current_leader.get('last_name')
+        current_area = current_leader.get('assigned_area_leader')
 
-        # Check if email is changing and if new email is already leading another area
-        if leader_email != current_email:
-            existing_areas = area_leader_model.get_areas_by_leader_email(leader_email)
-            if existing_areas:
-                existing_area = existing_areas[0]['area_code']
-                return jsonify({'success': False, 'message': f'Email {leader_email} is already leading Area {existing_area}'})
+        # Check if identity is changing and if new identity is already leading another area
+        identity_changed = (first_name != current_first_name or
+                          last_name != current_last_name or
+                          leader_email != current_email)
 
-        # Update leader record
+        if identity_changed:
+            existing_leaders = participant_model.get_leaders_by_identity(first_name, last_name, leader_email)
+            for existing_leader in existing_leaders:
+                if existing_leader['id'] != leader_id:  # Don't conflict with self
+                    existing_area = existing_leader.get('assigned_area_leader')
+                    return jsonify({'success': False, 'message': f'{first_name} {last_name} is already leading Area {existing_area}'})
+
+        # Update participant record
         updates = {
-            'area_code': area_code,
+            'assigned_area_leader': area_code,
             'first_name': first_name,
             'last_name': last_name,
-            'leader_email': leader_email,
+            'email': leader_email,
             'cell_phone': cell_phone,
-            'updated_by': user['email'],
             'updated_at': datetime.now()
         }
 
-        if not area_leader_model.update_leader(leader_id, updates):
+        if not participant_model.update_participant(leader_id, updates):
             return jsonify({'success': False, 'message': 'Failed to update leader'})
 
-        # Update corresponding participant record for data consistency
-        # Use email + names to uniquely identify the corresponding participant
-        current_first_name = current_leader.get('first_name', '')
-        current_last_name = current_leader.get('last_name', '')
-
-        if current_email and current_first_name and current_last_name:
-            participant = participant_model.get_participant_by_email_and_names(
-                current_email, current_first_name, current_last_name
-            )
-            if participant:
-                participant_updates = {
-                    'preferred_area': area_code,
-                    'updated_at': datetime.now()
-                }
-
-                # If email changed, update that too
-                if leader_email != current_email:
-                    participant_updates['email'] = leader_email
-
-                # If names changed, update those too
-                if first_name != current_first_name:
-                    participant_updates['first_name'] = first_name
-                if last_name != current_last_name:
-                    participant_updates['last_name'] = last_name
-
-                participant_model.update_participant(participant['id'], participant_updates)
 
         return jsonify({'success': True, 'message': 'Leader updated successfully'})
 
@@ -787,37 +750,20 @@ def delete_leader():
             return jsonify({'success': False, 'message': 'Leader ID is required'})
 
         # Initialize models
-        area_leader_model = AreaLeaderModel(g.db, selected_year)
-        participant_model = ParticipantModel(g.db, selected_year)
+            participant_model = ParticipantModel(g.db, selected_year)
         user = get_current_user()
 
         # Get leader data before deletion
-        leader = area_leader_model.get_area_leader(leader_id)
+        leader = participant_model.get_participant(leader_id)
         if not leader:
             return jsonify({'success': False, 'message': 'Leader not found'})
 
-        leader_email = leader.get('leader_email')
+        leader_email = leader.get('email')
 
         # Remove leader (deactivate)
-        if not area_leader_model.remove_leader(leader_id, user['email']):
+        if not participant_model.remove_leader(leader_id, user['email']):
             return jsonify({'success': False, 'message': 'Failed to delete leader'})
 
-        # Reset participant status when deleting a leader
-        # Use email + names to uniquely identify the corresponding participant
-        leader_first_name = leader.get('first_name', '')
-        leader_last_name = leader.get('last_name', '')
-
-        if leader_email and leader_first_name and leader_last_name:
-            participant = participant_model.get_participant_by_email_and_names(
-                leader_email, leader_first_name, leader_last_name
-            )
-            if participant:
-                participant_updates = {
-                    'is_leader': False,
-                    'assigned_area_leader': None,
-                    'updated_at': datetime.now()
-                }
-                participant_model.update_participant(participant['id'], participant_updates)
 
         return jsonify({'success': True, 'message': 'Leader deleted successfully'})
 

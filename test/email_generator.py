@@ -26,7 +26,6 @@ from config.email_settings import (
     EMAIL_SUBJECTS
 )
 from models.participant import ParticipantModel
-from models.area_leader import AreaLeaderModel
 from models.removal_log import RemovalLogModel
 from services.email_service import email_service
 
@@ -69,11 +68,11 @@ class EmailTimestampModel:
             return False
 
 
-def get_area_leaders_emails(area_leader_model: AreaLeaderModel, area_code: str) -> List[str]:
+def get_area_leaders_emails(participant_model: ParticipantModel, area_code: str) -> List[str]:
     """Get all email addresses for leaders of a specific area."""
     try:
-        leaders = area_leader_model.get_leaders_for_area(area_code)
-        return [leader['leader_email'] for leader in leaders if leader.get('active', True)]
+        leaders = participant_model.get_leaders_by_area(area_code)
+        return [leader['email'] for leader in leaders if leader.get('is_leader', False)]
     except Exception as e:
         logger.error(f"Error getting leader emails for area {area_code}: {e}")
         return []
@@ -154,7 +153,6 @@ def generate_team_update_emails(app=None) -> Dict[str, Any]:
         current_time = datetime.utcnow()  # Race condition prevention: pick timestamp first
         
         participant_model = ParticipantModel(db, current_year)
-        area_leader_model = AreaLeaderModel(db, current_year)
         timestamp_model = EmailTimestampModel(db, current_year)
         
         results = {
@@ -164,8 +162,8 @@ def generate_team_update_emails(app=None) -> Dict[str, Any]:
         }
         
         # Get all areas that have leaders
-        all_leaders = area_leader_model.get_all_leaders()
-        areas_with_leaders = set(leader['area_code'] for leader in all_leaders if leader.get('active', True))
+        all_leaders = participant_model.get_leaders()
+        areas_with_leaders = set(leader['assigned_area_leader'] for leader in all_leaders if leader.get('is_leader', False))
         
         for area_code in areas_with_leaders:
             try:
@@ -188,15 +186,15 @@ def generate_team_update_emails(app=None) -> Dict[str, Any]:
                     continue
                 
                 # Get leader emails and names
-                leader_emails = get_area_leaders_emails(area_leader_model, area_code)
+                leader_emails = get_area_leaders_emails(participant_model, area_code)
                 if not leader_emails:
                     logger.warning(f"No leader emails found for area {area_code}")
                     continue
-                
+
                 # Get leader names for display
-                leaders = area_leader_model.get_leaders_for_area(area_code)
-                leader_names = [f"{leader.get('first_name', '')} {leader.get('last_name', '')}".strip() 
-                              for leader in leaders if leader.get('active', True)]
+                leaders = participant_model.get_leaders_by_area(area_code)
+                leader_names = [f"{leader.get('first_name', '')} {leader.get('last_name', '')}".strip()
+                              for leader in leaders if leader.get('is_leader', False)]
                 
                 # Get current team roster
                 current_team = participant_model.get_participants_by_area(area_code)
@@ -258,7 +256,6 @@ def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
         one_week_ago = current_time - timedelta(days=7)
         
         participant_model = ParticipantModel(db, current_year)
-        area_leader_model = AreaLeaderModel(db, current_year)
         timestamp_model = EmailTimestampModel(db, current_year)
         
         results = {
@@ -268,8 +265,8 @@ def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
         }
         
         # Get all areas that have leaders
-        all_leaders = area_leader_model.get_all_leaders()
-        areas_with_leaders = set(leader['area_code'] for leader in all_leaders if leader.get('active', True))
+        all_leaders = participant_model.get_leaders()
+        areas_with_leaders = set(leader['assigned_area_leader'] for leader in all_leaders if leader.get('is_leader', False))
         
         for area_code in areas_with_leaders:
             try:
@@ -286,14 +283,14 @@ def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
                     continue
                 
                 # Get leader emails and names
-                leader_emails = get_area_leaders_emails(area_leader_model, area_code)
+                leader_emails = get_area_leaders_emails(participant_model, area_code)
                 if not leader_emails:
                     logger.warning(f"No leader emails found for area {area_code}")
                     continue
-                
-                leaders = area_leader_model.get_leaders_for_area(area_code)
-                leader_names = [f"{leader.get('first_name', '')} {leader.get('last_name', '')}".strip() 
-                              for leader in leaders if leader.get('active', True)]
+
+                leaders = participant_model.get_leaders_by_area(area_code)
+                leader_names = [f"{leader.get('first_name', '')} {leader.get('last_name', '')}".strip()
+                              for leader in leaders if leader.get('is_leader', False)]
                 
                 # Get current team and statistics
                 current_team = participant_model.get_participants_by_area(area_code)

@@ -20,9 +20,13 @@ class ParticipantModel:
         participant_data['updated_at'] = datetime.now()
         participant_data['year'] = self.year
 
-        # Ensure is_leader defaults to False (admin-assigned only)
+        # Ensure leadership fields default to appropriate values
         participant_data.setdefault('is_leader', False)
         participant_data.setdefault('assigned_area_leader', None)
+        participant_data.setdefault('leadership_assigned_by', None)
+        participant_data.setdefault('leadership_assigned_at', None)
+        participant_data.setdefault('leadership_removed_by', None)
+        participant_data.setdefault('leadership_removed_at', None)
         
         # Set defaults for new fields
         participant_data.setdefault('notes_to_organizers', '')
@@ -133,39 +137,15 @@ class ParticipantModel:
             return False
 
     def delete_participant(self, participant_id: str) -> bool:
-        """Delete a participant with mandatory bidirectional synchronization (current year only)."""
+        """Delete a participant (single table - no synchronization needed)."""
         try:
-            # Get participant info before deletion for synchronization
             participant = self.get_participant(participant_id)
             if not participant:
                 self.logger.error(f"Participant {participant_id} not found for deletion")
                 return False
 
-            # Delete the participant
             self.db.collection(self.collection).document(participant_id).delete()
             self.logger.info(f"Deleted participant {participant_id} from {self.collection}")
-
-            # Mandatory bidirectional synchronization: deactivate corresponding leader records
-            if participant.get('is_leader', False):
-                first_name = participant.get('first_name', '')
-                last_name = participant.get('last_name', '')
-                email = participant.get('email', '')
-
-                if first_name and last_name and email:
-                    from models.area_leader import AreaLeaderModel
-                    area_leader_model = AreaLeaderModel(self.db, self.year)
-
-                    deactivation_success = area_leader_model.deactivate_leaders_by_identity(
-                        first_name, last_name, email, 'system-participant-deletion'
-                    )
-
-                    if deactivation_success:
-                        self.logger.info(f"Deactivated leader records for {first_name} {last_name} <{email}>")
-                    else:
-                        self.logger.warning(f"Failed to deactivate leader records for {first_name} {last_name} <{email}>")
-                else:
-                    self.logger.warning(f"Skipped leader deactivation for participant {participant_id} due to missing identity information")
-
             return True
         except Exception as e:
             self.logger.error(f"Failed to delete participant {participant_id}: {e}")
@@ -212,39 +192,6 @@ class ParticipantModel:
 
         return participants
 
-    def assign_leadership(self, participant_id: str, area_code: str, assigned_by: str) -> bool:
-        """Assign leadership role to a participant."""
-        try:
-            updates = {
-                'is_leader': True,
-                'assigned_area_leader': area_code,
-                'leadership_assigned_by': assigned_by,
-                'leadership_assigned_at': datetime.now(),
-                'updated_at': datetime.now()
-            }
-            self.db.collection(self.collection).document(participant_id).update(updates)
-            self.logger.info(f"Assigned leadership of area {area_code} to participant {participant_id}")
-            return True
-        except Exception as e:
-            self.logger.error(f"Failed to assign leadership: {e}")
-            return False
-
-    def remove_leadership(self, participant_id: str, removed_by: str) -> bool:
-        """Remove leadership role from a participant."""
-        try:
-            updates = {
-                'is_leader': False,
-                'assigned_area_leader': None,
-                'leadership_removed_by': removed_by,
-                'leadership_removed_at': datetime.now(),
-                'updated_at': datetime.now()
-            }
-            self.db.collection(self.collection).document(participant_id).update(updates)
-            self.logger.info(f"Removed leadership from participant {participant_id}")
-            return True
-        except Exception as e:
-            self.logger.error(f"Failed to remove leadership: {e}")
-            return False
 
     def get_historical_participants(self, area_code: str, years_back: int = 3) -> List[Dict]:
         """Get participants for an area across multiple years, with email deduplication."""
@@ -267,6 +214,194 @@ class ParticipantModel:
                 continue
 
         return list(participants.values())
+
+    def get_leaders(self) -> List[Dict]:
+        """Get all active leaders for the current year."""
+        leaders = []
+        query = (self.db.collection(self.collection)
+                 .where('is_leader', '==', True))
+
+        for doc in query.stream():
+            data = doc.to_dict()
+            data['id'] = doc.id
+            leaders.append(data)
+
+        return leaders
+
+    def get_leaders_by_area(self, area_code: str) -> List[Dict]:
+        """Get all active leaders for a specific area."""
+        leaders = []
+        query = (self.db.collection(self.collection)
+                 .where('is_leader', '==', True)
+                 .where('assigned_area_leader', '==', area_code))
+
+        for doc in query.stream():
+            data = doc.to_dict()
+            data['id'] = doc.id
+            leaders.append(data)
+
+        return leaders
+
+    def is_area_leader(self, email: str, area_code: str = None) -> bool:
+        """Check if an email is an area leader (optionally for a specific area)."""
+        query = (self.db.collection(self.collection)
+                 .where('email', '==', email.lower())
+                 .where('is_leader', '==', True))
+
+        if area_code:
+            query = query.where('assigned_area_leader', '==', area_code)
+
+        docs = list(query.stream())
+        return len(docs) > 0
+
+    def get_leaders_by_identity(self, first_name: str, last_name: str, email: str) -> List[Dict]:
+        """Get all leaders matching exact identity (first_name, last_name, email)."""
+        leaders = []
+        query = (self.db.collection(self.collection)
+                 .where('is_leader', '==', True))
+
+        search_first = first_name.strip().lower()
+        search_last = last_name.strip().lower()
+        search_email = email.lower().strip()
+
+        for doc in query.stream():
+            data = doc.to_dict()
+            data['id'] = doc.id
+
+            stored_first = data.get('first_name', '').strip().lower()
+            stored_last = data.get('last_name', '').strip().lower()
+            stored_email = data.get('email', '').strip().lower()
+
+            if (stored_first == search_first and
+                stored_last == search_last and
+                stored_email == search_email):
+                leaders.append(data)
+
+        return leaders
+
+    def get_areas_without_leaders(self) -> List[str]:
+        """Get list of area codes that don't have assigned leaders."""
+        from config.areas import get_all_areas
+
+        all_areas = set(get_all_areas())
+        assigned_areas = set()
+
+        leaders = self.get_leaders()
+        for leader in leaders:
+            area_code = leader.get('assigned_area_leader')
+            if area_code:
+                assigned_areas.add(area_code)
+
+        return sorted(all_areas - assigned_areas)
+
+    def assign_area_leadership(self, participant_id: str, area_code: str, assigned_by: str) -> bool:
+        """Assign area leadership to a participant."""
+        try:
+            updates = {
+                'is_leader': True,
+                'assigned_area_leader': area_code,
+                'leadership_assigned_by': assigned_by,
+                'leadership_assigned_at': datetime.now(),
+                'updated_at': datetime.now()
+            }
+            self.db.collection(self.collection).document(participant_id).update(updates)
+            self.logger.info(f"Assigned area leadership of {area_code} to participant {participant_id}")
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to assign area leadership: {e}")
+            return False
+
+    def remove_area_leadership(self, participant_id: str, removed_by: str) -> bool:
+        """Remove area leadership from a participant."""
+        try:
+            updates = {
+                'is_leader': False,
+                'assigned_area_leader': None,
+                'leadership_removed_by': removed_by,
+                'leadership_removed_at': datetime.now(),
+                'updated_at': datetime.now()
+            }
+            self.db.collection(self.collection).document(participant_id).update(updates)
+            self.logger.info(f"Removed area leadership from participant {participant_id}")
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to remove area leadership: {e}")
+            return False
+
+    def deactivate_leaders_by_identity(self, first_name: str, last_name: str, email: str, removed_by: str) -> bool:
+        """Deactivate all leaders matching exact identity (first_name, last_name, email)."""
+        try:
+            matching_leaders = self.get_leaders_by_identity(first_name, last_name, email)
+
+            if not matching_leaders:
+                self.logger.info(f"No active leaders found for identity: {first_name} {last_name} <{email}>")
+                return True
+
+            deactivated_count = 0
+            for leader in matching_leaders:
+                if self.remove_area_leadership(leader['id'], removed_by):
+                    deactivated_count += 1
+                    area_code = leader.get('assigned_area_leader', 'unknown')
+                    self.logger.info(f"Deactivated leader {leader['id']} for {first_name} {last_name} in area {area_code}")
+                else:
+                    self.logger.error(f"Failed to deactivate leader {leader['id']} for {first_name} {last_name}")
+
+            success = deactivated_count == len(matching_leaders)
+            if success:
+                self.logger.info(f"Successfully deactivated {deactivated_count} leader(s) for {first_name} {last_name} <{email}>")
+            else:
+                self.logger.error(f"Only deactivated {deactivated_count}/{len(matching_leaders)} leader(s) for {first_name} {last_name} <{email}>")
+
+            return success
+
+        except Exception as e:
+            self.logger.error(f"Failed to deactivate leaders by identity {first_name} {last_name} <{email}>: {e}")
+            return False
+
+    def add_leader(self, leader_data: Dict) -> str:
+        """Add a new participant with leadership role. Returns participant ID or raises exception if identity exists."""
+        first_name = leader_data.get('first_name', '')
+        last_name = leader_data.get('last_name', '')
+        email = leader_data.get('leader_email', '')
+
+        # Check if participant with this identity already exists
+        existing = self.get_participant_by_email_and_names(email, first_name, last_name)
+        if existing:
+            raise ValueError(f"Participant with identity ({first_name}, {last_name}, {email}) already exists. Use participant editing to update existing records.")
+
+        # Create new participant with leadership
+        participant_data = {
+            'first_name': first_name,
+            'last_name': last_name,
+            'email': email.lower(),
+            'cell_phone': leader_data.get('cell_phone', ''),
+            'is_leader': True,
+            'assigned_area_leader': leader_data.get('area_code'),
+            'leadership_assigned_by': leader_data.get('assigned_by'),
+            'leadership_assigned_at': datetime.now(),
+            'preferred_area': leader_data.get('area_code'),  # Leader's preferred area matches their leadership area
+            'experience_level': 'Expert',  # Assume leaders are experienced
+            'participation_type': 'leader'
+        }
+
+        return self.add_participant(participant_data)
+
+    def assign_leader(self, area_code: str, leader_email: str, first_name: str,
+                      last_name: str, cell_phone: str, assigned_by: str) -> str:
+        """Assign a leader to an area (wrapper for add_leader with compatible interface)."""
+        leader_data = {
+            'area_code': area_code,
+            'leader_email': leader_email,
+            'first_name': first_name,
+            'last_name': last_name,
+            'cell_phone': cell_phone,
+            'assigned_by': assigned_by
+        }
+        return self.add_leader(leader_data)
+
+    def remove_leader(self, participant_id: str, removed_by: str) -> bool:
+        """Remove leadership from a participant (wrapper for remove_area_leadership)."""
+        return self.remove_area_leadership(participant_id, removed_by)
 
     @classmethod
     def get_available_years(cls, db_client) -> List[int]:

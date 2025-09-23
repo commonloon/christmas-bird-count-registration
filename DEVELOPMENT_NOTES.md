@@ -1,21 +1,43 @@
 # Christmas Bird Count Registration System - Development Notes
 
-## Current Development Status (As of 2025-09-17)
+## Current Development Status (As of 2025-09-23)
+
+### 🔄 Major Architecture Change (2025-09-23)
+
+The application has undergone a **complete architecture migration** from a dual-table design to a clean single-table design. This eliminates the complex synchronization logic and data management issues that were complicating development.
+
+**Before (Dual-Table):**
+- `participants_YYYY` - Regular registrations
+- `area_leaders_YYYY` - Leadership assignments
+- Complex synchronization between tables
+- Dual-source data merging in admin interfaces
+- Bidirectional sync bugs and data consistency issues
+
+**After (Single-Table):**
+- `participants_YYYY` only - All data in one collection
+- Leadership tracked via `is_leader` flag and leadership fields
+- No synchronization needed - single source of truth
+- Clean, maintainable code with no data duplication
+
+**Impact on Development Plans:**
+Many of the planned features below are now **simplified or obsolete** due to the single-table design. Complex dual-source data handling is no longer needed.
 
 ### ✅ Recently Completed Features
 
-#### 1. Combined Participants View Enhancement (2025-09-17)
-- **Problem Solved**: Manually added area leaders were invisible in admin/participants view
-- **Root Issue**: Leaders added via admin/leaders only existed in `area_leaders_2025` collection, not `participants_2025`
-- **Solution**: Modified admin/participants route to combine both data sources
+#### 1. Single-Table Architecture Migration (2025-09-23)
+- **Major Refactoring**: Converted from dual-table design (participants + area_leaders) to clean single-table design
+- **Problem Solved**: Eliminated complex dual-table synchronization, data duplication, and consistency issues
+- **Root Issue**: Dual tables created synchronization bugs, complex deduplication logic, and maintenance overhead
+- **Solution**: Unified all data in `participants_YYYY` collections with integrated leadership fields
 - **Implementation**:
-  - Convert area leaders to participant-like records for display
-  - Prevent duplication with email-based deduplication logic
-  - Map leader fields to participant fields (`leader_email` → `email`, `cell_phone` → `phone`)
-  - Set appropriate defaults for leader-sourced records ("Area Leader" skill/experience)
-- **Result**: All people involved in count now visible in single participants view
-- **Files Modified**: `routes/admin.py`
-- **Benefit**: Admins can now see complete participant list including manually added leaders like Neill Vanhinsberg (Area Q)
+  - Added leadership fields to ParticipantModel: `is_leader`, `assigned_area_leader`, `leadership_assigned_by/at`, `leadership_removed_by/at`
+  - Replaced AreaLeaderModel completely with ParticipantModel methods: `get_leaders()`, `is_area_leader()`, `assign_area_leadership()`
+  - Updated all routes to use single model: admin.py, auth.py, api.py, leader.py, main.py
+  - Removed inappropriate auto-assignment logic from registration (leadership now admin-only)
+  - Simplified authentication to check `is_leader` flag in participant records
+- **Result**: Clean, maintainable single-source-of-truth architecture with no synchronization complexity
+- **Files Modified**: All route files, models/participant.py, eliminated models/area_leader.py
+- **Benefit**: Simplified maintenance, eliminated synchronization bugs, cleaner data model
 
 #### 2. Secondary Phone Number Field Implementation (2025-09-16)
 - **Registration Form**: Added optional secondary phone field labeled "Secondary Phone Number"
@@ -34,14 +56,14 @@
 - **Validation**: Updated `validate_skill_level()` to match form options (Newbie, Beginner, Intermediate, Expert)
 - **Use Case**: Couples or families can register with shared email as long as names differ
 
-#### 3. Centralized Field Management System (2025-09-16)
-- **New Architecture**: Created `config/fields.py` for centralized field definitions
+#### 3. Centralized Field Management System (Updated for Single-Table 2025-09-23)
+- **Updated Architecture**: `config/fields.py` now handles unified participant fields including leadership data
 - **Schema Evolution Safety**: New fields guaranteed to appear in all outputs
-- **Field Definitions**: Ordered lists with defaults, display names, and CSV ordering
-- **Normalization Functions**: `normalize_participant_record()` and `normalize_area_leader_record()`
-- **CSV Export Enhancement**: Uses explicit field enumeration instead of dynamic discovery
-- **Problem Solved**: Eliminates risk of missing fields in CSV exports when first record lacks new fields
-- **Admin Interface**: Both participants and leaders use normalized data for consistent field presence
+- **Field Definitions**: Single set of ordered fields with defaults, display names, and CSV ordering
+- **Normalization Function**: `normalize_participant_record()` handles all data including leadership fields
+- **CSV Export Enhancement**: Uses explicit field enumeration for consistent participant exports
+- **Problem Solved**: Eliminates risk of missing fields in CSV exports, simplified by single-table design
+- **Admin Interface**: Single normalized data structure for all participant records
 
 #### 4. Email Generation Logic
 - **Location**: `test/email_generator.py` (moved from `utils/` for security)
@@ -75,6 +97,33 @@
 - **Buttons**: Manual trigger for all three email types
 - **Feedback**: JSON response with success/failure details
 - **Logging**: Detailed logs for debugging in Cloud Run
+
+### 🎯 Current Migration Priorities
+
+#### 1. Data Migration Utility (In Progress)
+- **Purpose**: Migrate existing `area_leaders_YYYY` data to unified `participants_YYYY` collections
+- **Implementation**: Create utility in `utils/migrate_to_single_table.py`
+- **Tasks**:
+  - Read existing area leader records
+  - Convert to participant format with `is_leader=True`
+  - Map fields: `leader_email`→`email`, `cell_phone`→`phone`
+  - Populate leadership tracking fields
+  - Handle identity conflicts with existing participants
+
+#### 2. Legacy Code Cleanup
+- **Remove**: `models/area_leader.py` completely
+- **Update**: Remaining imports in test files and email utilities
+- **Clean**: Documentation references to dual-table architecture
+
+#### 3. Template Updates
+- **Simplify**: Admin participant management (no dual-source complexity)
+- **Update**: Leader management to work with participant-based leadership
+- **Enhance**: Unified edit/delete functionality for all participant records
+
+#### 4. Test Suite Updates
+- **Update**: Identity synchronization tests for single-table design
+- **Remove**: Bidirectional sync tests (no longer applicable)
+- **Add**: Leadership field management tests
 
 #### 6. Security Implementation (Implemented, Not Yet Deployed)
 - **Input Sanitization**: Created `services/security.py` with sanitization functions for names, emails, phone numbers, notes

@@ -1,5 +1,5 @@
 # Vancouver Christmas Bird Count Registration App - Complete Specification
-{# Updated by Claude AI on 2025-09-22 #}
+{# Updated by Claude AI on 2025-09-23 #}
 
 ## Overview
 Web application for Nature Vancouver's annual Christmas Bird Count registration with interactive map-based area selection. Users can register by clicking count areas on a map or using a dropdown menu, with automatic assignment to areas needing volunteers.
@@ -9,25 +9,38 @@ Web application for Nature Vancouver's annual Christmas Bird Count registration 
 - **Database**: Google Firestore with multi-database architecture:
   - `cbc-test`: Development/testing environment database
   - `cbc-register`: Production environment database
-  - Year-based collections within each database (`participants_2025`, `area_leaders_2025`)
+  - Year-based collections within each database (`participants_2025` - single table design)
   - Automated database setup with composite indexes
 - **Authentication**: Google Identity Services OAuth with Google Secret Manager for credentials
 - **Frontend**: Bootstrap 5 + Bootstrap Icons, Leaflet.js for interactive mapping
 - **Deployment**: Google Cloud Run with automated deployment scripts for both environments
-- **Security**: Role-based access control with admin whitelist and area leader database
+- **Security**: Role-based access control with admin whitelist and participant-based leadership tracking
 - **Data**: 25 count areas (A-Y) with admin-assignment-only flag system for flexible area management
 
 ## Annual Event Architecture
 
 ### Data Organization
-Each year's data is stored in separate Firestore collections:
+Each year's data is stored in separate Firestore collections using a **single-table design**:
 - `participants_2025`, `participants_2024`, etc.
-- `area_leaders_2025`, `area_leaders_2024`, etc.
+- Leadership data integrated into participant records with `is_leader` flag and leadership-specific fields
+- No separate area_leaders collections - all data in unified participant model
 
 ### Cross-Year Data Access
 - Historical queries merge results from multiple yearly collections
 - Email deduplication keeps most recent participant information
 - Area leaders can access historical contact lists for recruitment
+
+### Single-Table Data Model
+**Core Participant Fields:**
+- Personal: `first_name`, `last_name`, `email`, `cell_phone`
+- Registration: `preferred_area`, `experience_level`, `participation_type`, `interested_in_leadership`
+- Equipment: `has_binoculars`, `spotting_scope`
+- Notes: `notes_to_organizers`
+
+**Leadership Fields (when `is_leader=True`):**
+- Leadership Status: `is_leader`, `assigned_area_leader`
+- Leadership Tracking: `leadership_assigned_by`, `leadership_assigned_at`, `leadership_removed_by`, `leadership_removed_at`
+- Family Email Support: Identity-based operations using `(first_name, last_name, email)` tuple for unique identification
 
 ### Environment-Specific Database Architecture
 - **Automatic Database Selection**: Environment-specific database selection based on `FLASK_ENV` and `TEST_MODE` variables
@@ -50,10 +63,11 @@ Each year's data is stored in separate Firestore collections:
 - Full system access across all years
 - Participant and area leader management
 
-**Area Leader Access (Google OAuth + Leader Database)**
-- Any Google account registered as area leader
+**Area Leader Access (Google OAuth + Participant-Based Leadership)**
+- Any Google account with `is_leader=True` in participant records
 - Access to own area's participant lists (current + historical)
 - Read-only access to historical data
+- Leadership assignment managed exclusively by admins
 
 ### Admin Configuration
 **Environment-Based Admin Management:**
@@ -92,7 +106,7 @@ def get_admin_emails():
 5. Server verifies token and extracts user email and name
 6. System determines user role based on email:
    - In `config/admins.py` whitelist → **admin** access
-   - In `area_leaders_YYYY` collection → **leader** access  
+   - Has `is_leader=True` in `participants_YYYY` collection → **leader** access
    - Otherwise → **public** access only
 7. Role stored in Flask session for subsequent requests
 8. User redirected to appropriate interface:
@@ -114,7 +128,7 @@ def get_admin_emails():
 - **Communication**: Notes to organizers (optional textarea with 500+ character limit)
 - **Privacy Information**: Provincial Privacy Act compliance statement with dynamic contact email from organization configuration
 - **Role Interest Options**:
-  - **Leadership Interest**: Checkbox tracking (separate from actual leadership assignment) with clickable link to detailed responsibilities
+  - **Leadership Interest**: Checkbox tracking interest only (actual leadership assigned exclusively by admins) with clickable link to detailed responsibilities
   - **Scribe Interest**: Checkbox for new pilot role with clickable link to detailed information and eBird preparation guide
 - **FEEDER Participant Constraints**:
   - Cannot select "UNASSIGNED" (must choose specific area)
@@ -165,10 +179,10 @@ def get_admin_emails():
 - **Email Testing Section (Test Server Only)**: Manual trigger buttons for testing all three email types with immediate feedback
 
 **Participant Management (`/admin/participants`)**
-- **Combined Data Sources**: Displays all participants including manually added area leaders
-  - **Regular Participants**: From `participants_2025` collection (form registrations)
-  - **Leaders-as-Participants**: From `area_leaders_2025` collection (manually added leaders converted to participant format)
-  - **Deduplication Logic**: Prevents duplicate display when leaders also registered as participants (email-based matching)
+- **Single Data Source**: All data from unified `participants_2025` collection
+  - **Regular Participants**: Records with `is_leader=False`
+  - **Leader Participants**: Records with `is_leader=True` (includes leadership fields)
+  - **Clean Single-Table Design**: No deduplication needed - one record per person
 - **Dual-Section Display**: Separate tables for FEEDER and regular participants within each area
 - **In-Page Navigation**: Jump links to quickly access areas with participant counts in headers
 - **Area-Based Organization**: Participants grouped alphabetically by area with participant counts in headers
@@ -217,27 +231,25 @@ def get_admin_emails():
 - Map legend showing accurate counts of areas with/without leaders (template-driven from areas.py configuration)
 - Enhanced area dropdowns with proper area codes and names
 - **Potential Leaders Assignment**: Dropdown shows all areas (including admin-only areas T, Y) allowing multiple leaders per area
-- Integration logic: auto-assign leader registrations, sync participant promotions
+- **Admin-Only Leadership Assignment**: No auto-assignment during registration - leadership only assigned by admins
 
 **Export and Reporting**
-- **Centralized Field Management**: All participant and leader fields defined in `config/fields.py` with ordered lists, defaults, and display names
+- **Centralized Field Management**: All participant fields (including leadership data) defined in `config/fields.py`
   - **Schema Evolution Safety**: New fields guaranteed to appear in all outputs regardless of existing data
   - **Consistent Ordering**: Predictable field order across CSV exports and admin interfaces
   - **Default Value Management**: Missing fields get proper defaults instead of empty values
-  - **Normalization Functions**: `normalize_participant_record()` and `normalize_area_leader_record()` ensure all records have all fields
+  - **Single Normalization Function**: `normalize_participant_record()` ensures all records have all fields
 - **Participants CSV Export**: Centralized field enumeration via `/export_csv` route
   - Uses `get_participant_csv_fields()` for consistent field ordering
   - Automatic inclusion of all defined fields with proper defaults
   - Sorted by area → participation type → first name for logical organization
   - Filename format: `cbc_participants_YYYY_MMDD.csv`
-  - Includes all registration data, contact information, and preferences
-- **Leaders CSV Export**: Centralized field enumeration via `?format=csv` parameter
-  - Uses `get_area_leader_csv_fields()` for consistent field ordering
-  - Automatic inclusion of all defined fields with proper defaults
-  - Sorted by area code for logical organization
+  - Includes all registration data, contact information, preferences, and leadership status
+- **Leaders CSV Export**: Filtered participant export showing only records with `is_leader=True`
+  - Uses same participant field structure with leadership-specific filtering
+  - Sorted by assigned area for logical organization
   - Filename format: `area_leaders_YYYY_MMDD.csv`
-  - Area assignments and leadership data
-  - Registration timestamps and year
+  - Area assignments and leadership data from participant records
 - **Export Sorting**: Data sorted alphabetically by area → participation type → first name
 - **Multiple Export Locations**: Available from both dashboard and participants pages
 - **Year-specific exports** for historical analysis
@@ -311,12 +323,12 @@ def get_admin_emails():
 - Edge cases: empty families, large families, duplicate names, email changes
 - Performance testing with multiple families
 
-**Identity Synchronization Tests** (`test_identity_synchronization.py` - 10 tests):
-- **Bidirectional synchronization**: Participant deletion automatically deactivates leader records
-- **Leader deletion**: Properly resets participant `is_leader` flags
+**Identity-Based Operations Tests** (`test_identity_synchronization.py` - 10 tests):
+- **Single-table design**: No synchronization needed - leadership data integrated into participant records
+- **Leader management**: Adding/removing leadership updates `is_leader` flag and leadership fields directly
 - **Identity-based operations**: All operations use `(first_name, last_name, email)` for unique identification
 - **Case-insensitive matching**: Leader queries work with any case variation while preserving display case
-- **Synchronization error handling**: Graceful failure handling with proper logging
+- **Error handling**: Graceful failure handling with proper logging
 - **Duplicate prevention**: Identity-based validation prevents duplicate leader assignments
 - **Whitespace handling**: Proper normalization of input data
 - **Regression testing**: Validates specific historical bug fixes (Clive Roberts, Some Guy scenarios)
