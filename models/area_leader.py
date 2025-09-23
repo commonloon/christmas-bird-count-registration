@@ -172,35 +172,6 @@ class AreaLeaderModel:
         leaders = self.get_leaders_by_area(area_code)
         return [leader.get('leader_email') for leader in leaders if leader.get('leader_email')]
 
-    def copy_leaders_from_previous_year(self, source_year: int, assigned_by: str) -> int:
-        """Copy area leader assignments from a previous year."""
-        try:
-            source_model = AreaLeaderModel(self.db, source_year)
-            source_leaders = source_model.get_all_leaders()
-
-            copied_count = 0
-            for leader in source_leaders:
-                # Create new leader record for current year
-                leader_data = {
-                    'area_code': leader.get('area_code'),
-                    'leader_email': leader.get('leader_email'),
-                    'first_name': leader.get('first_name') or leader.get('leader_name', '').split(' ', 1)[0],
-                    'last_name': leader.get('last_name') or (leader.get('leader_name', '').split(' ', 1)[1] if len(leader.get('leader_name', '').split(' ', 1)) > 1 else ''),
-                    'cell_phone': leader.get('cell_phone') or leader.get('leader_phone', ''),
-                    'assigned_by': assigned_by,
-                    'copied_from_year': source_year,
-                    'active': True
-                }
-
-                self.add_area_leader(leader_data)
-                copied_count += 1
-
-            self.logger.info(f"Copied {copied_count} leaders from {source_year} to {self.year}")
-            return copied_count
-
-        except Exception as e:
-            self.logger.error(f"Failed to copy leaders from {source_year}: {e}")
-            return 0
 
     def get_leader_contact_info(self, area_code: str) -> Dict:
         """Get consolidated contact information for area leaders."""
@@ -245,3 +216,54 @@ class AreaLeaderModel:
         except Exception as e:
             logging.error(f"Failed to get available years for area leaders: {e}")
             return [datetime.now().year]
+
+    def get_leaders_by_identity(self, first_name: str, last_name: str, email: str) -> List[Dict]:
+        """Get all active leaders matching exact identity (first_name, last_name, email)."""
+        leaders = []
+        query = (self.db.collection(self.collection)
+                 .where('first_name', '==', first_name.strip())
+                 .where('last_name', '==', last_name.strip())
+                 .where('leader_email', '==', email.lower().strip())
+                 .where('active', '==', True))
+
+        for doc in query.stream():
+            data = doc.to_dict()
+            data['id'] = doc.id
+            leaders.append(data)
+
+        return leaders
+
+    def get_areas_by_identity(self, first_name: str, last_name: str, email: str) -> List[Dict]:
+        """Get all areas led by a specific identity (first_name, last_name, email)."""
+        return self.get_leaders_by_identity(first_name, last_name, email)
+
+    def deactivate_leaders_by_identity(self, first_name: str, last_name: str, email: str, removed_by: str) -> bool:
+        """Deactivate all active leaders matching exact identity (first_name, last_name, email)."""
+        try:
+            # Find all matching active leaders
+            matching_leaders = self.get_leaders_by_identity(first_name, last_name, email)
+
+            if not matching_leaders:
+                self.logger.info(f"No active leaders found for identity: {first_name} {last_name} <{email}>")
+                return True  # No leaders to deactivate is success
+
+            # Deactivate each matching leader
+            deactivated_count = 0
+            for leader in matching_leaders:
+                if self.remove_leader(leader['id'], removed_by):
+                    deactivated_count += 1
+                    self.logger.info(f"Deactivated leader {leader['id']} for {first_name} {last_name} in area {leader.get('area_code')}")
+                else:
+                    self.logger.error(f"Failed to deactivate leader {leader['id']} for {first_name} {last_name}")
+
+            success = deactivated_count == len(matching_leaders)
+            if success:
+                self.logger.info(f"Successfully deactivated {deactivated_count} leader(s) for {first_name} {last_name} <{email}>")
+            else:
+                self.logger.error(f"Only deactivated {deactivated_count}/{len(matching_leaders)} leader(s) for {first_name} {last_name} <{email}>")
+
+            return success
+
+        except Exception as e:
+            self.logger.error(f"Failed to deactivate leaders by identity {first_name} {last_name} <{email}>: {e}")
+            return False

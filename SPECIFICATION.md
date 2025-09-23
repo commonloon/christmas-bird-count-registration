@@ -1,5 +1,5 @@
 # Vancouver Christmas Bird Count Registration App - Complete Specification
-{# Updated by Claude AI on 2025-09-17 #}
+{# Updated by Claude AI on 2025-09-22 #}
 
 ## Overview
 Web application for Nature Vancouver's annual Christmas Bird Count registration with interactive map-based area selection. Users can register by clicking count areas on a map or using a dropdown menu, with automatic assignment to areas needing volunteers.
@@ -323,11 +323,17 @@ ADMIN_EMAILS = [
 
 **Business Rules:**
 - Multiple leaders allowed per area
-- One area maximum per leader (enforced by application logic with validation)
+- One area maximum per person (enforced by identity-based validation: first_name + last_name + email)
 - Leaders with Google emails can access leader UI, others receive notifications only
 - Manual entry creates area_leaders records only (no participant record required)
-- Inline editing enforces business rules: prevents duplicate area assignments per leader
-- Participant synchronization: editing leaders promoted from participants updates both records
+- Inline editing enforces business rules: prevents duplicate area assignments per person
+- **Bidirectional synchronization**: Full participant/leader record synchronization implemented
+  - Participant deletion → automatically deactivates corresponding leader records (by identity match)
+  - Leader deletion → resets participant `is_leader` flag (existing functionality)
+- **Family email support**: Multiple family members can share an email address
+  - All operations use identity matching: `(first_name, last_name, email)` combination
+  - Authentication privileges shared among family members with same email
+  - Duplicate prevention and data synchronization work correctly with shared emails
 
 ### Removal Log Collection (per year: removal_log_YYYY)
 ```
@@ -492,6 +498,8 @@ class ParticipantModel:
 **Integration Logic:**
 - If leader registers as participant → auto-assign to their led area
 - Leader status tracked in both collections for data consistency
+- **Bidirectional synchronization**: Participant deletion automatically deactivates leader records
+- **Identity-based operations**: All leader operations use `(first_name, last_name, email)` for unique identification
 - Email notifications sent to leaders for team updates (no workflow automation)
 
 **Access Control:**
@@ -501,8 +509,45 @@ class ParticipantModel:
 
 **Business Rules:**
 - Multiple leaders per area allowed
-- One area maximum per leader (enforced by application)
+- One area maximum per person (enforced by identity-based application logic)
+- **Family email support**: Multiple family members can share email addresses
 - Required fields: first_name, last_name, email, cell_phone
+- **Identity matching**: All operations use `(first_name, last_name, email)` combination for unique identification
+
+### Identity-Based Data Management
+
+**Critical Design Principle**: The application uses identity-based matching for all participant/leader operations to support family email sharing while maintaining data integrity.
+
+**Identity Tuple**: `(first_name, last_name, email)` - All three fields required for unique identification
+
+**AreaLeaderModel Identity Methods**:
+```python
+# Find leaders by exact identity match (case-insensitive)
+get_leaders_by_identity(first_name: str, last_name: str, email: str) -> List[Dict]
+
+# Get areas led by specific person (not just email)
+get_areas_by_identity(first_name: str, last_name: str, email: str) -> List[Dict]
+
+# Deactivate all leader records for specific person
+deactivate_leaders_by_identity(first_name: str, last_name: str, email: str, removed_by: str) -> bool
+```
+
+**Synchronization Implementation**:
+- **Participant deletion** (`routes/admin.py`): Checks `is_leader` flag and calls `deactivate_leaders_by_identity()`
+- **Leader deletion** (existing): Updates participant `is_leader=False` using email-based lookup
+- **Display logic** (`routes/admin.py`): Participant/leader deduplication uses full identity matching
+- **Duplicate prevention**: Leader assignment checks use identity-based validation
+
+**Family Email Support**:
+- Multiple family members can share one email address
+- Each person identified uniquely by `(first_name, last_name, email)` combination
+- Authentication privileges shared among family members (by design choice)
+- All operations (creation, deletion, validation) work correctly with shared emails
+
+**Error Handling**:
+- Missing identity information prevents synchronization (logs warning)
+- Failed deactivation logged with detailed error messages
+- User feedback indicates synchronization success/failure status
 
 ## User Workflows
 
@@ -834,7 +879,15 @@ rm client_secret.json             # Remove sensitive file
    - Handle missing collections gracefully (new years start with empty data)
    - Use composite indexes for filtering by multiple fields
 
-4. **Year-Based Data Access**
+4. **Identity-Based Operations (CRITICAL)**
+   - **NEVER use email-only matching for participant/leader operations**
+   - Always use identity tuple: `(first_name, last_name, email)` for unique identification
+   - Family members may share email addresses - email alone is not unique
+   - Use `get_leaders_by_identity()` instead of `get_leaders_by_email()` for new code
+   - Ensure bidirectional synchronization: participant deletion must deactivate leader records
+   - Test with shared family email scenarios during development
+
+5. **Year-Based Data Access**
    - Always validate year parameters to prevent unauthorized historical access
    - Display clear indicators for current vs. historical data
    - Enforce read-only access to historical years via UI validation

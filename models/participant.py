@@ -108,6 +108,20 @@ class ParticipantModel:
         
         return participants
 
+    def get_participant_by_email_and_names(self, email: str, first_name: str, last_name: str) -> Optional[Dict]:
+        """Get participant by exact email + first_name + last_name match."""
+        query = (self.db.collection(self.collection)
+                .where('email', '==', email.lower())
+                .where('first_name', '==', first_name)
+                .where('last_name', '==', last_name))
+
+        docs = list(query.stream())
+        if docs:
+            data = docs[0].to_dict()
+            data['id'] = docs[0].id
+            return data
+        return None
+
     def update_participant(self, participant_id: str, updates: Dict) -> bool:
         """Update a participant's information."""
         try:

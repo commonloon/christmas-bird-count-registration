@@ -63,6 +63,43 @@ Always use these validation functions from `services/security.py`:
 - **Rate limit testing**: Use `--test-rate-limit` flag to validate rate limiting works
 - **CSRF testing**: Script automatically tests CSRF token validation
 
+## ⚠️ CRITICAL DATA INTEGRITY REQUIREMENTS ⚠️
+
+**ALWAYS use identity-based matching for participant/leader operations.** This application supports family members sharing email addresses, making email-only matching unreliable and potentially destructive.
+
+### **Identity-Based Operations (MANDATORY)**
+- **NEVER use email-only matching** for any participant or leader operations
+- **ALWAYS use identity tuple**: `(first_name, last_name, email)` for unique identification
+- **Family email support**: Multiple family members may share one email address
+- **Email alone is NOT unique** - this is a critical design constraint
+
+### **Required Methods (USE THESE)**
+When working with leader operations, use these identity-based methods from `AreaLeaderModel`:
+```python
+# CORRECT - Identity-based methods
+get_leaders_by_identity(first_name, last_name, email)
+deactivate_leaders_by_identity(first_name, last_name, email, removed_by)
+get_areas_by_identity(first_name, last_name, email)
+
+# AVOID - Email-only methods (legacy, family-unsafe)
+get_leaders_by_email(email)  # Use only for non-critical operations
+```
+
+### **Bidirectional Synchronization (MANDATORY)**
+- **Participant deletion** MUST deactivate corresponding leader records using identity matching
+- **Leader deletion** MUST reset participant `is_leader` flag (already implemented)
+- **Test synchronization** with family email scenarios during development
+
+### **Validation Rules**
+- Duplicate prevention: Use identity-based checks, not email-only
+- Display logic: Use identity matching for participant/leader deduplication
+- Authentication: Email-based sharing of privileges among family members (by design)
+
+### **Critical Testing**
+- ALWAYS test with shared family email addresses
+- Verify synchronization works correctly with identity matching
+- Test duplicate prevention allows different family members with same email
+
 ## About This Project
 
 This is a Flask web application for Nature Vancouver's annual Christmas Bird Count registration system. Users can register for count areas using an interactive map or dropdown, with automatic assignment to areas needing volunteers.
