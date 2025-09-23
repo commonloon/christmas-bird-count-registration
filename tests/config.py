@@ -133,3 +133,120 @@ VALIDATION_RULES = {
         'phone_format': r'^[\d\s\-\(\)\+]{10,20}$'
     }
 }
+
+# Identity-Based Testing Configuration
+IDENTITY_TEST_CONFIG = {
+    # Family email scenarios for comprehensive testing
+    'family_scenarios': [
+        {
+            'email': 'smith-family@test-scenarios.ca',
+            'description': 'Two-member family with one leader',
+            'members': [
+                {
+                    'first_name': 'John',
+                    'last_name': 'Smith',
+                    'area': 'A',
+                    'role': 'leader',
+                    'skill_level': 'Expert',
+                    'interested_in_leadership': True
+                },
+                {
+                    'first_name': 'Jane',
+                    'last_name': 'Smith',
+                    'area': 'B',
+                    'role': 'participant',
+                    'skill_level': 'Intermediate',
+                    'interested_in_leadership': False
+                }
+            ]
+        },
+        {
+            'email': 'johnson-family@test-scenarios.ca',
+            'description': 'Three-member family with multiple leaders',
+            'members': [
+                {
+                    'first_name': 'Bob',
+                    'last_name': 'Johnson',
+                    'area': 'C',
+                    'role': 'leader',
+                    'skill_level': 'Expert',
+                    'interested_in_leadership': True
+                },
+                {
+                    'first_name': 'Alice',
+                    'last_name': 'Johnson',
+                    'area': 'D',
+                    'role': 'leader',
+                    'skill_level': 'Intermediate',
+                    'interested_in_leadership': True
+                },
+                {
+                    'first_name': 'Charlie',
+                    'last_name': 'Johnson',
+                    'area': 'E',
+                    'role': 'participant',
+                    'skill_level': 'Beginner',
+                    'interested_in_leadership': False
+                }
+            ]
+        }
+    ],
+
+    # Operations to test for identity-based validation
+    'test_operations': [
+        'create_participant',
+        'promote_to_leader',
+        'delete_participant',
+        'delete_leader',
+        'verify_synchronization',
+        'check_isolation'
+    ],
+
+    # Identity validation rules
+    'identity_rules': {
+        'tuple_fields': ['first_name', 'last_name', 'email'],
+        'case_sensitivity': False,  # Identity matching is case-insensitive
+        'whitespace_handling': 'strip',  # Strip whitespace from all fields
+        'duplicate_prevention': 'identity_based',  # Not email-only
+        'synchronization_required': True,
+        'isolation_required': True  # Operations on one family member don't affect others
+    },
+
+    # Test data generation settings
+    'test_data': {
+        'base_email_domain': 'test-identity.ca',
+        'phone_prefix': '555-TEST',
+        'default_skill_level': 'Intermediate',
+        'default_experience': '1-2 counts',
+        'default_participation_type': 'regular',
+        'cleanup_pattern': 'test-'  # Pattern for identifying test records to cleanup
+    },
+
+    # Expected synchronization behaviors
+    'synchronization_expectations': {
+        'participant_deletion': {
+            'should_deactivate_leader': True,
+            'should_preserve_other_family_members': True,
+            'should_log_operation': True
+        },
+        'leader_deletion': {
+            'should_reset_participant_flag': True,
+            'should_preserve_other_family_members': True,
+            'should_log_operation': True
+        },
+        'duplicate_prevention': {
+            'same_identity_different_area': 'prevent',
+            'different_identity_same_email': 'allow',
+            'validation_method': 'identity_tuple'
+        }
+    }
+}
+
+# Test Categories - Enhanced with identity testing
+TEST_CATEGORIES = {
+    'critical': ['registration', 'data_consistency', 'authentication', 'identity_synchronization'],
+    'admin': ['admin_operations', 'csv_export', 'participant_management', 'leader_management'],
+    'security': ['input_sanitization', 'csrf_protection', 'race_conditions'],
+    'edge_cases': ['error_handling', 'empty_database', 'large_datasets'],
+    'identity': ['family_email_scenarios', 'identity_based_operations', 'synchronization_validation']
+}

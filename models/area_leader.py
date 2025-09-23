@@ -218,18 +218,31 @@ class AreaLeaderModel:
             return [datetime.now().year]
 
     def get_leaders_by_identity(self, first_name: str, last_name: str, email: str) -> List[Dict]:
-        """Get all active leaders matching exact identity (first_name, last_name, email)."""
+        """Get all active leaders matching exact identity (first_name, last_name, email) - case insensitive."""
+        # Get all active leaders and filter case-insensitively in memory
+        # This approach preserves original case in storage while allowing flexible matching
         leaders = []
         query = (self.db.collection(self.collection)
-                 .where('first_name', '==', first_name.strip())
-                 .where('last_name', '==', last_name.strip())
-                 .where('leader_email', '==', email.lower().strip())
                  .where('active', '==', True))
+
+        # Normalize search criteria
+        search_first = first_name.strip().lower()
+        search_last = last_name.strip().lower()
+        search_email = email.lower().strip()
 
         for doc in query.stream():
             data = doc.to_dict()
             data['id'] = doc.id
-            leaders.append(data)
+
+            # Case-insensitive comparison
+            stored_first = data.get('first_name', '').strip().lower()
+            stored_last = data.get('last_name', '').strip().lower()
+            stored_email = data.get('leader_email', '').strip().lower()
+
+            if (stored_first == search_first and
+                stored_last == search_last and
+                stored_email == search_email):
+                leaders.append(data)
 
         return leaders
 

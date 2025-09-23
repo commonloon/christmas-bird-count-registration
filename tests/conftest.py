@@ -47,12 +47,15 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "security: marks security-related tests"
     )
+    config.addinivalue_line(
+        "markers", "identity: marks identity-based and family email tests"
+    )
 
 def pytest_collection_modifyitems(config, items):
     """Automatically mark tests based on their location/name."""
     for item in items:
         # Mark critical tests
-        if any(keyword in item.nodeid for keyword in ['registration', 'auth', 'data_consistency']):
+        if any(keyword in item.nodeid for keyword in ['registration', 'auth', 'data_consistency', 'identity_synchronization']):
             item.add_marker(pytest.mark.critical)
 
         # Mark admin tests
@@ -60,17 +63,22 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.admin)
 
         # Mark slow tests
-        if any(keyword in item.name for keyword in ['large', 'export', 'concurrent']):
+        if any(keyword in item.name for keyword in ['large', 'export', 'concurrent', 'performance']):
             item.add_marker(pytest.mark.slow)
+
+        # Mark identity tests
+        if any(keyword in item.nodeid for keyword in ['identity', 'family_email']):
+            item.add_marker(pytest.mark.identity)
 
 # Database Fixtures
 @pytest.fixture(scope="session")
 def firestore_client():
-    """Create Firestore client for test session."""
+    """Create Firestore client for test session with correct database."""
     try:
         os.environ['GOOGLE_CLOUD_PROJECT'] = GCP_CONFIG['project_id']
-        client = firestore.Client()
-        logger.info(f"Connected to Firestore project: {GCP_CONFIG['project_id']}")
+        database_name = get_database_name()
+        client = firestore.Client(database=database_name)
+        logger.info(f"Connected to Firestore project: {GCP_CONFIG['project_id']}, database: {database_name}")
         return client
     except Exception as e:
         logger.error(f"Failed to connect to Firestore: {e}")
@@ -201,6 +209,61 @@ def populated_database(firestore_client, test_credentials):
     # This will be implemented when we create the dataset generation utilities
     logger.info("Populated database fixture (to be implemented)")
     yield firestore_client
+
+@pytest.fixture
+def identity_test_database(clean_database):
+    """Provide a database with family email test scenarios pre-populated."""
+    from tests.utils.identity_utils import create_identity_helper, STANDARD_FAMILY_SCENARIOS
+
+    # Create identity helper
+    identity_helper = create_identity_helper(clean_database, TEST_CONFIG['current_year'])
+
+    # Create standard family scenarios
+    created_families = []
+    for scenario in STANDARD_FAMILY_SCENARIOS:
+        family_data = identity_helper.create_family_scenario(
+            scenario['email'],
+            scenario['members']
+        )
+        created_families.append(family_data)
+        logger.info(f"Created family scenario: {scenario['email']} with {len(scenario['members'])} members")
+
+    # Store helper and families in fixture for test access
+    clean_database.identity_helper = identity_helper
+    clean_database.test_families = created_families
+
+    logger.info(f"Identity test database ready with {len(created_families)} family scenarios")
+    yield clean_database
+
+    # Cleanup after test (optional - clean_database fixture handles main cleanup)
+    try:
+        cleanup_count = identity_helper.cleanup_test_identities("test-scenarios.ca")
+        if cleanup_count > 0:
+            logger.info(f"Cleaned up {cleanup_count} identity test records")
+    except Exception as e:
+        logger.warning(f"Error during identity test cleanup: {e}")
+
+@pytest.fixture
+def single_identity_test(clean_database):
+    """Provide a clean database with utilities for single identity testing."""
+    from tests.utils.identity_utils import create_identity_helper
+
+    # Create identity helper
+    identity_helper = create_identity_helper(clean_database, TEST_CONFIG['current_year'])
+
+    # Store helper in fixture for test access
+    clean_database.identity_helper = identity_helper
+
+    logger.info("Single identity test database ready")
+    yield clean_database
+
+    # Cleanup test identities created during the test
+    try:
+        cleanup_count = identity_helper.cleanup_test_identities("test-")
+        if cleanup_count > 0:
+            logger.info(f"Cleaned up {cleanup_count} single identity test records")
+    except Exception as e:
+        logger.warning(f"Error during single identity test cleanup: {e}")
 
 # Application Configuration Fixtures
 @pytest.fixture(scope="session")

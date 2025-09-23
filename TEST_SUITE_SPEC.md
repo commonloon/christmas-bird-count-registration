@@ -103,6 +103,29 @@ tests/
 - Ensure leader deletion removes from both collections
 - Validate participant/leader data remains synchronized
 
+#### Identity-Based Data Management Testing
+**Requirements:**
+- **Family email sharing scenarios**: Multiple family members with same email address
+- **Identity-based leader operations**: Create, update, delete using `(first_name, last_name, email)` tuple
+- **Bidirectional synchronization validation**: Participant deletion automatically deactivates leader records
+- **Duplicate prevention using identity matching**: Prevent same person duplicates while allowing family members
+- **Cross-collection data consistency**: Ensure operations work correctly with shared emails
+- **Identity isolation**: Operations on one family member don't affect others sharing same email
+
+**Critical Bug Prevention (Family Email Support):**
+- Participant deletion → leader record deactivation using identity matching (not email-only)
+- Leader assignment duplicate prevention by identity (allowing family members with shared email)
+- Participant display deduplication using identity tuples (not email-only matching)
+- Authentication privilege sharing among family members (by design)
+- Email-only operation failures prevented through identity-based validation
+
+**Test Scenarios:**
+- Create family with shared email → promote different members to leaders → verify independent management
+- Delete participant who is leader → verify leader record properly deactivated → verify other family members unaffected
+- Attempt duplicate leader assignment → verify prevention for same person → verify allowance for different family members
+- Admin interface display → verify family members show separately despite shared email
+- CSV export validation → verify family members export correctly with shared email
+
 ### Phase 2: Admin Operations
 
 #### Authentication & Dashboard Testing

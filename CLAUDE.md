@@ -327,15 +327,28 @@ The application uses production Firestore - test carefully:
 3. Test map rendering and form dropdown
 
 ### Managing Admin Access
-1. Edit `config/admins.py` email list
+Admin access is automatically managed based on environment:
+
+**Production Admin Changes:**
+1. Edit `PRODUCTION_ADMIN_EMAILS` list in `config/admins.py`
 2. Redeploy application: `./deploy.sh both`
 3. Test authentication with new admin account at `/admin`
+
+**Test Admin Access:**
+- Test accounts (`cbc-test-admin1@`, `cbc-test-admin2@naturevancouver.ca`) are automatically active in test environments
+- No manual configuration required for test deployments
+- Environment detection: `TEST_MODE=true`, `FLASK_ENV=development`, or project name contains 'test'
+
+**Security Features:**
+- Runtime validation prevents test accounts in production
+- Automatic environment detection eliminates manual deployment errors
+- Separate admin lists for production vs test accounts
 
 ### Year Transition Setup
 1. Models automatically create new year collections
 2. Admin interface includes year selector
 3. Historical data remains accessible read-only
-4. Update admin whitelist if coordinators change
+4. Update production admin list in `config/admins.py` if coordinators change
 
 ### Map Color Management
 The application uses a centralized color system based on 20 distinct accessibility colors from sashamaps.net:

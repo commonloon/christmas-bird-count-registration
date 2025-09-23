@@ -101,21 +101,18 @@ Test account passwords are stored securely in Google Secret Manager:
 **Security Note**: Passwords are NEVER stored in version-controlled files. They are retrieved automatically during test execution.
 
 ### Admin Whitelist Configuration
-Add test admin accounts to the admin whitelist for the test environment:
+Test admin accounts are automatically configured based on environment detection:
 
-1. **Edit** `config/admins.py` on the test environment
-2. **Add** test admin emails to `ADMIN_EMAILS` list
-3. **Deploy** changes to test environment: `./deploy.sh test`
+- **Test Environment**: Test admin accounts (`cbc-test-admin1@`, `cbc-test-admin2@naturevancouver.ca`) are automatically added
+- **Production Environment**: Only production admin accounts are active
+- **No Manual Configuration**: Admin whitelist is managed automatically via environment detection
 
-```python
-# config/admins.py (test environment)
-ADMIN_EMAILS = [
-    'birdcount@naturevancouver.ca',
-    'cbc-test-admin1@naturevancouver.ca',  # Add for testing
-    'cbc-test-admin2@naturevancouver.ca',  # Add for testing
-    # ... other admin emails
-]
-```
+The system detects test environments using:
+- `TEST_MODE=true` environment variable
+- `FLASK_ENV=development` setting
+- Project name containing 'test'
+
+**Security Feature**: Runtime validation prevents test accounts from being accidentally deployed to production.
 
 ## Environment Configuration
 
@@ -160,6 +157,43 @@ Tests automatically manage database state:
 - **Populated Database**: Creates realistic test datasets
 - **State Verification**: Validates data consistency after operations
 
+### Identity-Based Testing Setup
+The test suite includes comprehensive identity-based testing for family email scenarios:
+
+#### Test Database Fixtures
+- **`identity_test_database`**: Pre-populated with family scenarios for comprehensive testing
+- **`single_identity_test`**: Clean database with identity utilities for isolated testing
+- **Family Scenarios**: Standard test families with shared emails and multiple members
+
+#### Identity Test Utilities
+The test suite includes specialized utilities in `tests/utils/identity_utils.py`:
+- **IdentityTestHelper**: Complete helper class for identity-based operations
+- **Family Scenario Creation**: Automated setup of multi-member families
+- **Synchronization Validation**: Participant/leader record consistency checking
+- **Isolation Testing**: Verification that family members don't affect each other
+- **Cleanup Utilities**: Automatic cleanup of test data
+
+#### Test Configuration
+Identity test configuration is defined in `tests/config.py`:
+```python
+# Identity-specific test settings
+IDENTITY_TEST_CONFIG = {
+    'family_scenarios': [...],  # Standard family test scenarios
+    'identity_rules': {...},    # Identity validation rules
+    'test_data': {...},         # Test data generation settings
+    'synchronization_expectations': {...}  # Expected behaviors
+}
+```
+
+#### Required Project Dependencies
+Identity tests use the existing project models and utilities:
+- **models/participant.py**: ParticipantModel with year-aware operations
+- **models/area_leader.py**: AreaLeaderModel with identity-based methods
+- **Identity Methods**: New methods added for identity-based operations:
+  - `get_leaders_by_identity(first_name, last_name, email)`
+  - `deactivate_leaders_by_identity(first_name, last_name, email, removed_by)`
+  - `get_areas_by_identity(first_name, last_name, email)`
+
 ## Troubleshooting
 
 ### Common Issues
@@ -168,7 +202,7 @@ Tests automatically manage database state:
 **Symptoms**: `AuthenticationError` during login tests
 **Causes**:
 - OAuth consent screen not published
-- Test accounts not in admin whitelist
+- Environment detection not working (test accounts not automatically added)
 - Invalid credentials in Secret Manager
 
 **Solutions**:
@@ -179,8 +213,11 @@ gcloud secrets versions access latest --secret="test-admin1-password"
 # Check OAuth client configuration in Google Console
 # Ensure consent screen is PUBLISHED (not in testing mode)
 
-# Verify admin whitelist deployment
+# Verify environment detection and deployment
 ./deploy.sh test
+
+# Check environment detection in logs
+gcloud run services logs read cbc-test --region=us-west1 --limit=10 | grep "environment detected"
 ```
 
 #### 2. Firestore Connection Issues
@@ -247,6 +284,53 @@ from google.cloud import firestore
 db = firestore.Client()
 manager = create_database_manager(db)
 manager.clear_test_collections()
+"
+```
+
+#### 6. Identity Test Issues
+**Symptoms**: Identity synchronization test failures, family scenario errors
+**Causes**:
+- Missing identity-based methods in AreaLeaderModel
+- Outdated project code without synchronization fixes
+- Test data pollution between identity tests
+
+**Solutions**:
+```bash
+# Verify identity methods are available
+python -c "
+from models.area_leader import AreaLeaderModel
+from google.cloud import firestore
+model = AreaLeaderModel(firestore.Client())
+assert hasattr(model, 'get_leaders_by_identity'), 'Missing get_leaders_by_identity method'
+assert hasattr(model, 'deactivate_leaders_by_identity'), 'Missing deactivate_leaders_by_identity method'
+print('Identity methods available')
+"
+
+# Clean up identity test data
+python -c "
+from tests.utils.identity_utils import create_identity_helper
+from google.cloud import firestore
+helper = create_identity_helper(firestore.Client())
+count = helper.cleanup_test_identities('test-')
+print(f'Cleaned up {count} identity test records')
+"
+
+# Verify synchronization fix deployment
+curl -I https://cbc-test.naturevancouver.ca/admin
+# Should redirect to login - confirms test environment is accessible
+```
+
+**Identity Test Validation**:
+```bash
+# Test identity helper functionality
+python -c "
+from tests.utils.identity_utils import create_identity_helper
+from google.cloud import firestore
+helper = create_identity_helper(firestore.Client())
+pid, lid = helper.create_test_identity('ValidationTest', 'A', 'both')
+print(f'Created test identity: participant={pid}, leader={lid}')
+helper.cleanup_test_identities('ValidationTest')
+print('Identity helper working correctly')
 "
 ```
 

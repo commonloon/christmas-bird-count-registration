@@ -133,10 +133,39 @@ class ParticipantModel:
             return False
 
     def delete_participant(self, participant_id: str) -> bool:
-        """Delete a participant (current year only)."""
+        """Delete a participant with mandatory bidirectional synchronization (current year only)."""
         try:
+            # Get participant info before deletion for synchronization
+            participant = self.get_participant(participant_id)
+            if not participant:
+                self.logger.error(f"Participant {participant_id} not found for deletion")
+                return False
+
+            # Delete the participant
             self.db.collection(self.collection).document(participant_id).delete()
             self.logger.info(f"Deleted participant {participant_id} from {self.collection}")
+
+            # Mandatory bidirectional synchronization: deactivate corresponding leader records
+            if participant.get('is_leader', False):
+                first_name = participant.get('first_name', '')
+                last_name = participant.get('last_name', '')
+                email = participant.get('email', '')
+
+                if first_name and last_name and email:
+                    from models.area_leader import AreaLeaderModel
+                    area_leader_model = AreaLeaderModel(self.db, self.year)
+
+                    deactivation_success = area_leader_model.deactivate_leaders_by_identity(
+                        first_name, last_name, email, 'system-participant-deletion'
+                    )
+
+                    if deactivation_success:
+                        self.logger.info(f"Deactivated leader records for {first_name} {last_name} <{email}>")
+                    else:
+                        self.logger.warning(f"Failed to deactivate leader records for {first_name} {last_name} <{email}>")
+                else:
+                    self.logger.warning(f"Skipped leader deactivation for participant {participant_id} due to missing identity information")
+
             return True
         except Exception as e:
             self.logger.error(f"Failed to delete participant {participant_id}: {e}")

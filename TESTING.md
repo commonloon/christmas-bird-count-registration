@@ -33,6 +33,7 @@ pytest tests/ -m critical -v
 pytest tests/test_registration.py -v
 pytest tests/test_authentication.py -v
 pytest tests/test_data_consistency.py -v
+pytest tests/test_identity_synchronization.py -v
 ```
 
 #### Admin Operations (Priority 2)
@@ -54,6 +55,24 @@ pytest tests/ -m security -v
 
 # Input sanitization and CSRF protection
 pytest tests/test_security.py -v
+```
+
+#### Identity Tests (Critical for Data Integrity)
+```bash
+# All identity-based tests (family email scenarios, synchronization)
+pytest tests/ -m identity -v
+
+# Core identity synchronization tests (regression prevention)
+pytest tests/test_identity_synchronization.py -v
+
+# Family email scenario tests (shared email validation)
+pytest tests/test_family_email_scenarios.py -v
+
+# Critical identity tests only
+pytest tests/ -m "critical and identity" -v
+
+# Identity synchronization regression tests
+pytest tests/test_identity_synchronization.py::TestSynchronizationRegression -v
 ```
 
 ## Test Execution Options
@@ -97,8 +116,15 @@ pytest tests/ -m "not slow"
 # Security tests only
 pytest tests/ -m security
 
+# Identity tests only (family email scenarios, synchronization)
+pytest tests/ -m identity
+
 # Browser tests only
 pytest tests/ -m browser
+
+# Combined markers
+pytest tests/ -m "critical and identity"  # Critical identity tests only
+pytest tests/ -m "identity and not slow"  # Fast identity tests only
 ```
 
 #### Filter by Keywords
@@ -109,8 +135,17 @@ pytest tests/ -k registration -v
 # Tests containing "csv" or "export"
 pytest tests/ -k "csv or export" -v
 
+# Tests containing "identity" or "synchronization"
+pytest tests/ -k "identity or synchronization" -v
+
+# Tests containing "family" (family email scenarios)
+pytest tests/ -k "family" -v
+
 # Exclude database tests
 pytest tests/ -k "not database" -v
+
+# Exclude slow identity tests
+pytest tests/ -k "identity and not performance" -v
 ```
 
 ### Parallel Execution
@@ -322,6 +357,41 @@ pytest tests/test_data_consistency.py::test_leader_promotion_deletion_cycle -v
 pytest tests/test_data_consistency.py::test_participant_leader_sync -v
 ```
 
+### Identity-Based Testing
+```bash
+# Core identity synchronization tests (validates bug fixes)
+pytest tests/test_identity_synchronization.py -v
+
+# Participant deletion → leader deactivation
+pytest tests/test_identity_synchronization.py::TestIdentitySynchronization::test_participant_deletion_deactivates_leader -v
+
+# Identity-based deactivation method validation
+pytest tests/test_identity_synchronization.py::TestIdentitySynchronization::test_identity_based_deactivation_method -v
+
+# Regression tests for specific bugs
+pytest tests/test_identity_synchronization.py::TestSynchronizationRegression::test_some_guy_scenario -v
+pytest tests/test_identity_synchronization.py::TestSynchronizationRegression::test_clive_roberts_scenario -v
+
+# Family email scenario tests
+pytest tests/test_family_email_scenarios.py -v
+
+# Family creation and isolation
+pytest tests/test_family_email_scenarios.py::TestFamilyEmailSharing::test_family_creation_and_isolation -v
+
+# Family member independence
+pytest tests/test_family_email_scenarios.py::TestFamilyEmailSharing::test_family_member_identity_isolation -v
+
+# Family leader management
+pytest tests/test_family_email_scenarios.py::TestFamilyEmailSharing::test_family_leader_management_independence -v
+
+# Edge cases and performance tests
+pytest tests/test_family_email_scenarios.py::TestFamilyEmailEdgeCases -v
+pytest tests/test_family_email_scenarios.py::TestFamilyEmailPerformance -v
+
+# All identity tests (comprehensive)
+pytest tests/ -m identity -v
+```
+
 ## Troubleshooting
 
 ### Common Test Failures
@@ -354,6 +424,68 @@ gcloud config get-value project
 
 # Clear browser cache and data
 # May require manual browser reset
+```
+
+#### Identity Test Issues
+```bash
+# Check identity methods availability
+python -c "
+from models.area_leader import AreaLeaderModel
+from google.cloud import firestore
+model = AreaLeaderModel(firestore.Client())
+methods = ['get_leaders_by_identity', 'deactivate_leaders_by_identity', 'get_areas_by_identity']
+for method in methods:
+    assert hasattr(model, method), f'Missing method: {method}'
+print('All identity methods available')
+"
+
+# Test identity helper functionality
+python -c "
+from tests.utils.identity_utils import create_identity_helper
+from google.cloud import firestore
+helper = create_identity_helper(firestore.Client())
+print('Identity helper initialized successfully')
+"
+
+# Check for test data pollution
+pytest tests/test_identity_synchronization.py::TestIdentitySynchronization::test_identity_based_deactivation_method -v --tb=short
+
+# Clean up leftover identity test data
+python -c "
+from tests.utils.identity_utils import create_identity_helper
+from google.cloud import firestore
+helper = create_identity_helper(firestore.Client())
+count = helper.cleanup_test_identities('test-')
+print(f'Cleaned up {count} identity test records')
+"
+
+# Verify synchronization fix deployment
+curl -s https://cbc-test.naturevancouver.ca | grep -q "Christmas Bird Count" && echo "Test environment accessible" || echo "Test environment issue"
+```
+
+#### Family Email Scenario Issues
+```bash
+# Test family scenario creation
+pytest tests/test_family_email_scenarios.py::TestFamilyEmailSharing::test_family_creation_and_isolation -v -s
+
+# Verify family isolation
+pytest tests/test_family_email_scenarios.py::TestFamilyEmailSharing::test_family_member_identity_isolation -v -s
+
+# Check family scenario database state
+python -c "
+from tests.utils.identity_utils import STANDARD_FAMILY_SCENARIOS
+for scenario in STANDARD_FAMILY_SCENARIOS:
+    print(f'Family: {scenario[\"email\"]} with {len(scenario[\"members\"])} members')
+"
+
+# Manual family cleanup if tests fail
+python -c "
+from tests.utils.identity_utils import create_identity_helper
+from google.cloud import firestore
+helper = create_identity_helper(firestore.Client())
+count = helper.cleanup_test_identities('test-scenarios.ca')
+print(f'Cleaned up {count} family scenario records')
+"
 ```
 
 ### Test Environment Issues

@@ -56,14 +56,33 @@ Each year's data is stored in separate Firestore collections:
 - Read-only access to historical data
 
 ### Admin Configuration
+**Environment-Based Admin Management:**
 ```python
 # config/admins.py
-ADMIN_EMAILS = [
+PRODUCTION_ADMIN_EMAILS = [
     'birdcount@naturevancouver.ca',
-    'coordinator@naturevancouver.ca',
-    'admin1@naturevancouver.ca'
+    'webmaster@naturevancouver.ca',
+    'kelvin@naturevancouver.ca',
+    'michelle@naturevancouver.ca'
 ]
+
+TEST_ADMIN_EMAILS = [
+    'cbc-test-admin1@naturevancouver.ca',
+    'cbc-test-admin2@naturevancouver.ca'
+]
+
+def get_admin_emails():
+    """Get admin emails based on environment with safety checks."""
+    if is_test_environment():
+        return PRODUCTION_ADMIN_EMAILS + TEST_ADMIN_EMAILS
+    return PRODUCTION_ADMIN_EMAILS
 ```
+
+**Security Features:**
+- Test accounts automatically added only in test environments
+- Runtime validation prevents test accounts in production
+- Environment detection: `TEST_MODE=true`, `FLASK_ENV=development`, or project name contains 'test'
+- No manual configuration required for test deployments
 
 ### Authentication Flow
 1. User visits protected route (e.g., `/admin`)
@@ -271,6 +290,69 @@ ADMIN_EMAILS = [
 - ✅ **Package Structure**: Proper Python imports and deployment-safe directory structure
 - ❌ **Email Service**: Currently uses SMTP, needs Google Cloud Email API configuration
 - ❌ **Production Automation**: Cloud Scheduler configuration pending for automated triggers
+
+### Comprehensive Test Suite
+
+**Test Architecture:**
+- **Framework**: pytest with cloud environment testing against live Firestore databases
+- **Test Database**: Uses named database `cbc-test` (separate from production `cbc-register`)
+- **Test Data**: Year-based isolation using current year (functional tests) and year 2000 (isolation tests)
+- **Authentication**: Real Google OAuth testing with dedicated test accounts stored in Google Secret Manager
+
+**Identity-Based Test Implementation (21 Tests - All Passing):**
+
+**Family Email Sharing Tests** (`test_family_email_scenarios.py` - 11 tests):
+- Family creation and isolation validation
+- Family member identity independence
+- Leader management independence across family members
+- Duplicate prevention with shared emails
+- Synchronization independence (deletion of one family member doesn't affect others)
+- CSV export isolation and proper family member handling
+- Edge cases: empty families, large families, duplicate names, email changes
+- Performance testing with multiple families
+
+**Identity Synchronization Tests** (`test_identity_synchronization.py` - 10 tests):
+- **Bidirectional synchronization**: Participant deletion automatically deactivates leader records
+- **Leader deletion**: Properly resets participant `is_leader` flags
+- **Identity-based operations**: All operations use `(first_name, last_name, email)` for unique identification
+- **Case-insensitive matching**: Leader queries work with any case variation while preserving display case
+- **Synchronization error handling**: Graceful failure handling with proper logging
+- **Duplicate prevention**: Identity-based validation prevents duplicate leader assignments
+- **Whitespace handling**: Proper normalization of input data
+- **Regression testing**: Validates specific historical bug fixes (Clive Roberts, Some Guy scenarios)
+
+**Test Configuration:**
+- **Test Accounts**: `cbc-test-admin1@`, `cbc-test-admin2@`, `cbc-test-leader1@naturevancouver.ca`
+- **Password Storage**: Google Secret Manager (`test-admin1-password`, etc.)
+- **Environment Detection**: Automatic test vs production targeting
+- **Database Isolation**: Complete separation from production data
+- **Test Utilities**: `IdentityTestHelper` for identity-based operations and validation
+
+**Key Test Features:**
+- **Real Cloud Testing**: Tests run against actual Google Cloud services
+- **Identity-Based Validation**: Comprehensive testing of family email scenarios
+- **Database State Management**: Automatic cleanup and setup for each test
+- **Security Testing**: CSRF token validation and rate limiting verification
+- **Performance Validation**: Multi-family scenarios with timing verification
+
+**Test Execution:**
+```bash
+# Run all identity tests
+pytest tests/ -m identity -v
+
+# Run specific test categories
+pytest tests/test_family_email_scenarios.py -v
+pytest tests/test_identity_synchronization.py -v
+
+# Generate test data for development
+python utils/generate_test_participants.py 20 --scribes 5
+```
+
+**Critical Bug Fixes Validated by Tests:**
+1. **Database Connection**: Fixed test suite to use correct named databases (`cbc-test` vs `(default)`)
+2. **Bidirectional Synchronization**: Implemented mandatory participant deletion → leader deactivation in `ParticipantModel.delete_participant()`
+3. **Case-Insensitive Identity Matching**: Fixed `get_leaders_by_identity()` to use in-memory case-insensitive filtering while preserving original case for display
+4. **Environment-Based Admin Security**: Automated test account management prevents production security risks
 
 ## Data Models
 
@@ -532,8 +614,46 @@ get_areas_by_identity(first_name: str, last_name: str, email: str) -> List[Dict]
 deactivate_leaders_by_identity(first_name: str, last_name: str, email: str, removed_by: str) -> bool
 ```
 
+**Case-Insensitive Implementation**:
+```python
+# models/area_leader.py - get_leaders_by_identity() uses in-memory filtering
+def get_leaders_by_identity(self, first_name: str, last_name: str, email: str):
+    # Get all active leaders and filter case-insensitively in memory
+    # Preserves original case for display while allowing flexible matching
+    query = self.db.collection(self.collection).where('active', '==', True)
+
+    search_first = first_name.strip().lower()
+    search_last = last_name.strip().lower()
+    search_email = email.lower().strip()
+
+    for doc in query.stream():
+        data = doc.to_dict()
+        if (data.get('first_name', '').strip().lower() == search_first and
+            data.get('last_name', '').strip().lower() == search_last and
+            data.get('leader_email', '').strip().lower() == search_email):
+            leaders.append(data)
+```
+
+**Mandatory Bidirectional Synchronization**:
+```python
+# models/participant.py - delete_participant() with automatic leader deactivation
+def delete_participant(self, participant_id: str) -> bool:
+    participant = self.get_participant(participant_id)
+    self.db.collection(self.collection).document(participant_id).delete()
+
+    # Mandatory synchronization: deactivate corresponding leader records
+    if participant.get('is_leader', False):
+        from models.area_leader import AreaLeaderModel
+        area_leader_model = AreaLeaderModel(self.db, self.year)
+        area_leader_model.deactivate_leaders_by_identity(
+            participant['first_name'], participant['last_name'],
+            participant['email'], 'system-participant-deletion'
+        )
+```
+
 **Synchronization Implementation**:
-- **Participant deletion** (`routes/admin.py`): Checks `is_leader` flag and calls `deactivate_leaders_by_identity()`
+- **Participant deletion** (`models/participant.py`): **Mandatory** bidirectional sync at model level deactivates leader records
+- **Admin UI** (`routes/admin.py`): Legacy synchronization logic retained for UI feedback
 - **Leader deletion** (existing): Updates participant `is_leader=False` using email-based lookup
 - **Display logic** (`routes/admin.py`): Participant/leader deduplication uses full identity matching
 - **Duplicate prevention**: Leader assignment checks use identity-based validation
@@ -656,6 +776,16 @@ utils/
   setup_databases.py           # Firestore database creation script with environment-specific databases
   generate_test_participants.py # Test data generation script with timestamped emails for uniqueness and CSRF token support
   requirements.txt             # Dependencies for utility scripts (requests, faker, firestore, beautifulsoup4)
+
+tests/
+  config.py                    # Test configuration with environment detection and test accounts
+  conftest.py                  # Pytest configuration and shared fixtures with correct database connections
+  pytest.ini                   # Pytest settings and markers configuration
+  requirements.txt             # Test dependencies (pytest, selenium, faker, etc.)
+  test_family_email_scenarios.py # Family email sharing and isolation tests (11 tests)
+  test_identity_synchronization.py # Identity-based synchronization and validation tests (10 tests)
+  utils/
+    identity_utils.py          # Identity-based test utilities and helper functions
 
 OAUTH-SETUP.md                  # Complete OAuth setup instructions
 CLAUDE.md                       # AI assistant instructions and troubleshooting guide
@@ -892,6 +1022,12 @@ rm client_secret.json             # Remove sensitive file
    - Display clear indicators for current vs. historical data
    - Enforce read-only access to historical years via UI validation
 
+6. **Test Suite Database Configuration**
+   - Tests must use named database `cbc-test` via `firestore.Client(database=database_name)`
+   - **NEVER** use default database `firestore.Client()` - causes "database does not exist" errors
+   - Test environment detection: Use `get_database_name()` from `tests.config`
+   - Test data isolation: Current year for functional tests, year 2000 for isolated tests
+
 ### Database Setup
 For initial project setup or after database deletion:
 ```bash
@@ -945,7 +1081,18 @@ gcloud run services logs read SERVICE --region=us-west1 --limit=50
 
 # Test participant registration
 python utils/generate_test_participants.py 2 --scribes 1  # Should create 2 regular + 5 leadership + 1 scribe participants
+
+# Run comprehensive test suite (all 21 tests should pass)
+pytest tests/ -m identity -v  # Identity-based tests only
+pytest tests/ -v              # All tests (when more test categories are added)
 ```
+
+**Test Suite Validation:**
+- All 21 identity tests must pass (100% success rate)
+- Database connection uses correct named database (`cbc-test`)
+- Test data cleanup automatically occurs after each test
+- Security features (CSRF, rate limiting) should be validated
+- Identity-based operations work correctly with family email scenarios
 
 ## File Modification Guidelines
 
