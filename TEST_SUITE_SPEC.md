@@ -1,5 +1,5 @@
 # Christmas Bird Count Registration Test Suite Specification
-{# Updated by Claude AI on 2025-09-22 #}
+{# Updated by Claude AI on 2025-09-23 #}
 
 ## Overview
 
@@ -12,7 +12,7 @@ This document defines the requirements and scope for a comprehensive functional 
 - **Database**: Test instance uses `cbc-test` Firestore database (isolated from production)
 - **Year Strategy**: Use current year for functional testing, year 2000 for historical/isolation testing
 - **Authentication**: Real Google OAuth with dedicated test accounts
-- **Browser Support**: Primary testing with Chrome, designed for cross-browser compatibility
+- **Browser Support**: Primary testing with Firefox due to Chrome OAuth stability issues
 
 ### Test Suite Architecture
 
@@ -40,14 +40,15 @@ tests/
 #### Database State Management
 - **Clean Database Fixtures**: Empty database for initialization testing
 - **Populated Database Fixtures**: Realistic datasets for workflow testing
-- **State Reset**: Clear year 2000 + current year collections between test scenarios
+- **State Reset**: Clear year 2000 + current year `participants_YYYY` and `removal_log_YYYY` collections between test scenarios
 - **Isolation**: Tests must not depend on execution order or previous test outcomes
+- **Single-Table Design**: Leadership data stored as flags in participant records (`is_leader`, `assigned_area_leader`)
 
 #### Test Dataset Requirements
-1. **Small Dataset**: ~50 participants, 40% of areas have assigned leaders
-2. **Large Dataset**: ~350 participants (realistic production scale)
-3. **Edge Case Datasets**: All areas assigned, some areas empty, single participant per area
-4. **Realistic Distribution**: Uneven area assignments, at least one area with leader but no participants
+1. **Small Dataset**: ~50 participants with `is_leader=True` flags for 40% of areas
+2. **Large Dataset**: ~350 participants (realistic production scale) with leadership flags
+3. **Edge Case Datasets**: All areas assigned leaders, some areas empty, single participant per area
+4. **Realistic Distribution**: Uneven area assignments, at least one area with leader but no other participants
 
 #### Test Data Generation
 - **Extension of Existing Tool**: Enhance `utils/generate_test_participants.py`
@@ -67,8 +68,9 @@ tests/
 **Note**: Test account passwords must be provided separately when resuming development. Passwords are NEVER stored in version-controlled files.
 
 #### OAuth Integration
-- **Real OAuth Flow**: Test against actual Google Identity Services
-- **Automated Browser**: Selenium-based authentication with retry logic
+- **Real OAuth Flow**: Test against actual Google Identity Services with automated consent handling
+- **Firefox WebDriver**: Selenium-based authentication using Firefox for OAuth stability
+- **Automated Flow**: Handles email entry, password entry, and consent screen automatically
 - **Role Verification**: Confirm admin whitelist and leader database access
 - **Session Management**: Test login persistence and role-based redirects
 
@@ -94,26 +96,26 @@ tests/
 #### Data Consistency Testing
 **Requirements:**
 - Leader promotion → deletion → re-addition workflow validation
-- Participant/leader record synchronization across collections
-- Deletion operations properly remove from both `participants_YYYY` and `area_leaders_YYYY`
-- Data consistency after various admin operations
+- Participant/leader record synchronization within single-table design
+- Leadership flag consistency (`is_leader` and `assigned_area_leader` fields)
+- Data consistency after various admin operations in single-table architecture
 
 **Critical Bug Prevention (Clive Roberts Scenario):**
 - Promote participant to leader → delete leader → re-add participant → verify promotion availability
-- Ensure leader deletion removes from both collections
-- Validate participant/leader data remains synchronized
+- Ensure leader deletion properly resets leadership flags in participant record
+- Validate participant leadership status remains synchronized with area assignments
 
 #### Identity-Based Data Management Testing
 **Requirements:**
 - **Family email sharing scenarios**: Multiple family members with same email address
 - **Identity-based leader operations**: Create, update, delete using `(first_name, last_name, email)` tuple
-- **Bidirectional synchronization validation**: Participant deletion automatically deactivates leader records
+- **Single-table leadership management**: Leadership stored as flags in participant records
 - **Duplicate prevention using identity matching**: Prevent same person duplicates while allowing family members
-- **Cross-collection data consistency**: Ensure operations work correctly with shared emails
+- **Identity-based data consistency**: Ensure operations work correctly with shared emails in single-table design
 - **Identity isolation**: Operations on one family member don't affect others sharing same email
 
 **Critical Bug Prevention (Family Email Support):**
-- Participant deletion → leader record deactivation using identity matching (not email-only)
+- Participant deletion → proper cleanup of leadership flags using identity matching (not email-only)
 - Leader assignment duplicate prevention by identity (allowing family members with shared email)
 - Participant display deduplication using identity tuples (not email-only matching)
 - Authentication privilege sharing among family members (by design)
@@ -121,10 +123,10 @@ tests/
 
 **Test Scenarios:**
 - Create family with shared email → promote different members to leaders → verify independent management
-- Delete participant who is leader → verify leader record properly deactivated → verify other family members unaffected
+- Delete participant who is leader → verify leadership flags properly reset → verify other family members unaffected
 - Attempt duplicate leader assignment → verify prevention for same person → verify allowance for different family members
 - Admin interface display → verify family members show separately despite shared email
-- CSV export validation → verify family members export correctly with shared email
+- CSV export validation → verify family members export correctly with shared email in single-table format
 
 ### Phase 2: Admin Operations
 
@@ -271,7 +273,7 @@ tests/
 - Cloud Run scaling behavior
 
 ### Browser Compatibility Testing
-- Cross-browser testing (Chrome, Firefox, Safari, Edge)
+- Cross-browser testing (Firefox primary, Chrome has OAuth issues)
 - Mobile browser testing
 - JavaScript disabled scenarios
 - Accessibility compliance testing
@@ -286,7 +288,7 @@ tests/
 
 ### Technical Stack
 - **Testing Framework**: pytest with fixtures and parametrization
-- **Browser Automation**: Selenium WebDriver with Chrome
+- **Browser Automation**: Selenium WebDriver with Firefox (Chrome has OAuth stability issues)
 - **HTTP Requests**: requests library for API testing
 - **Database**: google-cloud-firestore client for direct database operations
 - **Reporting**: pytest-html for detailed test reports
@@ -315,8 +317,41 @@ tests/
 ### Risk Mitigation
 - **Production Bug Prevention**: Reduce bugs discovered by admins in production
 - **Feature Development Safety**: Confident code changes without breaking existing functionality
-- **Data Integrity Assurance**: Comprehensive validation of multi-collection operations
+- **Data Integrity Assurance**: Comprehensive validation of single-table operations
 - **User Experience Protection**: Ensure UI workflows remain functional
+
+## Test Implementation Status (Updated 2025-09-23)
+
+### ✅ **Completed and Verified**
+**Core Registration Tests (4/4 passing)**:
+- Single-table participant registration for all types (regular, FEEDER, leadership candidates, scribes)
+- Form validation and success page verification
+- Database integration with single-table design
+- Equipment preferences and role interests
+
+**Key Technical Solutions Implemented**:
+- **Element Interaction Framework**: `safe_click()` helper function resolves ElementClickInterceptedException
+- **Success Verification Framework**: `verify_registration_success()` validates URL-based success and database creation
+- **Import Path Resolution**: Project root path setup for test file imports
+- **Single-Table Validation**: Comprehensive verification of leadership flags and participation types
+
+### 🔄 **In Progress**
+**Admin Workflow Tests**: Require OAuth authentication setup
+- Leader promotion workflows (authentication-dependent)
+- Admin UI operations (authentication-dependent)
+- CSV export functionality (route verification needed)
+
+### 🔧 **Test Framework Improvements**
+**Reliability Enhancements**:
+- Robust element clicking with scroll-into-view and wait conditions
+- URL-based success verification (more reliable than DOM inspection)
+- Comprehensive database state validation using actual participant IDs
+- Consistent error handling and debugging output
+
+**Authentication Strategy**:
+- OAuth automation via `tests/utils/auth_utils.py`
+- Test account credentials in Google Secret Manager
+- Authentication failure results in test skip (not failure) for better reporting
 
 ---
 

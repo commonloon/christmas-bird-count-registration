@@ -31,8 +31,8 @@ TEST_CONFIG = {
     'oauth_timeout': 60,  # seconds for OAuth flow completion
 
     # Browser configuration
-    'browser': 'chrome',
-    'headless': True,  # Set to False for debugging
+    'browser': 'firefox',  # Switched from Chrome due to OAuth stability issues
+    'headless': False,  # Temporary for OAuth debugging
     'window_size': (1920, 1080),
 
     # Test data configuration

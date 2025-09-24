@@ -1,9 +1,69 @@
 # Test Execution Guide
-{# Updated by Claude AI on 2025-09-22 #}
+{# Updated by Claude AI on 2025-09-24 #}
 
 ## Overview
 
 This document provides instructions for running the Christmas Bird Count registration test suite. The test suite validates critical workflows, data integrity, and admin operations against cloud environments.
+
+## Prerequisites
+
+### Required Google Cloud Authentication
+
+Before running tests, ensure you have the proper Google Cloud authentication configured:
+
+#### 1. Basic gcloud Authentication
+```bash
+# Check if you're authenticated
+gcloud auth list
+
+# If not authenticated, login
+gcloud auth login
+
+# Verify project is set correctly
+gcloud config get-value project
+# Should return: vancouver-cbc-registration
+
+# Set project if not configured
+gcloud config set project vancouver-cbc-registration
+```
+
+#### 2. Application Default Credentials (Required)
+Tests require Application Default Credentials for accessing Firestore and Secret Manager:
+
+```bash
+# Set up application default credentials (opens browser)
+gcloud auth application-default login
+
+# Verify credentials are working
+gcloud auth application-default print-access-token
+```
+
+#### 3. Verify Test Dependencies Access
+```bash
+# Test Secret Manager access (should list test secrets)
+gcloud secrets list --filter="name~test-"
+
+# Test Firestore connection
+python -c "from google.cloud import firestore; firestore.Client(); print('Firestore connection successful')"
+
+# Test Secret Manager access
+python -c "from google.cloud import secretmanager; secretmanager.SecretManagerServiceClient(); print('Secret Manager connection successful')"
+```
+
+#### 4. Firefox Browser Requirement
+```bash
+# Verify Firefox is installed (primary browser for OAuth stability)
+firefox --version
+
+# Chrome can also be used but has OAuth reliability issues
+chrome --version
+```
+
+**Important Notes:**
+- Application Default Credentials expire and need periodic renewal
+- Run `gcloud auth application-default login` if tests fail with authentication errors
+- Firefox is the primary browser due to better OAuth automation stability
+- Chrome has known issues with Google Identity Services automation
 
 ## Quick Start
 
@@ -350,11 +410,11 @@ pytest tests/test_csv_export.py -v
 ### Data Consistency Testing
 ```bash
 # [TO BE IMPLEMENTED]
-# Clive Roberts scenario (leader promotion/deletion bug)
+# Clive Roberts scenario (leader promotion/deletion bug) - single-table version
 pytest tests/test_data_consistency.py::test_leader_promotion_deletion_cycle -v
 
-# Cross-collection synchronization
-pytest tests/test_data_consistency.py::test_participant_leader_sync -v
+# Single-table leadership flag synchronization
+pytest tests/test_data_consistency.py::test_participant_leadership_flags -v
 ```
 
 ### Identity-Based Testing
@@ -397,16 +457,36 @@ pytest tests/ -m identity -v
 ### Common Test Failures
 
 #### Authentication Issues
+**Common Symptoms:**
+- `google.auth.exceptions.DefaultCredentialsError`
+- `PermissionDenied` errors accessing Secret Manager or Firestore
+- OAuth flow timeouts or crashes
+
+**Solutions:**
 ```bash
-# Check Secret Manager access
+# Renew application default credentials (most common fix)
+gcloud auth application-default login
+
+# Check current authentication
+gcloud auth list
+
+# Verify project configuration
+gcloud config get-value project
+
+# Test Secret Manager access
 gcloud secrets list --filter="name~test-"
 
-# Verify admin whitelist on test environment
-# Check config/admins.py includes test accounts
+# Test Firestore access
+python -c "from google.cloud import firestore; firestore.Client().collection('test').limit(1).get()"
 
-# OAuth debugging with visible browser
-# Set headless: False in tests/config.py
+# OAuth debugging with visible Firefox browser
+# Set headless: False in tests/config.py and browser: 'firefox'
 ```
+
+**OAuth-Specific Issues:**
+- **Chrome crashes**: Switch to Firefox in `tests/config.py`
+- **Consent screen**: Should be handled automatically by auth_utils.py
+- **Session timeouts**: Increase oauth_timeout in TEST_CONFIG
 
 #### Database Connection Issues
 ```bash
@@ -428,15 +508,14 @@ gcloud config get-value project
 
 #### Identity Test Issues
 ```bash
-# Check identity methods availability
+# Check single-table leadership functionality
 python -c "
-from models.area_leader import AreaLeaderModel
+from models.participant import ParticipantModel
 from google.cloud import firestore
-model = AreaLeaderModel(firestore.Client())
-methods = ['get_leaders_by_identity', 'deactivate_leaders_by_identity', 'get_areas_by_identity']
-for method in methods:
-    assert hasattr(model, method), f'Missing method: {method}'
-print('All identity methods available')
+model = ParticipantModel(firestore.Client())
+participants = model.get_all_participants()
+leaders = model.get_leaders()
+print(f'Single-table design working: {len(participants)} participants, {len(leaders)} leaders')
 "
 
 # Test identity helper functionality

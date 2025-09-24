@@ -13,8 +13,10 @@ import logging
 from datetime import datetime
 from google.cloud import firestore, secretmanager
 from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.firefox.service import Service as FirefoxService
 
 # Add project root to Python path for imports
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -122,7 +124,7 @@ def test_credentials(secret_manager_client):
 @pytest.fixture(scope="session")
 def chrome_options():
     """Configure Chrome options for testing."""
-    options = Options()
+    options = ChromeOptions()
 
     if TEST_CONFIG['headless']:
         options.add_argument('--headless')
@@ -133,34 +135,107 @@ def chrome_options():
     options.add_argument('--disable-extensions')
     options.add_argument(f'--window-size={TEST_CONFIG["window_size"][0]},{TEST_CONFIG["window_size"][1]}')
 
-    # Additional stability options for cloud testing
+    # Additional stability options for cloud testing and OAuth
     options.add_argument('--disable-web-security')
     options.add_argument('--allow-running-insecure-content')
     options.add_argument('--disable-features=VizDisplayCompositor')
+    options.add_argument('--disable-blink-features=AutomationControlled')
+    options.add_argument('--disable-background-networking')
+    options.add_argument('--disable-background-timer-throttling')
+    options.add_argument('--disable-renderer-backgrounding')
+    options.add_argument('--disable-backgrounding-occluded-windows')
+    options.add_argument('--disable-client-side-phishing-detection')
+    options.add_argument('--disable-component-extensions-with-background-pages')
+    options.add_argument('--disable-default-apps')
+    options.add_argument('--disable-hang-monitor')
+    options.add_argument('--disable-ipc-flooding-protection')
+    options.add_argument('--disable-popup-blocking')
+    options.add_argument('--disable-prompt-on-repost')
+    options.add_argument('--disable-sync')
+    options.add_argument('--metrics-recording-only')
+    options.add_argument('--no-first-run')
+    options.add_argument('--safebrowsing-disable-auto-update')
+    options.add_argument('--enable-automation')
+    options.add_argument('--password-store=basic')
+    options.add_argument('--use-mock-keychain')
+    options.add_argument('--remote-debugging-port=9222')
 
     logger.info(f"Chrome configured with headless={TEST_CONFIG['headless']}")
     return options
 
+@pytest.fixture(scope="session")
+def firefox_options():
+    """Configure Firefox options for testing."""
+    options = FirefoxOptions()
+
+    if TEST_CONFIG['headless']:
+        options.add_argument('--headless')
+
+    # Firefox preferences for stability and OAuth compatibility
+    options.set_preference('dom.webdriver.enabled', False)
+    options.set_preference('useAutomationExtension', False)
+    options.set_preference('general.useragent.override', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:91.0) Gecko/20100101 Firefox/91.0')
+
+    # Disable animations and transitions that can cause instability
+    options.set_preference('toolkit.cosmeticAnimations.enabled', False)
+    options.set_preference('browser.tabs.animate', False)
+    options.set_preference('browser.fullscreen.animateUp', 0)
+
+    # OAuth and popup handling
+    options.set_preference('dom.popup_maximum', 0)
+    options.set_preference('privacy.clearOnShutdown.offlineApps', True)
+    options.set_preference('privacy.clearOnShutdown.passwords', True)
+    options.set_preference('privacy.clearOnShutdown.siteSettings', True)
+
+    # Disable various Firefox features that can interfere with testing
+    options.set_preference('app.update.enabled', False)
+    options.set_preference('browser.safebrowsing.enabled', False)
+    options.set_preference('browser.safebrowsing.malware.enabled', False)
+    options.set_preference('browser.ping-centre.telemetry', False)
+    options.set_preference('browser.tabs.remote.autostart', False)
+    options.set_preference('extensions.update.enabled', False)
+    options.set_preference('media.navigator.enabled', False)
+    options.set_preference('network.http.phishy-userpass-length', 255)
+    options.set_preference('offline-apps.allow_by_default', False)
+    options.set_preference('prompts.tab_modal.enabled', False)
+    options.set_preference('security.csp.enable', False)
+    options.set_preference('security.notification_enable_delay', 0)
+
+    logger.info(f"Firefox configured with headless={TEST_CONFIG['headless']}")
+    return options
+
 @pytest.fixture
-def browser(chrome_options):
+def browser(chrome_options, firefox_options):
     """Create and manage browser instance for tests."""
     driver = None
+    browser_type = TEST_CONFIG.get('browser', 'chrome').lower()
+
     try:
-        driver = webdriver.Chrome(options=chrome_options)
+        if browser_type == 'firefox':
+            from webdriver_manager.firefox import GeckoDriverManager
+            driver_service = FirefoxService(GeckoDriverManager().install())
+            driver = webdriver.Firefox(service=driver_service, options=firefox_options)
+            logger.info("Firefox browser instance created")
+        else:  # Default to Chrome
+            from webdriver_manager.chrome import ChromeDriverManager
+            driver_service = ChromeService(ChromeDriverManager().install())
+            driver = webdriver.Chrome(service=driver_service, options=chrome_options)
+            logger.info("Chrome browser instance created")
+
         driver.implicitly_wait(10)
         driver.set_page_load_timeout(TEST_CONFIG['page_load_timeout'])
-        logger.info("Browser instance created")
         yield driver
+
     except Exception as e:
-        logger.error(f"Failed to create browser instance: {e}")
+        logger.error(f"Failed to create {browser_type} browser instance: {e}")
         pytest.fail(f"Cannot run browser tests: {e}")
     finally:
         if driver:
             try:
                 driver.quit()
-                logger.info("Browser instance closed")
+                logger.info(f"{browser_type.title()} browser instance closed")
             except Exception as e:
-                logger.warning(f"Error closing browser: {e}")
+                logger.warning(f"Error closing {browser_type} browser: {e}")
 
 # Database State Management Fixtures
 @pytest.fixture

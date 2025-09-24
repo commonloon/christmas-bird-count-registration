@@ -1,5 +1,5 @@
 # Test Suite Setup Instructions
-{# Updated by Claude AI on 2025-09-22 #}
+{# Updated by Claude AI on 2025-09-23 #}
 
 ## Overview
 
@@ -10,7 +10,8 @@ This document provides complete setup instructions for the Christmas Bird Count 
 ### System Requirements
 - **Operating System**: Windows 11 (development environment)
 - **Python**: 3.8 or higher
-- **Google Chrome**: Latest version installed and available in PATH
+- **Mozilla Firefox**: Latest version installed (primary browser for OAuth stability)
+- **Google Chrome**: Optional secondary browser (has OAuth stability issues)
 - **Git**: For version control
 - **Google Cloud SDK**: For accessing Secret Manager and Firestore
 
@@ -52,19 +53,23 @@ gcloud secrets list --filter="name~test-"
 # Should show test account secrets
 ```
 
-### 4. Verify Chrome Browser Setup
+### 4. Verify Firefox Browser Setup
 ```bash
-# Check Chrome version (run in Command Prompt)
-"C:\Program Files\Google\Chrome\Application\chrome.exe" --version
+# Check Firefox version (run in Command Prompt)
+firefox --version
 
-# Alternative location check
-"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" --version
+# Alternative check via Windows
+"C:\Program Files\Mozilla Firefox\firefox.exe" --version
 ```
 
-**Chrome Installation Notes:**
-- Download from: https://www.google.com/chrome/
-- Ensure Chrome is installed in default location for automatic detection
-- If using non-standard installation, update `PATH` environment variable
+**Firefox Installation Notes:**
+- Download from: https://www.mozilla.org/en-US/firefox/new/
+- Firefox is the primary browser due to better OAuth stability than Chrome
+- WebDriver (geckodriver) is automatically managed by webdriver-manager
+
+**Chrome Notes (Optional):**
+- Chrome can still be used but has OAuth stability issues with Google Identity Services
+- Chrome crashes frequently during automated OAuth flows
 
 ### 5. Test Environment Verification
 ```bash
@@ -132,9 +137,10 @@ Configure browser behavior in `tests/config.py`:
 
 ```python
 TEST_CONFIG = {
-    'headless': True,           # Set to False for debugging
+    # Browser configuration
+    'browser': 'firefox',  # Primary browser (Chrome has OAuth issues)
+    'headless': True,  # Set to False for debugging OAuth flows
     'window_size': (1920, 1080),
-    'browser': 'chrome',
     # ... other settings
 }
 ```
@@ -186,13 +192,11 @@ IDENTITY_TEST_CONFIG = {
 ```
 
 #### Required Project Dependencies
-Identity tests use the existing project models and utilities:
-- **models/participant.py**: ParticipantModel with year-aware operations
-- **models/area_leader.py**: AreaLeaderModel with identity-based methods
-- **Identity Methods**: New methods added for identity-based operations:
-  - `get_leaders_by_identity(first_name, last_name, email)`
-  - `deactivate_leaders_by_identity(first_name, last_name, email, removed_by)`
-  - `get_areas_by_identity(first_name, last_name, email)`
+Identity tests use the existing project models and utilities with single-table design:
+- **models/participant.py**: ParticipantModel with year-aware operations and leadership flags
+- **Single-Table Leadership**: Leadership stored as flags (`is_leader`, `assigned_area_leader`) in participant records
+- **Identity-Based Operations**: All participant operations use `(first_name, last_name, email)` tuple matching
+- **Synchronization**: Leadership status maintained within participant records for data consistency
 
 ## Troubleshooting
 
@@ -239,19 +243,27 @@ gcloud projects get-iam-policy vancouver-cbc-registration
 python utils/setup_databases.py
 ```
 
-#### 3. Chrome Driver Issues
-**Symptoms**: `WebDriverException: 'chromedriver' executable needs to be in PATH`
-**Causes**:
-- Chrome not installed
-- Chrome not in PATH
-- Version mismatch
+#### 3. Browser Driver Issues
+**Firefox Issues (Primary Browser):**
+- `WebDriverException: 'geckodriver' executable issues`
+- Firefox not installed
+- Geckodriver automatically managed by webdriver-manager
+
+**Chrome Issues (Secondary Browser):**
+- OAuth stability problems with Google Identity Services
+- Frequent crashes during automated OAuth flows
+- Use Firefox instead for reliable OAuth testing
 
 **Solutions**:
 ```bash
-# Install/update Chrome
+# Install/update Firefox (recommended)
+# Download from: https://www.mozilla.org/en-US/firefox/new/
+
+# For Chrome (secondary option with OAuth issues)
 # Download from: https://www.google.com/chrome/
 
 # Verify installation
+firefox --version
 chrome --version
 
 # Install webdriver-manager (included in requirements)
@@ -296,14 +308,15 @@ manager.clear_test_collections()
 
 **Solutions**:
 ```bash
-# Verify identity methods are available
+# Verify single-table design is working
 python -c "
-from models.area_leader import AreaLeaderModel
+from models.participant import ParticipantModel
 from google.cloud import firestore
-model = AreaLeaderModel(firestore.Client())
-assert hasattr(model, 'get_leaders_by_identity'), 'Missing get_leaders_by_identity method'
-assert hasattr(model, 'deactivate_leaders_by_identity'), 'Missing deactivate_leaders_by_identity method'
-print('Identity methods available')
+model = ParticipantModel(firestore.Client())
+# Check if model supports leadership flags
+participants = model.get_all_participants()
+leaders = model.get_leaders()
+print(f'Single-table design working: {len(participants)} participants, {len(leaders)} leaders')
 "
 
 # Clean up identity test data
@@ -362,7 +375,7 @@ pytest tests/ -v --log-cli-level=DEBUG > test_output.log 2>&1
 ```
 
 #### Browser Debugging
-Set `headless: False` in `tests/config.py` and run individual tests:
+Set `headless: False` in `tests/config.py` and run individual tests with Firefox:
 ```bash
 pytest tests/test_registration.py::test_basic_registration -v
 ```
@@ -407,6 +420,61 @@ print(stats)
 - **Use synthetic test data** for participant information
 - **Avoid real email addresses** in test data
 - **Clean up test data** after test completion
+
+## Recent Test Framework Improvements (Updated 2025-09-23)
+
+### ✅ **Resolved Issues**
+
+**Element Interaction Problems (Resolved)**:
+- **Issue**: `ElementClickInterceptedException` on form checkboxes and buttons
+- **Root Cause**: Elements not in viewport or covered by other elements
+- **Solution**: Implemented `safe_click()` helper with scroll-into-view and wait conditions
+- **Result**: All registration tests now pass reliably
+
+**Success Page Verification Problems (Resolved)**:
+- **Issue**: Tests expecting `<h1>` elements on success pages that don't exist
+- **Root Cause**: Tests relied on DOM structure rather than functional verification
+- **Solution**: Implemented `verify_registration_success()` using URL patterns and database validation
+- **Result**: More robust success verification using participant IDs from URLs
+
+**Import Path Problems (Resolved)**:
+- **Issue**: `ModuleNotFoundError` for project imports in test files
+- **Root Cause**: Missing project root path setup in test files
+- **Solution**: Added project root path configuration to test files
+- **Result**: All imports work correctly
+
+### 📊 **Current Test Status**
+
+**Passing Tests (4/4 registration tests)**:
+```bash
+# These tests now pass reliably
+pytest tests/test_single_table_regression.py::TestParticipantRegistration -v
+```
+
+**Failing Tests (require authentication setup)**:
+- Leader promotion workflows
+- Admin UI operations
+- CSV export tests
+
+### 🔧 **Quick Verification Commands**
+
+**Test Core Registration Functionality**:
+```bash
+# Verify all registration types work
+pytest tests/test_single_table_regression.py::TestParticipantRegistration -v
+
+# Run basic validation without authentication
+python tests/validate_regression_tests.py
+```
+
+**Debug Authentication Issues**:
+```bash
+# Check Secret Manager access
+gcloud secrets list --filter="name~test-"
+
+# Verify OAuth configuration
+curl -I https://cbc-test.naturevancouver.ca/auth/login
+```
 
 ---
 
