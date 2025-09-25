@@ -97,7 +97,10 @@
                         <p class="card-text">
                             <strong>Email:</strong> <a href="mailto:{{ leader.email|e }}">{{ leader.email|e }}</a><br>
                             {% if leader.phone %}
-                            <strong>Phone:</strong> {{ leader.phone|e }}<br>
+                            <strong>Cell Phone:</strong> {{ leader.phone|e }}<br>
+                            {% endif %}
+                            {% if leader.phone2 %}
+                            <strong>Secondary Phone:</strong> {{ leader.phone2|e }}<br>
                             {% endif %}
                             <strong>Assigned:</strong> 
                             {% if leader.leadership_assigned_at %}

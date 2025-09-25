@@ -15,7 +15,7 @@ PARTICIPANT_FIELDS = OrderedDict([
     ('email', {'default': '', 'display_name': 'Email', 'csv_order': 3}),
 
     # Contact information
-    ('phone', {'default': '', 'display_name': 'Cell Number', 'csv_order': 4}),
+    ('phone', {'default': '', 'display_name': 'Cell Phone', 'csv_order': 4}),
     ('phone2', {'default': '', 'display_name': 'Secondary Phone', 'csv_order': 5}),
 
     # CBC details
@@ -40,11 +40,17 @@ PARTICIPANT_FIELDS = OrderedDict([
     ('assigned_by', {'default': None, 'display_name': 'Assigned By', 'csv_order': 18}),
     ('assigned_at', {'default': None, 'display_name': 'Assigned At', 'csv_order': 19}),
 
+    # Leadership tracking fields
+    ('leadership_assigned_by', {'default': None, 'display_name': 'Leadership Assigned By', 'csv_order': 20}),
+    ('leadership_assigned_at', {'default': None, 'display_name': 'Leadership Assigned At', 'csv_order': 21}),
+    ('leadership_removed_by', {'default': None, 'display_name': 'Leadership Removed By', 'csv_order': 22}),
+    ('leadership_removed_at', {'default': None, 'display_name': 'Leadership Removed At', 'csv_order': 23}),
+
     # Metadata
-    ('created_at', {'default': None, 'display_name': 'Registration Date', 'csv_order': 20}),
-    ('updated_at', {'default': None, 'display_name': 'Last Updated', 'csv_order': 21}),
-    ('year', {'default': datetime.now().year, 'display_name': 'Year', 'csv_order': 22}),
-    ('id', {'default': None, 'display_name': 'ID', 'csv_order': 23}),
+    ('created_at', {'default': None, 'display_name': 'Registration Date', 'csv_order': 24}),
+    ('updated_at', {'default': None, 'display_name': 'Last Updated', 'csv_order': 25}),
+    ('year', {'default': datetime.now().year, 'display_name': 'Year', 'csv_order': 26}),
+    ('id', {'default': None, 'display_name': 'ID', 'csv_order': 27}),
 ])
 
 # Area leader field definitions

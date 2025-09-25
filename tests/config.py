@@ -1,8 +1,9 @@
 # Test Configuration for Christmas Bird Count Registration System
-# Updated by Claude AI on 2025-09-22
+# Updated by Claude AI on 2025-09-25
 
 """
-Test configuration for functional testing against cloud environments.
+Test configuration for functional workflow testing against cloud environments.
+Updated for maintainable functional test suite with page object model.
 Credentials are stored in Google Secret Manager for security.
 """
 
@@ -31,8 +32,8 @@ TEST_CONFIG = {
     'oauth_timeout': 60,  # seconds for OAuth flow completion
 
     # Browser configuration
-    'browser': 'firefox',  # Switched from Chrome due to OAuth stability issues
-    'headless': False,  # Temporary for OAuth debugging
+    'browser': 'firefox',  # Primary browser - better OAuth stability than Chrome
+    'headless': True,  # Set to False for debugging OAuth flows
     'window_size': (1920, 1080),
 
     # Test data configuration
@@ -107,12 +108,13 @@ LOGGING_CONFIG = {
     'log_file': 'tests.log'
 }
 
-# Test Categories
+# Test Categories - Updated for functional workflow testing
 TEST_CATEGORIES = {
-    'critical': ['registration', 'data_consistency', 'authentication'],
-    'admin': ['admin_operations', 'csv_export', 'participant_management'],
-    'security': ['input_sanitization', 'csrf_protection', 'race_conditions'],
-    'edge_cases': ['error_handling', 'empty_database', 'large_datasets']
+    'critical': ['registration_workflows', 'admin_dashboard', 'csv_export'],
+    'admin': ['participant_management', 'leader_management', 'data_operations'],
+    'security': ['input_sanitization', 'csrf_protection', 'authentication'],
+    'workflow': ['form_validation', 'navigation', 'data_preservation'],
+    'performance': ['large_datasets', 'export_performance', 'page_load_times']
 }
 
 # Validation Rules

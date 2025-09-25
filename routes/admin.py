@@ -649,17 +649,18 @@ def edit_leader():
             return jsonify({'success': False, 'message': 'No data provided'})
 
         # Get and sanitize data
-        leader_id = data.get('leader_id', '').strip()
+        leader_id = data.get('participant_id', '').strip()
         area_code = data.get('area_code', '').strip().upper()
         first_name = sanitize_name(data.get('first_name', ''))
         last_name = sanitize_name(data.get('last_name', ''))
         email = sanitize_email(data.get('email', ''))
         phone = sanitize_phone(data.get('phone', ''))
+        phone2 = sanitize_phone(data.get('phone2', ''))
         selected_year = int(data.get('year', datetime.now().year))
         
         # Security checks
         user = get_current_user()
-        all_text_inputs = [first_name, last_name, phone]
+        all_text_inputs = [first_name, last_name, phone, phone2]
         for text_input in all_text_inputs:
             if is_suspicious_input(text_input):
                 log_security_event('Suspicious admin input', f'Edit leader attempt with suspicious input', user.get('email'))
@@ -678,6 +679,9 @@ def edit_leader():
             
         if len(phone) > 20:
             return jsonify({'success': False, 'message': 'Phone number must be 20 characters or less'})
+
+        if len(phone2) > 20:
+            return jsonify({'success': False, 'message': 'Secondary phone number must be 20 characters or less'})
 
         # Validate area code
         if not validate_area_code(area_code):
@@ -716,6 +720,7 @@ def edit_leader():
             'last_name': last_name,
             'email': email,
             'phone': phone,
+            'phone2': phone2,
             'updated_at': datetime.now()
         }
 

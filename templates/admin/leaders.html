@@ -56,8 +56,8 @@
                         <th>Area</th>
                         <th>Leader</th>
                         <th>Email</th>
-                        <th>Phone</th>
-                        <th>Assigned</th>
+                        <th>Cell Phone</th>
+                        <th>Secondary Phone</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
@@ -110,11 +110,12 @@
                             </div>
                         </td>
                         <td>
-                            {% if leader.leadership_assigned_at %}
-                                {{ leader.leadership_assigned_at.strftime('%m/%d/%y') }}
-                            {% else %}
-                                N/A
-                            {% endif %}
+                            <div class="phone2-display">
+                                {{ leader.phone2 or 'N/A' }}
+                            </div>
+                            <div class="phone2-edit" style="display: none;">
+                                <input type="tel" class="form-control form-control-sm phone2-input" value="{{ leader.phone2 or '' }}" placeholder="(604) 555-1234">
+                            </div>
                         </td>
                         <td>
                             <div class="btn-group btn-group-sm action-buttons">
@@ -376,10 +377,10 @@ document.addEventListener('DOMContentLoaded', function() {
     
     function enableEditMode(row) {
         // Hide display elements and show edit elements
-        row.querySelectorAll('.area-display, .name-display, .email-display, .phone-display').forEach(el => {
+        row.querySelectorAll('.area-display, .name-display, .email-display, .phone-display, .phone2-display').forEach(el => {
             el.style.display = 'none';
         });
-        row.querySelectorAll('.area-edit, .name-edit, .email-edit, .phone-edit').forEach(el => {
+        row.querySelectorAll('.area-edit, .name-edit, .email-edit, .phone-edit, .phone2-edit').forEach(el => {
             el.style.display = 'block';
         });
         
@@ -390,10 +391,10 @@ document.addEventListener('DOMContentLoaded', function() {
     
     function disableEditMode(row) {
         // Show display elements and hide edit elements
-        row.querySelectorAll('.area-display, .name-display, .email-display, .phone-display').forEach(el => {
+        row.querySelectorAll('.area-display, .name-display, .email-display, .phone-display, .phone2-display').forEach(el => {
             el.style.display = 'block';
         });
-        row.querySelectorAll('.area-edit, .name-edit, .email-edit, .phone-edit').forEach(el => {
+        row.querySelectorAll('.area-edit, .name-edit, .email-edit, .phone-edit, .phone2-edit').forEach(el => {
             el.style.display = 'none';
         });
         
@@ -411,6 +412,7 @@ document.addEventListener('DOMContentLoaded', function() {
             last_name: row.querySelector('.last-name-input').value.trim(),
             email: row.querySelector('.email-input').value.trim(),
             phone: row.querySelector('.phone-input').value.trim(),
+            phone2: row.querySelector('.phone2-input').value.trim(),
             year: {{ selected_year }},
             csrf_token: '{{ csrf_token() }}'
         };
@@ -456,6 +458,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 row.querySelector('.email-display a').textContent = formData.email;
                 row.querySelector('.email-display a').href = 'mailto:' + formData.email;
                 row.querySelector('.phone-display').textContent = formData.phone || 'N/A';
+                row.querySelector('.phone2-display').textContent = formData.phone2 || 'N/A';
 
                 // Update row data
                 row.dataset.leaderEmail = formData.email;
