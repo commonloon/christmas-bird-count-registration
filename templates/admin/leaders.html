@@ -103,10 +103,10 @@
                         </td>
                         <td>
                             <div class="phone-display">
-                                {{ leader.cell_phone or 'N/A' }}
+                                {{ leader.phone or 'N/A' }}
                             </div>
                             <div class="phone-edit" style="display: none;">
-                                <input type="tel" class="form-control form-control-sm phone-input" value="{{ leader.cell_phone or '' }}" placeholder="(604) 555-1234">
+                                <input type="tel" class="form-control form-control-sm phone-input" value="{{ leader.phone or '' }}" placeholder="(604) 555-1234">
                             </div>
                         </td>
                         <td>
@@ -167,8 +167,8 @@
                     <input type="email" class="form-control" id="email" name="email" required>
                 </div>
                 <div class="col-md-3">
-                    <label for="cell_phone" class="form-label">Cell Phone *</label>
-                    <input type="tel" class="form-control" id="cell_phone" name="cell_phone" required 
+                    <label for="phone" class="form-label">Cell Phone *</label>
+                    <input type="tel" class="form-control" id="phone" name="phone" required 
                            placeholder="(604) 555-1234">
                 </div>
             </div>
@@ -410,7 +410,7 @@ document.addEventListener('DOMContentLoaded', function() {
             first_name: row.querySelector('.first-name-input').value.trim(),
             last_name: row.querySelector('.last-name-input').value.trim(),
             email: row.querySelector('.email-input').value.trim(),
-            cell_phone: row.querySelector('.phone-input').value.trim(),
+            phone: row.querySelector('.phone-input').value.trim(),
             year: {{ selected_year }},
             csrf_token: '{{ csrf_token() }}'
         };
@@ -455,7 +455,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 row.querySelector('.leader-name').textContent = newLeaderName;
                 row.querySelector('.email-display a').textContent = formData.email;
                 row.querySelector('.email-display a').href = 'mailto:' + formData.email;
-                row.querySelector('.phone-display').textContent = formData.cell_phone || 'N/A';
+                row.querySelector('.phone-display').textContent = formData.phone || 'N/A';
 
                 // Update row data
                 row.dataset.leaderEmail = formData.email;

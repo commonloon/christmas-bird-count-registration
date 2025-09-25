@@ -96,8 +96,8 @@
                         <h6 class="card-title">{{ leader.first_name|e }} {{ leader.last_name|e }}</h6>
                         <p class="card-text">
                             <strong>Email:</strong> <a href="mailto:{{ leader.email|e }}">{{ leader.email|e }}</a><br>
-                            {% if leader.cell_phone %}
-                            <strong>Phone:</strong> {{ leader.cell_phone|e }}<br>
+                            {% if leader.phone %}
+                            <strong>Phone:</strong> {{ leader.phone|e }}<br>
                             {% endif %}
                             <strong>Assigned:</strong> 
                             {% if leader.leadership_assigned_at %}

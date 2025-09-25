@@ -46,6 +46,18 @@ def safe_click(browser, locator, timeout=10):
     return element
 
 
+def safe_select_by_value(browser, locator, value, timeout=10):
+    """Safely select a dropdown option by value after scrolling the dropdown into view."""
+    wait = WebDriverWait(browser, timeout)
+    select_element = wait.until(EC.element_to_be_clickable(locator))
+    browser.execute_script("arguments[0].scrollIntoView(true);", select_element)
+    time.sleep(0.3)  # Brief pause after scrolling
+
+    select = Select(select_element)
+    select.select_by_value(value)
+    return select_element
+
+
 def verify_registration_success(browser, expected_email):
     """Verify successful registration by checking URL and database."""
     import urllib.parse
@@ -91,11 +103,11 @@ class TestParticipantRegistration:
         browser.find_element(By.ID, "phone").send_keys("604-555-0001")
 
         # Select skill level and experience
-        Select(browser.find_element(By.ID, "skill_level")).select_by_value("Intermediate")
-        Select(browser.find_element(By.ID, "experience")).select_by_value("1-2 counts")
+        safe_select_by_value(browser, (By.ID, "skill_level"), "Intermediate")
+        safe_select_by_value(browser, (By.ID, "experience"), "1-2 counts")
 
         # Select area and participation type
-        Select(browser.find_element(By.ID, "preferred_area")).select_by_value("A")
+        safe_select_by_value(browser, (By.ID, "preferred_area"), "A")
         safe_click(browser, (By.ID, "regular"))  # Click radio button for regular participation
 
         # Equipment preferences
@@ -122,11 +134,11 @@ class TestParticipantRegistration:
         browser.find_element(By.ID, "phone").send_keys("604-555-0002")
 
         # Select skill level and experience
-        Select(browser.find_element(By.ID, "skill_level")).select_by_value("Beginner")
-        Select(browser.find_element(By.ID, "experience")).select_by_value("None")  # First time
+        safe_select_by_value(browser, (By.ID, "skill_level"), "Beginner")
+        safe_select_by_value(browser, (By.ID, "experience"), "None")  # First time
 
         # Feeder participants must select specific area (not UNASSIGNED)
-        Select(browser.find_element(By.ID, "preferred_area")).select_by_value("B")
+        safe_select_by_value(browser, (By.ID, "preferred_area"), "B")
         safe_click(browser, (By.ID, "feeder"))  # Click radio button for feeder participation
 
         # Feeder participants cannot be interested in leadership
@@ -152,11 +164,11 @@ class TestParticipantRegistration:
         browser.find_element(By.ID, "phone").send_keys("604-555-0003")
 
         # Experienced birder
-        Select(browser.find_element(By.ID, "skill_level")).select_by_value("Expert")
-        Select(browser.find_element(By.ID, "experience")).select_by_value("3+ counts")
+        safe_select_by_value(browser, (By.ID, "skill_level"), "Expert")
+        safe_select_by_value(browser, (By.ID, "experience"), "3+ counts")
 
         # Select area and regular participation
-        Select(browser.find_element(By.ID, "preferred_area")).select_by_value("C")
+        safe_select_by_value(browser, (By.ID, "preferred_area"), "C")
         safe_click(browser, (By.ID, "regular"))  # Click radio button for regular participation
 
         # Express interest in leadership
@@ -184,11 +196,11 @@ class TestParticipantRegistration:
         browser.find_element(By.ID, "phone").send_keys("604-555-0004")
 
         # Intermediate birder
-        Select(browser.find_element(By.ID, "skill_level")).select_by_value("Intermediate")
-        Select(browser.find_element(By.ID, "experience")).select_by_value("1-2 counts")
+        safe_select_by_value(browser, (By.ID, "skill_level"), "Intermediate")
+        safe_select_by_value(browser, (By.ID, "experience"), "1-2 counts")
 
         # Select area and participation
-        Select(browser.find_element(By.ID, "preferred_area")).select_by_value("D")
+        safe_select_by_value(browser, (By.ID, "preferred_area"), "D")
         safe_click(browser, (By.ID, "regular"))  # Click radio button for regular participation
 
         # Express interest in scribe role

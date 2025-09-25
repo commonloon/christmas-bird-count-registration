@@ -9,3 +9,4 @@ utils/
 /*.md
 client_secret.json
 foo
+debug/

@@ -7,14 +7,16 @@ This script generates test participants by submitting data to the registration e
 It creates realistic test data for testing the admin interface and registration system.
 
 Usage:
-    python generate_test_participants.py [num_regular] [--seq starting_number]
-    
+    python generate_test_participants.py [num_regular] [--seq starting_number] [--leaders N] [--scribes N]
+
 Examples:
     python generate_test_participants.py                    # 20 regular + 5 leadership + random scribes
-    python generate_test_participants.py 50                # 50 regular + 5 leadership + random scribes  
+    python generate_test_participants.py 50                # 50 regular + 5 leadership + random scribes
     python generate_test_participants.py 10 --seq 100      # 10 regular + 5 leadership, emails start at 0100
     python generate_test_participants.py 0 --seq 5000      # 0 regular + 5 leadership, emails start at 5000
     python generate_test_participants.py 20 --scribes 5    # 20 regular + 5 leadership + 5 explicit scribes
+    python generate_test_participants.py 20 --leaders 10   # 20 regular + 10 leadership + random scribes
+    python generate_test_participants.py 0 --leaders 0     # 0 regular + 0 leadership + random scribes
 """
 
 import argparse
@@ -127,8 +129,12 @@ def create_participant_data(email, interested_in_leadership=False, interested_in
     last_name = fake.last_name()
     
     # 20% FEEDER participants, 80% regular participants
-    participation_type = 'FEEDER' if random.random() < 0.2 else 'regular'
-    
+    # BUT: participants explicitly requested to be leadership-interested must be regular
+    if interested_in_leadership:
+        participation_type = 'regular'  # Force regular type for leadership-interested participants
+    else:
+        participation_type = 'FEEDER' if random.random() < 0.2 else 'regular'
+
     # FEEDER participants: specific area (never UNASSIGNED), no leadership interest
     if participation_type == 'FEEDER':
         # Choose from specific areas only (exclude UNASSIGNED)
@@ -154,16 +160,17 @@ def create_participant_data(email, interested_in_leadership=False, interested_in
         'notes_to_organizers': generate_notes()
     }
     
-    # Add equipment randomly
+    # Add equipment randomly (send 'on' like HTML checkboxes)
     if random.random() < 0.7:  # 70% have binoculars
         data['has_binoculars'] = 'on'
     if random.random() < 0.3:  # 30% can bring spotting scope
         data['spotting_scope'] = 'on'
-    
+
     # Add leadership interest for specific participants (only for regular participants)
+    # Send 'on' like HTML checkboxes do when checked
     if interested_in_leadership and participation_type == 'regular':
         data['interested_in_leadership'] = 'on'
-    
+
     # Add scribe interest for regular participants (pilot program)
     if participation_type == 'regular':
         # Either forced scribe interest or 10% random chance
@@ -191,9 +198,12 @@ def submit_registration(session, participant_data, csrf_token=None):
         if response.status_code == 429:
             return False, 429, "Rate limited"
         
-        # Check for CSRF errors
-        if response.status_code == 400 and csrf_token:
-            return False, 400, "CSRF validation failed"
+        # Check for CSRF errors (both when token provided and when missing)
+        if response.status_code == 400:
+            if csrf_token:
+                return False, 400, "CSRF validation failed"
+            else:
+                return False, 400, "CSRF token missing"
         
         # Check if registration was successful
         # The endpoint redirects to /success on successful registration
@@ -289,10 +299,12 @@ def main():
         epilog="""
 Examples:
     python generate_test_participants.py                    # 20 regular + 5 leadership + random scribes
-    python generate_test_participants.py 50                # 50 regular + 5 leadership + random scribes  
+    python generate_test_participants.py 50                # 50 regular + 5 leadership + random scribes
     python generate_test_participants.py 10 --seq 100      # 10 regular + 5 leadership, emails start at 0100
     python generate_test_participants.py 0 --seq 5000      # 0 regular + 5 leadership, emails start at 5000
     python generate_test_participants.py 20 --scribes 5    # 20 regular + 5 leadership + 5 explicit scribes
+    python generate_test_participants.py 20 --leaders 10   # 20 regular + 10 leadership + random scribes
+    python generate_test_participants.py 0 --leaders 0     # 0 regular + 0 leadership + random scribes
     python generate_test_participants.py --test-rate-limit # Send 100 registrations rapidly to test rate limiting
         """
     )
@@ -320,6 +332,13 @@ Examples:
         default=0,
         help='Number of participants specifically interested in scribe role (default: 0, relies on random 10%% generation)'
     )
+
+    parser.add_argument(
+        '--leaders',
+        type=int,
+        default=5,
+        help='Number of participants specifically interested in leadership role (default: 5)'
+    )
     
     parser.add_argument(
         '--test-rate-limit',
@@ -340,7 +359,7 @@ Examples:
     
     # Calculate totals
     num_regular = args.num_regular
-    num_leadership = 5  # Always create 5 leadership-interested participants
+    num_leadership = args.leaders  # Number of leadership-interested participants
     num_scribes = args.scribes  # Number of explicitly scribe-interested participants
     total_participants = num_regular + num_leadership + num_scribes
     starting_seq = args.seq
@@ -428,7 +447,7 @@ Examples:
         unassigned_indicator = " [UNASSIGNED]" if force_unassigned else ""
         print(f"  [{current_seq:04d}] {participant_data['first_name']} {participant_data['last_name']} ({email}){leader_indicator}{unassigned_indicator}", end="")
         
-        success, status_code, final_url = submit_registration(session, participant_data)
+        success, status_code, final_url = submit_registration(session, participant_data, csrf_token)
         
         if success:
             print(" ✓")

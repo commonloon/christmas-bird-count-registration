@@ -22,6 +22,88 @@ from models.participant import ParticipantModel
 logger = logging.getLogger(__name__)
 
 
+class AreaLeaderModelCompatibility:
+    """
+    Compatibility layer for area leader operations using single-table design.
+    Maps legacy area leader model calls to participant model methods.
+    """
+
+    def __init__(self, participant_model: ParticipantModel):
+        self.participant_model = participant_model
+
+    def get_leaders_by_identity(self, first_name: str, last_name: str, email: str) -> List[Dict]:
+        """Get leader records by identity using participant model."""
+        leaders = self.participant_model.get_leaders_by_identity(first_name, last_name, email)
+
+        # Add 'active' field expected by legacy tests
+        # In single-table design, active leaders have is_leader=True and assigned_area_leader is not None
+        for leader in leaders:
+            leader['active'] = bool(leader.get('is_leader', False) and
+                                  leader.get('assigned_area_leader') is not None)
+
+        return leaders
+
+    def deactivate_leaders_by_identity(self, first_name: str, last_name: str, email: str, removed_by: str) -> bool:
+        """Deactivate leader records by identity using participant model."""
+        return self.participant_model.deactivate_leaders_by_identity(first_name, last_name, email, removed_by)
+
+    def add_leader(self, leader_data: Dict[str, Any]) -> str:
+        """
+        Add a leader by creating participant record and assigning leadership.
+        Returns the participant ID which serves as leader ID in single-table design.
+        """
+        # Handle legacy field names for backward compatibility
+        email = leader_data.get('email', leader_data.get('leader_email', ''))
+        area_code = leader_data.get('area', leader_data.get('area_code', 'A'))
+        added_by = leader_data.get('added_by', leader_data.get('assigned_by', 'test-system'))
+        phone = leader_data.get('phone', leader_data.get('cell_phone', ''))
+
+        # Create participant record first
+        participant_data = {
+            'first_name': leader_data['first_name'],
+            'last_name': leader_data['last_name'],
+            'email': email,
+            'phone': phone,
+            'phone2': leader_data.get('phone2', ''),
+            'skill_level': leader_data.get('skill_level', 'Experienced'),
+            'experience': leader_data.get('experience', '3+ counts'),
+            'preferred_area': area_code,
+            'participation_type': 'regular',
+            'has_binoculars': True,
+            'spotting_scope': leader_data.get('spotting_scope', False),
+            'notes_to_organizers': leader_data.get('notes', 'Added via leader management'),
+            'interested_in_leadership': True,
+            'interested_in_scribe': False,
+            'is_leader': False,  # Will be set by assign_area_leadership
+            'assigned_area_leader': None,
+            'auto_assigned': False,
+            'assigned_by': added_by,
+            'assigned_at': None
+        }
+
+        participant_id = self.participant_model.add_participant(participant_data)
+
+        if participant_id:
+            # Assign leadership using the area_code we extracted above
+            success = self.participant_model.assign_area_leadership(participant_id, area_code, added_by)
+
+            if success:
+                return participant_id
+            else:
+                # Clean up participant if leadership assignment failed
+                self.participant_model.delete_participant(participant_id, added_by)
+                return None
+
+        return None
+
+    def remove_leader(self, leader_id: str, removed_by: str) -> bool:
+        """
+        Remove leader by removing area leadership from participant.
+        In single-table design, leader_id is the participant_id.
+        """
+        return self.participant_model.remove_area_leadership(leader_id, removed_by)
+
+
 class IdentityTestHelper:
     """Helper class for identity-based testing operations."""
 
@@ -30,6 +112,7 @@ class IdentityTestHelper:
         self.db = db_client
         self.test_year = test_year or datetime.now().year
         self.participant_model = ParticipantModel(db_client, self.test_year)
+        self.area_leader_model = AreaLeaderModelCompatibility(self.participant_model)
 
     def create_family_scenario(self, family_email: str, members: List[Dict[str, Any]]) -> Dict[str, List[str]]:
         """

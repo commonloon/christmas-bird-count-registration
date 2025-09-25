@@ -363,27 +363,11 @@ class TestSynchronizationRegression:
         participant_id = identity_helper.participant_model.add_participant(some_guy_data)
         assert participant_id is not None, "Some Guy participant should be created"
 
-        # 2. Promote to leader
-        leader_data = {
-            'area_code': 'H',
-            'leader_email': 'someguy@test-regression.ca',
-            'first_name': 'Some',
-            'last_name': 'Guy',
-            'cell_phone': '555-SOME-GUY',
-            'assigned_by': 'test-some-guy-scenario',
-            'active': True,
-            'created_from_participant': True,
-            'notes': 'Promoted from participant for regression test'
-        }
-
-        leader_id = identity_helper.area_leader_model.add_leader(leader_data)
-        assert leader_id is not None, "Some Guy leader should be created"
-
-        # Update participant to mark as leader
-        identity_helper.participant_model.update_participant(participant_id, {
-            'is_leader': True,
-            'assigned_area_leader': 'H'
-        })
+        # 2. Promote to leader (single-table design: just assign leadership to existing participant)
+        leadership_success = identity_helper.participant_model.assign_area_leadership(
+            participant_id, 'H', 'test-some-guy-scenario'
+        )
+        assert leadership_success, "Some Guy should be promoted to leader"
 
         # 3. Verify both records exist
         sync_before = identity_helper.verify_identity_synchronization('Some', 'Guy', 'someguy@test-regression.ca')
@@ -435,30 +419,17 @@ class TestSynchronizationRegression:
 
         participant_id = identity_helper.participant_model.add_participant(clive_data)
 
-        # 1. Promote to leader
-        leader_data = {
-            'area_code': 'P',
-            'leader_email': 'clive.roberts@test-regression.ca',
-            'first_name': 'Clive',
-            'last_name': 'Roberts',
-            'cell_phone': '555-CLIVE-R',
-            'assigned_by': 'test-clive-scenario',
-            'active': True,
-            'created_from_participant': True,
-            'notes': 'Promoted for regression test'
-        }
+        # 1. Promote to leader (single-table design: just assign leadership to existing participant)
+        leadership_success = identity_helper.participant_model.assign_area_leadership(
+            participant_id, 'P', 'test-clive-scenario'
+        )
+        assert leadership_success, "Clive should be promoted to leader"
 
-        leader_id = identity_helper.area_leader_model.add_leader(leader_data)
-
-        # Update participant
-        identity_helper.participant_model.update_participant(participant_id, {
-            'is_leader': True,
-            'assigned_area_leader': 'P'
-        })
-
-        # 2. Delete leader
-        leader_deletion = identity_helper.area_leader_model.remove_leader(leader_id, 'test-clive-deletion')
-        assert leader_deletion, "Clive's leader record should be deleted"
+        # 2. Remove leadership (single-table design)
+        leadership_removal = identity_helper.participant_model.remove_area_leadership(
+            participant_id, 'test-clive-deletion'
+        )
+        assert leadership_removal, "Clive's leadership should be removed"
 
         # 3. Verify participant can be re-promoted (test data consistency)
         leaders_after_deletion = identity_helper.area_leader_model.get_leaders_by_identity(
@@ -466,21 +437,11 @@ class TestSynchronizationRegression:
         )
         assert len(leaders_after_deletion) == 0, "No active leader records should remain"
 
-        # 4. Re-add as leader (should work without issues)
-        new_leader_data = {
-            'area_code': 'Q',  # Different area for re-assignment
-            'leader_email': 'clive.roberts@test-regression.ca',
-            'first_name': 'Clive',
-            'last_name': 'Roberts',
-            'cell_phone': '555-CLIVE-R',
-            'assigned_by': 'test-clive-re-add',
-            'active': True,
-            'created_from_participant': True,
-            'notes': 'Re-added for regression test'
-        }
-
-        new_leader_id = identity_helper.area_leader_model.add_leader(new_leader_data)
-        assert new_leader_id is not None, "Clive should be re-promotable to leader"
+        # 4. Re-promote as leader (single-table design: assign leadership again)
+        re_promotion_success = identity_helper.participant_model.assign_area_leadership(
+            participant_id, 'Q', 'test-clive-re-add'  # Different area for re-assignment
+        )
+        assert re_promotion_success, "Clive should be re-promotable to leader"
 
         # 5. Verify final state
         final_sync = identity_helper.verify_identity_synchronization(

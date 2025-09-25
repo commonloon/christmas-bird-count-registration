@@ -506,3 +506,4 @@ Use the current date from the environment context, not specific times since Clau
 - Current year used for functional testing, year 2000 for isolation testing
 - Test accounts passwords in Secret Manager, usernames documented in config files
 - Framework designed for incremental implementation (start with working example, build utilities as needed)
+- put all throwaway scripts in the debug/ directory so they can easily be discarded later.

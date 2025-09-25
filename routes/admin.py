@@ -107,22 +107,22 @@ def participants():
         # Check if leader already exists as participant (avoid duplication by identity)
         leader_first_name = leader.get('first_name', '').strip()
         leader_last_name = leader.get('last_name', '').strip()
-        leader_email = leader.get('leader_email', '').lower().strip()
+        email = leader.get('email', '').lower().strip()
 
         existing = next((p for p in normalized_participants
                         if (p.get('first_name', '').strip().lower() == leader_first_name.lower() and
                             p.get('last_name', '').strip().lower() == leader_last_name.lower() and
-                            p.get('email', '').lower().strip() == leader_email)), None)
+                            p.get('email', '').lower().strip() == email)), None)
 
-        if not existing and leader_email:  # Only add if not already a participant and has email
+        if not existing and email:  # Only add if not already a participant and has email
             leader_participant = {
                 'id': leader.get('id'),
                 'first_name': leader.get('first_name', ''),
                 'last_name': leader.get('last_name', ''),
-                'email': leader.get('leader_email', ''),
-                'phone': leader.get('cell_phone', ''),
+                'email': leader.get('email', ''),
+                'phone': leader.get('phone', ''),
                 'phone2': '',  # Leaders don't have secondary phone
-                'preferred_area': leader.get('area_code', ''),
+                'preferred_area': leader.get('assigned_area_leader', ''),
                 'skill_level': 'Area Leader',  # Special designation for leaders
                 'experience': 'Area Leader',
                 'participation_type': 'regular',
@@ -281,9 +281,9 @@ def leaders():
     leadership_interested = participant_model.get_participants_interested_in_leadership()
     all_areas = get_all_areas()
 
-    # Normalize leader data to ensure all fields are present
-    from config.fields import normalize_area_leader_record
-    normalized_leaders = [normalize_area_leader_record(leader) for leader in all_leaders]
+    # Normalize leader data to ensure all fields are present (single-table design uses participant fields)
+    from config.fields import normalize_participant_record
+    normalized_leaders = [normalize_participant_record(leader) for leader in all_leaders]
 
     # Check if CSV export is requested
     if request.args.get('format') == 'csv':
@@ -300,7 +300,7 @@ def leaders():
             writer.writerow(fieldnames)
 
             # Sort leaders by area code
-            sorted_leaders = sorted(normalized_leaders, key=lambda x: x.get('area_code', ''))
+            sorted_leaders = sorted(normalized_leaders, key=lambda x: x.get('assigned_area_leader', ''))
 
             # Write leader data
             from config.fields import get_area_leader_field_default
@@ -350,14 +350,14 @@ def add_leader():
     # Get and sanitize form data
     first_name = sanitize_name(request.form.get('first_name', ''))
     last_name = sanitize_name(request.form.get('last_name', ''))
-    leader_email = sanitize_email(request.form.get('leader_email', ''))
-    cell_phone = sanitize_phone(request.form.get('cell_phone', ''))
+    email = sanitize_email(request.form.get('email', ''))
+    phone = sanitize_phone(request.form.get('phone', ''))
     area_code = request.form.get('area_code', '').strip().upper()
     notes = sanitize_notes(request.form.get('notes', ''))
     
     # Security checks
     user = get_current_user()
-    all_text_inputs = [first_name, last_name, cell_phone, notes]
+    all_text_inputs = [first_name, last_name, phone, notes]
     for text_input in all_text_inputs:
         if is_suspicious_input(text_input):
             log_security_event('Suspicious admin input', f'Add leader attempt with suspicious input', user.get('email'))
@@ -365,7 +365,7 @@ def add_leader():
             return redirect(url_for('admin.leaders', year=selected_year))
 
     # Validate required fields
-    if not all([first_name, last_name, leader_email, cell_phone, area_code]):
+    if not all([first_name, last_name, email, phone, area_code]):
         flash('All required fields must be completed.', 'error')
         return redirect(url_for('admin.leaders', year=selected_year))
         
@@ -373,12 +373,12 @@ def add_leader():
     if len(first_name) > 100 or len(last_name) > 100:
         flash('Names must be 100 characters or less.', 'error')
         return redirect(url_for('admin.leaders', year=selected_year))
-        
-    if len(leader_email) > 254:
+
+    if len(email) > 254:
         flash('Email address is too long.', 'error')
         return redirect(url_for('admin.leaders', year=selected_year))
-        
-    if len(cell_phone) > 20:
+
+    if len(phone) > 20:
         flash('Phone number must be 20 characters or less.', 'error')
         return redirect(url_for('admin.leaders', year=selected_year))
 
@@ -391,26 +391,26 @@ def add_leader():
 
     try:
         # Check if this exact person (identity) is already assigned to this area
-        existing_leaders_for_person = participant_model.get_leaders_by_identity(first_name, last_name, leader_email)
+        existing_leaders_for_person = participant_model.get_leaders_by_identity(first_name, last_name, email)
         for leader in existing_leaders_for_person:
-            if leader.get('area_code') == area_code:
+            if leader.get('assigned_area_leader') == area_code:
                 flash(f'{first_name} {last_name} is already assigned as a leader for Area {area_code}.', 'warning')
                 return redirect(url_for('admin.leaders', year=selected_year))
 
         # Check if this person (identity) is already leading another area (one area per person rule)
-        current_leader_areas = participant_model.get_leaders_by_identity(first_name, last_name, leader_email)
+        current_leader_areas = participant_model.get_leaders_by_identity(first_name, last_name, email)
         if current_leader_areas:
-            existing_area = current_leader_areas[0]['area_code']
+            existing_area = current_leader_areas[0]['assigned_area_leader']
             flash(f'{first_name} {last_name} is already leading Area {existing_area}. Each person can only lead one area.', 'error')
             return redirect(url_for('admin.leaders', year=selected_year))
 
         # Create the area leader record
         leader_data = {
             'area_code': area_code,
-            'leader_email': leader_email,
+            'email': email,
             'first_name': first_name,
             'last_name': last_name,
-            'cell_phone': cell_phone,
+            'phone': phone,
             'assigned_by': user['email'],
             'assigned_at': datetime.now(),
             'active': True,
@@ -653,30 +653,30 @@ def edit_leader():
         area_code = data.get('area_code', '').strip().upper()
         first_name = sanitize_name(data.get('first_name', ''))
         last_name = sanitize_name(data.get('last_name', ''))
-        leader_email = sanitize_email(data.get('leader_email', ''))
-        cell_phone = sanitize_phone(data.get('cell_phone', ''))
+        email = sanitize_email(data.get('email', ''))
+        phone = sanitize_phone(data.get('phone', ''))
         selected_year = int(data.get('year', datetime.now().year))
         
         # Security checks
         user = get_current_user()
-        all_text_inputs = [first_name, last_name, cell_phone]
+        all_text_inputs = [first_name, last_name, phone]
         for text_input in all_text_inputs:
             if is_suspicious_input(text_input):
                 log_security_event('Suspicious admin input', f'Edit leader attempt with suspicious input', user.get('email'))
                 return jsonify({'success': False, 'message': 'Invalid input detected'})
 
         # Validate required fields
-        if not all([leader_id, area_code, first_name, last_name, leader_email]):
+        if not all([leader_id, area_code, first_name, last_name, email]):
             return jsonify({'success': False, 'message': 'All fields are required except phone'})
             
         # Length validations
         if len(first_name) > 100 or len(last_name) > 100:
             return jsonify({'success': False, 'message': 'Names must be 100 characters or less'})
             
-        if len(leader_email) > 254:
+        if len(email) > 254:
             return jsonify({'success': False, 'message': 'Email address is too long'})
             
-        if len(cell_phone) > 20:
+        if len(phone) > 20:
             return jsonify({'success': False, 'message': 'Phone number must be 20 characters or less'})
 
         # Validate area code
@@ -700,10 +700,10 @@ def edit_leader():
         # Check if identity is changing and if new identity is already leading another area
         identity_changed = (first_name != current_first_name or
                           last_name != current_last_name or
-                          leader_email != current_email)
+                          email != current_email)
 
         if identity_changed:
-            existing_leaders = participant_model.get_leaders_by_identity(first_name, last_name, leader_email)
+            existing_leaders = participant_model.get_leaders_by_identity(first_name, last_name, email)
             for existing_leader in existing_leaders:
                 if existing_leader['id'] != leader_id:  # Don't conflict with self
                     existing_area = existing_leader.get('assigned_area_leader')
@@ -714,8 +714,8 @@ def edit_leader():
             'assigned_area_leader': area_code,
             'first_name': first_name,
             'last_name': last_name,
-            'email': leader_email,
-            'cell_phone': cell_phone,
+            'email': email,
+            'phone': phone,
             'updated_at': datetime.now()
         }
 
@@ -758,7 +758,7 @@ def delete_leader():
         if not leader:
             return jsonify({'success': False, 'message': 'Leader not found'})
 
-        leader_email = leader.get('email')
+        email = leader.get('email')
 
         # Remove leader (deactivate)
         if not participant_model.remove_leader(leader_id, user['email']):

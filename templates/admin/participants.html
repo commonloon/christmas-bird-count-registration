@@ -89,7 +89,7 @@
                             <br><small class="text-muted">
                                 • Leader: {{ leader.first_name|e }} {{ leader.last_name|e }}
                                 <i class="bi bi-envelope-fill"></i> <a href="mailto:{{ leader.email|e }}">{{ leader.email|e }}</a>
-                                <i class="bi bi-telephone-fill"></i> {{ leader.cell_phone|e }}
+                                <i class="bi bi-telephone-fill"></i> {{ leader.phone|e }}
                             </small>
                         {% endfor %}
                     {% endif %}

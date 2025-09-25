@@ -362,7 +362,7 @@ class ParticipantModel:
         """Add a new participant with leadership role. Returns participant ID or raises exception if identity exists."""
         first_name = leader_data.get('first_name', '')
         last_name = leader_data.get('last_name', '')
-        email = leader_data.get('leader_email', '')
+        email = leader_data.get('email', '')
 
         # Check if participant with this identity already exists
         existing = self.get_participant_by_email_and_names(email, first_name, last_name)
@@ -374,7 +374,7 @@ class ParticipantModel:
             'first_name': first_name,
             'last_name': last_name,
             'email': email.lower(),
-            'cell_phone': leader_data.get('cell_phone', ''),
+            'phone': leader_data.get('phone', ''),
             'is_leader': True,
             'assigned_area_leader': leader_data.get('area_code'),
             'leadership_assigned_by': leader_data.get('assigned_by'),
@@ -394,7 +394,7 @@ class ParticipantModel:
             'leader_email': leader_email,
             'first_name': first_name,
             'last_name': last_name,
-            'cell_phone': cell_phone,
+            'phone': phone,
             'assigned_by': assigned_by
         }
         return self.add_leader(leader_data)
