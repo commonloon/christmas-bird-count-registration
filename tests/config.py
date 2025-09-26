@@ -33,7 +33,7 @@ TEST_CONFIG = {
 
     # Browser configuration
     'browser': 'firefox',  # Primary browser - better OAuth stability than Chrome
-    'headless': True,  # Set to False for debugging OAuth flows
+    'headless': False,  # Set to False for debugging OAuth flows
     'window_size': (1920, 1080),
 
     # Test data configuration

@@ -103,14 +103,13 @@
                         <tr>
                             <th>Name</th>
                             <th>Email</th>
-                            <th>Phone</th>
+                            <th>Cell Phone</th>
                             <th>Skill Level</th>
                             <th>Experience</th>
                             <th>Equipment</th>
                             <th>Notes</th>
-                            <th>Leadership</th>
+                            <th>Leader</th>
                             <th>Scribe</th>
-                            <th>Registered</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -120,70 +119,148 @@
                         {% set feeder_participants = area_participants | selectattr('participation_type', 'equalto', 'FEEDER') | sort(attribute='first_name') | list %}
                         {% set sorted_participants = regular_participants + feeder_participants %}
                         {% for participant in sorted_participants %}
-                        <tr{% if participant.get('participation_type') == 'FEEDER' %} class="table-info"{% endif %}>
+                        <tr{% if participant.get('participation_type') == 'FEEDER' %} class="table-info"{% endif %} data-participant-id="{{ participant.id }}">
                             <td>
-                                <strong>{{ participant.first_name|e }} {{ participant.last_name|e }}</strong>
-                                {% if participant.is_leader %}
-                                    <span class="badge bg-success ms-1">Leader</span>
-                                {% endif %}
-                                {% if participant.get('participation_type') == 'FEEDER' %}
-                                    <div class="small text-muted">FEEDER</div>
-                                {% endif %}
-                            </td>
-                            <td><a href="mailto:{{ participant.email|e }}">{{ participant.email|e }}</a></td>
-                            <td>
-                                {{ participant.phone|e or 'N/A' }}
-                                {% if participant.get('phone2') %}
-                                    <div class="small text-muted">{{ participant.phone2|e }}</div>
-                                {% endif %}
-                            </td>
-                            <td>
-                                <span class="badge bg-{% if participant.skill_level == 'Expert' %}success{% elif participant.skill_level == 'Intermediate' %}primary{% elif participant.skill_level == 'Beginner' %}info{% else %}secondary{% endif %}">
-                                    {{ participant.skill_level }}
-                                </span>
-                            </td>
-                            <td>{{ participant.experience }}</td>
-                            <td>
-                                {% if participant.has_binoculars %}<i class="bi bi-binoculars" title="Has binoculars"></i>{% endif %}
-                                {% if participant.spotting_scope %}<img src="{{ url_for('static', filename='icons/scope.svg') }}" alt="Spotting scope" title="Can bring spotting scope" class="scope-icon ms-1" style="width: 16px; height: 16px; vertical-align: text-bottom;">{% endif %}
-                                {% if not participant.has_binoculars and not participant.spotting_scope %}<span class="text-muted">None</span>{% endif %}
+                                <div class="name-display">
+                                    <strong class="participant-name">{{ participant.first_name|e }} {{ participant.last_name|e }}</strong>
+                                    {% if participant.is_leader %}
+                                        <span class="badge bg-success ms-1">Leader</span>
+                                    {% endif %}
+                                    {% if participant.get('participation_type') == 'FEEDER' %}
+                                        <div class="small text-muted">FEEDER</div>
+                                    {% endif %}
+                                </div>
+                                <div class="name-edit" style="display: none;">
+                                    <div class="d-flex gap-1">
+                                        <input type="text" class="form-control form-control-sm first-name-input" value="{{ participant.first_name|e }}" placeholder="First name">
+                                        <input type="text" class="form-control form-control-sm last-name-input" value="{{ participant.last_name|e }}" placeholder="Last name">
+                                    </div>
+                                    {% if participant.is_leader %}
+                                        <span class="badge bg-success ms-1">Leader</span>
+                                    {% endif %}
+                                    {% if participant.get('participation_type') == 'FEEDER' %}
+                                        <div class="small text-muted">FEEDER</div>
+                                    {% endif %}
+                                </div>
                             </td>
                             <td>
-                                {% if participant.notes_to_organizers %}
-                                    <span class="text-truncate d-inline-block" style="max-width: 150px;" title="{{ participant.notes_to_organizers|e }}">
-                                        {{ participant.notes_to_organizers[:50]|e }}{% if participant.notes_to_organizers|length > 50 %}...{% endif %}
+                                <div class="email-display">
+                                    <a href="mailto:{{ participant.email|e }}">{{ participant.email|e }}</a>
+                                </div>
+                                <div class="email-edit" style="display: none;">
+                                    <input type="email" class="form-control form-control-sm email-input" value="{{ participant.email|e }}">
+                                </div>
+                            </td>
+                            <td>
+                                <div class="phone-display">
+                                    {{ participant.phone|e or 'N/A' }}
+                                    {% if participant.get('phone2') %}
+                                        <div class="small text-muted">{{ participant.phone2|e }}</div>
+                                    {% endif %}
+                                </div>
+                                <div class="phone-edit" style="display: none;">
+                                    <input type="tel" class="form-control form-control-sm phone-input mb-1" style="min-width: 140px;" value="{{ participant.phone or '' }}" placeholder="Cell phone">
+                                    <input type="tel" class="form-control form-control-sm phone2-input" style="min-width: 140px;" value="{{ participant.phone2 or '' }}" placeholder="Secondary phone">
+                                </div>
+                            </td>
+                            <td>
+                                <div class="skill-display">
+                                    <span class="badge bg-{% if participant.skill_level == 'Expert' %}success{% elif participant.skill_level == 'Intermediate' %}primary{% elif participant.skill_level == 'Beginner' %}info{% else %}secondary{% endif %}">
+                                        {{ participant.skill_level }}
                                     </span>
-                                {% else %}
-                                    <span class="text-muted">None</span>
-                                {% endif %}
+                                </div>
+                                <div class="skill-edit" style="display: none;">
+                                    <select class="form-select form-select-sm skill-input">
+                                        <option value="Beginner" {% if participant.skill_level == 'Beginner' %}selected{% endif %}>Beginner</option>
+                                        <option value="Intermediate" {% if participant.skill_level == 'Intermediate' %}selected{% endif %}>Intermediate</option>
+                                        <option value="Expert" {% if participant.skill_level == 'Expert' %}selected{% endif %}>Expert</option>
+                                    </select>
+                                </div>
                             </td>
                             <td>
-                                {% if participant.interested_in_leadership %}
-                                    <span class="badge bg-warning">Interested</span>
-                                {% else %}
-                                    <span class="text-muted">No</span>
-                                {% endif %}
+                                <div class="experience-display">{{ participant.experience }}</div>
+                                <div class="experience-edit" style="display: none;">
+                                    <input type="text" class="form-control form-control-sm experience-input" value="{{ participant.experience or '' }}">
+                                </div>
                             </td>
                             <td>
-                                {% if participant.get('interested_in_scribe') %}
-                                    <span class="badge bg-info">Interested</span>
-                                {% else %}
-                                    <span class="text-muted">No</span>
-                                {% endif %}
+                                <div class="equipment-display">
+                                    {% if participant.has_binoculars %}<i class="bi bi-binoculars" title="Has binoculars"></i>{% endif %}
+                                    {% if participant.spotting_scope %}<img src="{{ url_for('static', filename='icons/scope.svg') }}" alt="Spotting scope" title="Can bring spotting scope" class="scope-icon ms-1" style="width: 16px; height: 16px; vertical-align: text-bottom;">{% endif %}
+                                    {% if not participant.has_binoculars and not participant.spotting_scope %}<span class="text-muted">None</span>{% endif %}
+                                </div>
+                                <div class="equipment-edit" style="display: none;">
+                                    <div class="form-check form-check-sm">
+                                        <input class="form-check-input has-binoculars-input" type="checkbox" {% if participant.has_binoculars %}checked{% endif %}>
+                                        <label class="form-check-label small">Binoculars</label>
+                                    </div>
+                                    <div class="form-check form-check-sm">
+                                        <input class="form-check-input spotting-scope-input" type="checkbox" {% if participant.spotting_scope %}checked{% endif %}>
+                                        <label class="form-check-label small">Scope</label>
+                                    </div>
+                                </div>
                             </td>
                             <td>
-                                {% if participant.created_at %}
-                                    {{ participant.created_at.strftime('%m/%d/%y %H:%M') }}
-                                {% else %}
-                                    N/A
-                                {% endif %}
+                                <div class="notes-display">
+                                    {% if participant.notes_to_organizers %}
+                                        <span class="text-truncate d-inline-block" style="max-width: 150px;" title="{{ participant.notes_to_organizers|e }}">
+                                            {{ participant.notes_to_organizers[:50]|e }}{% if participant.notes_to_organizers|length > 50 %}...{% endif %}
+                                        </span>
+                                    {% else %}
+                                        <span class="text-muted">None</span>
+                                    {% endif %}
+                                </div>
+                                <div class="notes-edit" style="display: none;">
+                                    <textarea class="form-control form-control-sm notes-input" rows="2" placeholder="Notes to organizers">{{ participant.notes_to_organizers or '' }}</textarea>
+                                </div>
                             </td>
                             <td>
-                                <div class="btn-group btn-group-sm" role="group">
+                                <div class="leadership-display">
+                                    {% if participant.interested_in_leadership %}
+                                        <span class="badge bg-warning">Interested</span>
+                                    {% else %}
+                                        <span class="text-muted">No</span>
+                                    {% endif %}
+                                </div>
+                                <div class="leadership-edit" style="display: none;">
+                                    <div class="form-check form-check-sm">
+                                        <input class="form-check-input leadership-input" type="checkbox" {% if participant.interested_in_leadership %}checked{% endif %}>
+                                        <label class="form-check-label small">Interested</label>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="scribe-display">
+                                    {% if participant.get('interested_in_scribe') %}
+                                        <span class="badge bg-info">Interested</span>
+                                    {% else %}
+                                        <span class="text-muted">No</span>
+                                    {% endif %}
+                                </div>
+                                <div class="scribe-edit" style="display: none;">
+                                    <div class="form-check form-check-sm">
+                                        <input class="form-check-input scribe-input" type="checkbox" {% if participant.get('interested_in_scribe') %}checked{% endif %}>
+                                        <label class="form-check-label small">Interested</label>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="btn-group btn-group-sm action-buttons" role="group">
+                                    <button type="button" class="btn btn-outline-primary btn-edit" title="Edit">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
                                     <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal"
                                             data-participant-id="{{ participant.id }}"
                                             data-participant-name="{{ participant.first_name|e }} {{ participant.last_name|e }}">
-                                        Delete
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                                <div class="btn-group btn-group-sm edit-buttons" style="display: none;" role="group">
+                                    <button type="button" class="btn btn-success btn-save" title="Save">
+                                        <i class="bi bi-check"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-secondary btn-cancel" title="Cancel">
+                                        <i class="bi bi-x"></i>
                                     </button>
                                 </div>
                             </td>
@@ -247,21 +324,211 @@ if (deleteModal) {
         const button = event.relatedTarget;
         const participantId = button.getAttribute('data-participant-id');
         const participantName = button.getAttribute('data-participant-name');
-        
+
         const modalTitle = deleteModal.querySelector('#participantName');
         const deleteForm = deleteModal.querySelector('#deleteForm');
-        
+
         modalTitle.textContent = participantName;
         deleteForm.action = '/admin/delete_participant/' + participantId;
     });
-    
+
     // Handle reason input
     const reasonTextarea = deleteModal.querySelector('#deleteReason');
     const reasonInput = deleteModal.querySelector('#deleteReasonInput');
-    
+
     reasonTextarea.addEventListener('input', function() {
         reasonInput.value = this.value;
     });
 }
+
+// Inline editing functionality for participants table
+document.addEventListener('DOMContentLoaded', function() {
+    // Handle edit button clicks
+    document.querySelectorAll('.btn-edit').forEach(button => {
+        button.addEventListener('click', function() {
+            const row = this.closest('tr');
+            enableEditMode(row);
+        });
+    });
+
+    // Handle save button clicks
+    document.querySelectorAll('.btn-save').forEach(button => {
+        button.addEventListener('click', function() {
+            const row = this.closest('tr');
+            saveParticipantChanges(row);
+        });
+    });
+
+    // Handle cancel button clicks
+    document.querySelectorAll('.btn-cancel').forEach(button => {
+        button.addEventListener('click', function() {
+            const row = this.closest('tr');
+            disableEditMode(row);
+        });
+    });
+
+    function enableEditMode(row) {
+        // Hide display elements and show edit elements
+        row.querySelectorAll('.name-display, .email-display, .phone-display, .skill-display, .experience-display, .equipment-display, .notes-display, .leadership-display, .scribe-display').forEach(el => {
+            el.style.display = 'none';
+        });
+        row.querySelectorAll('.name-edit, .email-edit, .phone-edit, .skill-edit, .experience-edit, .equipment-edit, .notes-edit, .leadership-edit, .scribe-edit').forEach(el => {
+            el.style.display = 'block';
+        });
+
+        // Switch buttons
+        row.querySelector('.action-buttons').style.display = 'none';
+        row.querySelector('.edit-buttons').style.display = 'block';
+    }
+
+    function disableEditMode(row) {
+        // Show display elements and hide edit elements
+        row.querySelectorAll('.name-display, .email-display, .phone-display, .skill-display, .experience-display, .equipment-display, .notes-display, .leadership-display, .scribe-display').forEach(el => {
+            el.style.display = 'block';
+        });
+        row.querySelectorAll('.name-edit, .email-edit, .phone-edit, .skill-edit, .experience-edit, .equipment-edit, .notes-edit, .leadership-edit, .scribe-edit').forEach(el => {
+            el.style.display = 'none';
+        });
+
+        // Switch buttons back
+        row.querySelector('.action-buttons').style.display = 'block';
+        row.querySelector('.edit-buttons').style.display = 'none';
+    }
+
+    function saveParticipantChanges(row) {
+        const participantId = row.dataset.participantId;
+        const formData = {
+            participant_id: participantId,
+            first_name: row.querySelector('.first-name-input').value.trim(),
+            last_name: row.querySelector('.last-name-input').value.trim(),
+            email: row.querySelector('.email-input').value.trim(),
+            phone: row.querySelector('.phone-input').value.trim(),
+            phone2: row.querySelector('.phone2-input').value.trim(),
+            skill_level: row.querySelector('.skill-input').value,
+            experience: row.querySelector('.experience-input').value.trim(),
+            notes_to_organizers: row.querySelector('.notes-input').value.trim(),
+            has_binoculars: row.querySelector('.has-binoculars-input').checked,
+            spotting_scope: row.querySelector('.spotting-scope-input').checked,
+            interested_in_leadership: row.querySelector('.leadership-input').checked,
+            interested_in_scribe: row.querySelector('.scribe-input').checked,
+            year: {{ selected_year }},
+            csrf_token: '{{ csrf_token() }}'
+        };
+
+        // Basic validation
+        if (!formData.first_name || !formData.last_name || !formData.email) {
+            alert('Please fill in all required fields (First Name, Last Name, Email).');
+            return;
+        }
+
+        // Email validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(formData.email)) {
+            alert('Please enter a valid email address.');
+            return;
+        }
+
+        // Show loading state
+        const saveButton = row.querySelector('.btn-save');
+        const originalText = saveButton.innerHTML;
+        saveButton.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+        saveButton.disabled = true;
+
+        // Send AJAX request
+        fetch('{{ url_for("admin.edit_participant") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': formData.csrf_token
+            },
+            body: JSON.stringify(formData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Update display values
+                row.querySelector('.participant-name').textContent = formData.first_name + ' ' + formData.last_name;
+                row.querySelector('.email-display a').textContent = formData.email;
+                row.querySelector('.email-display a').href = 'mailto:' + formData.email;
+
+                // Update phone display
+                const phoneDisplay = row.querySelector('.phone-display');
+                let phoneText = formData.phone || 'N/A';
+                if (formData.phone2) {
+                    phoneText += '<div class="small text-muted">' + formData.phone2 + '</div>';
+                }
+                phoneDisplay.innerHTML = phoneText;
+
+                // Update skill level display
+                const skillDisplay = row.querySelector('.skill-display .badge');
+                skillDisplay.textContent = formData.skill_level;
+                // Update badge color based on skill level
+                skillDisplay.className = 'badge bg-' +
+                    (formData.skill_level === 'Expert' ? 'success' :
+                     formData.skill_level === 'Intermediate' ? 'primary' :
+                     formData.skill_level === 'Beginner' ? 'info' : 'secondary');
+
+                // Update experience display
+                row.querySelector('.experience-display').textContent = formData.experience || '';
+
+                // Update equipment display
+                const equipmentDisplay = row.querySelector('.equipment-display');
+                let equipmentHtml = '';
+                if (formData.has_binoculars) {
+                    equipmentHtml += '<i class="bi bi-binoculars" title="Has binoculars"></i>';
+                }
+                if (formData.spotting_scope) {
+                    equipmentHtml += '<img src="{{ url_for("static", filename="icons/scope.svg") }}" alt="Spotting scope" title="Can bring spotting scope" class="scope-icon ms-1" style="width: 16px; height: 16px; vertical-align: text-bottom;">';
+                }
+                if (!formData.has_binoculars && !formData.spotting_scope) {
+                    equipmentHtml = '<span class="text-muted">None</span>';
+                }
+                equipmentDisplay.innerHTML = equipmentHtml;
+
+                // Update notes display
+                const notesDisplay = row.querySelector('.notes-display');
+                if (formData.notes_to_organizers) {
+                    const truncated = formData.notes_to_organizers.length > 50 ? formData.notes_to_organizers.substring(0, 50) + '...' : formData.notes_to_organizers;
+                    notesDisplay.innerHTML = '<span class="text-truncate d-inline-block" style="max-width: 150px;" title="' + formData.notes_to_organizers + '">' + truncated + '</span>';
+                } else {
+                    notesDisplay.innerHTML = '<span class="text-muted">None</span>';
+                }
+
+                // Update leadership display
+                const leadershipDisplay = row.querySelector('.leadership-display');
+                if (formData.interested_in_leadership) {
+                    leadershipDisplay.innerHTML = '<span class="badge bg-warning">Interested</span>';
+                } else {
+                    leadershipDisplay.innerHTML = '<span class="text-muted">No</span>';
+                }
+
+                // Update scribe display
+                const scribeDisplay = row.querySelector('.scribe-display');
+                if (formData.interested_in_scribe) {
+                    scribeDisplay.innerHTML = '<span class="badge bg-info">Interested</span>';
+                } else {
+                    scribeDisplay.innerHTML = '<span class="text-muted">No</span>';
+                }
+
+                // Exit edit mode
+                disableEditMode(row);
+
+                // Show success message
+                alert('Participant updated successfully!');
+            } else {
+                alert('Error updating participant: ' + (data.message || 'Unknown error'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error updating participant. Please try again.');
+        })
+        .finally(() => {
+            // Reset button state
+            saveButton.innerHTML = originalText;
+            saveButton.disabled = false;
+        });
+    }
+});
 </script>
 {% endblock %}

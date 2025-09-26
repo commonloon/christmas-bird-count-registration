@@ -6,6 +6,11 @@ from config.email_settings import is_test_server
 from models.participant import ParticipantModel
 from models.removal_log import RemovalLogModel
 from config.areas import get_area_info, get_all_areas, get_public_areas
+from config.fields import (
+    normalize_participant_record, get_participant_csv_fields,
+    get_participant_field_default, get_participant_display_name
+)
+from config.admins import get_admin_emails
 from routes.auth import require_admin, get_current_user
 from services.email_service import email_service
 from services.security import (
@@ -98,7 +103,6 @@ def participants():
     all_leaders = participant_model.get_leaders()
 
     # Normalize participant data to ensure all fields are present
-    from config.fields import normalize_participant_record, get_participant_fields, get_participant_display_name
     normalized_participants = [normalize_participant_record(p) for p in all_participants]
 
     # Convert manually added leaders to participant-like records for display
@@ -282,7 +286,6 @@ def leaders():
     all_areas = get_all_areas()
 
     # Normalize leader data to ensure all fields are present (single-table design uses participant fields)
-    from config.fields import normalize_participant_record
     normalized_leaders = [normalize_participant_record(leader) for leader in all_leaders]
 
     # Check if CSV export is requested
@@ -292,22 +295,20 @@ def leaders():
         writer = csv.writer(output)
 
         if normalized_leaders:
-            # Use centralized field definition to ensure consistent ordering and complete fields
-            from config.fields import get_area_leader_csv_fields
-            fieldnames = get_area_leader_csv_fields()
+            # Use participant field definitions for complete leader data
+            fieldnames = get_participant_csv_fields()
 
             # Write CSV header
             writer.writerow(fieldnames)
 
-            # Sort leaders by area code
-            sorted_leaders = sorted(normalized_leaders, key=lambda x: x.get('assigned_area_leader', ''))
+            # Sort leaders by area, then by first name
+            sorted_leaders = sorted(normalized_leaders, key=lambda x: (x.get('assigned_area_leader', ''), x.get('first_name', '')))
 
             # Write leader data
-            from config.fields import get_area_leader_field_default
             for leader in sorted_leaders:
                 row = []
                 for field in fieldnames:
-                    value = leader.get(field, get_area_leader_field_default(field))
+                    value = leader.get(field, get_participant_field_default(field))
                     # Handle datetime objects
                     if hasattr(value, 'strftime'):
                         value = value.strftime('%Y-%m-%d %H:%M:%S')
@@ -623,7 +624,6 @@ def send_unassigned_digest():
         flash('No unassigned participants to report.', 'info')
         return redirect(url_for('admin.dashboard', year=selected_year))
 
-    from config.admins import get_admin_emails
     admin_emails = get_admin_emails()
 
     if email_service.send_unassigned_digest(admin_emails, unassigned_participants):
@@ -688,7 +688,7 @@ def edit_leader():
             return jsonify({'success': False, 'message': f'Invalid area code: {area_code}'})
 
         # Initialize models
-            participant_model = ParticipantModel(g.db, selected_year)
+        participant_model = ParticipantModel(g.db, selected_year)
         user = get_current_user()
 
         # Get current leader data
@@ -775,6 +775,108 @@ def delete_leader():
     except Exception as e:
         logging.error(f"Error deleting leader: {e}")
         return jsonify({'success': False, 'message': f'Error deleting leader: {str(e)}'})
+
+
+@admin_bp.route('/edit_participant', methods=['POST'])
+@require_admin
+@limiter.limit(RATE_LIMITS['admin_modify'], error_message=get_rate_limit_message('admin_modify'))
+def edit_participant():
+    """Edit participant information with inline editing."""
+    if not g.db:
+        return jsonify({'success': False, 'message': 'Database unavailable'})
+
+    try:
+        # Parse JSON request
+        data = request.get_json()
+        if not data:
+            return jsonify({'success': False, 'message': 'No data provided'})
+
+        # Get and sanitize data
+        participant_id = data.get('participant_id', '').strip()
+        first_name = sanitize_name(data.get('first_name', ''))
+        last_name = sanitize_name(data.get('last_name', ''))
+        email = sanitize_email(data.get('email', ''))
+        phone = sanitize_phone(data.get('phone', ''))
+        phone2 = sanitize_phone(data.get('phone2', ''))
+        skill_level = data.get('skill_level', '').strip()
+        experience = data.get('experience', '').strip()
+        notes_to_organizers = sanitize_notes(data.get('notes_to_organizers', ''))
+        has_binoculars = bool(data.get('has_binoculars', False))
+        spotting_scope = bool(data.get('spotting_scope', False))
+        interested_in_leadership = bool(data.get('interested_in_leadership', False))
+        interested_in_scribe = bool(data.get('interested_in_scribe', False))
+        selected_year = int(data.get('year', datetime.now().year))
+
+        # Security checks
+        user = get_current_user()
+        all_text_inputs = [first_name, last_name, phone, phone2, experience, notes_to_organizers]
+        for text_input in all_text_inputs:
+            if is_suspicious_input(text_input):
+                log_security_event('Suspicious admin input', f'Edit participant attempt with suspicious input', user.get('email'))
+                return jsonify({'success': False, 'message': 'Invalid input detected'})
+
+        # Validate required fields
+        if not all([participant_id, first_name, last_name, email]):
+            return jsonify({'success': False, 'message': 'Participant ID, first name, last name, and email are required'})
+
+        # Length validations
+        if len(first_name) > 100 or len(last_name) > 100:
+            return jsonify({'success': False, 'message': 'Names must be 100 characters or less'})
+
+        if len(email) > 254:
+            return jsonify({'success': False, 'message': 'Email address is too long'})
+
+        if len(phone) > 20:
+            return jsonify({'success': False, 'message': 'Phone number must be 20 characters or less'})
+
+        if len(phone2) > 20:
+            return jsonify({'success': False, 'message': 'Secondary phone number must be 20 characters or less'})
+
+        # Validate skill level
+        valid_skill_levels = ['Beginner', 'Intermediate', 'Expert']
+        if skill_level and skill_level not in valid_skill_levels:
+            return jsonify({'success': False, 'message': f'Invalid skill level: {skill_level}'})
+
+        # Initialize models
+        participant_model = ParticipantModel(g.db, selected_year)
+
+        # Get current participant data
+        current_participant = participant_model.get_participant(participant_id)
+        if not current_participant:
+            return jsonify({'success': False, 'message': 'Participant not found'})
+
+        # Build updates dictionary with only the fields being edited
+        updates = {
+            'first_name': first_name,
+            'last_name': last_name,
+            'email': email.lower(),
+            'phone': phone,
+            'phone2': phone2,
+            'skill_level': skill_level,
+            'experience': experience,
+            'updated_at': datetime.now()
+        }
+
+        # Only update these fields if they are explicitly provided in the request
+        if 'notes_to_organizers' in data:
+            updates['notes_to_organizers'] = notes_to_organizers
+        if 'has_binoculars' in data:
+            updates['has_binoculars'] = has_binoculars
+        if 'spotting_scope' in data:
+            updates['spotting_scope'] = spotting_scope
+        if 'interested_in_leadership' in data:
+            updates['interested_in_leadership'] = interested_in_leadership
+        if 'interested_in_scribe' in data:
+            updates['interested_in_scribe'] = interested_in_scribe
+
+        if not participant_model.update_participant(participant_id, updates):
+            return jsonify({'success': False, 'message': 'Failed to update participant'})
+
+        return jsonify({'success': True, 'message': 'Participant updated successfully'})
+
+    except Exception as e:
+        logging.error(f"Error editing participant: {e}")
+        return jsonify({'success': False, 'message': f'Error updating participant: {str(e)}'})
 
 
 # Email Test Trigger Routes (Test Server Only)

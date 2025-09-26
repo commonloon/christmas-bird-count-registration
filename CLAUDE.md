@@ -507,3 +507,5 @@ Use the current date from the environment context, not specific times since Clau
 - Test accounts passwords in Secret Manager, usernames documented in config files
 - Framework designed for incremental implementation (start with working example, build utilities as needed)
 - put all throwaway scripts in the debug/ directory so they can easily be discarded later.
+- put python imports at the top of the file, not inline in the code
+- don't be a sycophant.  Don't tell me I'm right before you have done any analysis.  Agree or disagree with me as appropriate based on evidence and logic.

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Simple bird silhouette in Christmas colors -->
+  <circle cx="16" cy="16" r="16" fill="#2c5f2d"/>
+
+  <!-- Bird body -->
+  <ellipse cx="18" cy="18" rx="8" ry="5" fill="#ffffff"/>
+
+  <!-- Bird head -->
+  <circle cx="12" cy="14" r="4" fill="#ffffff"/>
+
+  <!-- Beak -->
+  <polygon points="8,14 5,13 8,15" fill="#ff6b35"/>
+
+  <!-- Eye -->
+  <circle cx="11" cy="13" r="1" fill="#2c5f2d"/>
+
+  <!-- Wing detail -->
+  <ellipse cx="20" cy="17" rx="3" ry="2" fill="#e8e8e8"/>
+
+  <!-- Tail -->
+  <ellipse cx="24" cy="20" rx="2" ry="3" fill="#ffffff"/>
+</svg>

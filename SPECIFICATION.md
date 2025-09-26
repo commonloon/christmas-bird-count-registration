@@ -1,5 +1,5 @@
 # Vancouver Christmas Bird Count Registration App - Complete Specification
-{# Updated by Claude AI on 2025-09-23 #}
+{# Updated by Claude AI on 2025-09-26 #}
 
 ## Overview
 Web application for Nature Vancouver's annual Christmas Bird Count registration with interactive map-based area selection. Users can register by clicking count areas on a map or using a dropdown menu, with automatic assignment to areas needing volunteers.
@@ -9,7 +9,7 @@ Web application for Nature Vancouver's annual Christmas Bird Count registration 
 - **Database**: Google Firestore with multi-database architecture:
   - `cbc-test`: Development/testing environment database
   - `cbc-register`: Production environment database
-  - Year-based collections within each database (`participants_2025` - single table design)
+  - Year-based collections within each database (`participants_2025`, etc.)
   - Automated database setup with composite indexes
 - **Authentication**: Google Identity Services OAuth with Google Secret Manager for credentials
 - **Frontend**: Bootstrap 5 + Bootstrap Icons, Leaflet.js for interactive mapping
@@ -20,20 +20,20 @@ Web application for Nature Vancouver's annual Christmas Bird Count registration 
 ## Annual Event Architecture
 
 ### Data Organization
-Each year's data is stored in separate Firestore collections using a **single-table design**:
+Each year's data is stored in separate Firestore collections:
 - `participants_2025`, `participants_2024`, etc.
-- Leadership data integrated into participant records with `is_leader` flag and leadership-specific fields
-- No separate area_leaders collections - all data in unified participant model
+- All participant information including leadership data integrated into participant records
+- Year-based isolation prevents cross-year data corruption
 
 ### Cross-Year Data Access
 - Historical queries merge results from multiple yearly collections
 - Email deduplication keeps most recent participant information
 - Area leaders can access historical contact lists for recruitment
 
-### Single-Table Data Model
+### Data Model
 **Core Participant Fields:**
-- Personal: `first_name`, `last_name`, `email`, `cell_phone`
-- Registration: `preferred_area`, `experience_level`, `participation_type`, `interested_in_leadership`
+- Personal: `first_name`, `last_name`, `email`, `phone` (labeled "Cell Phone"), `phone2` (secondary phone)
+- Registration: `preferred_area`, `skill_level`, `experience`, `participation_type`, `interested_in_leadership`, `interested_in_scribe`
 - Equipment: `has_binoculars`, `spotting_scope`
 - Notes: `notes_to_organizers`
 
@@ -100,7 +100,7 @@ def get_admin_emails():
 
 ### Authentication Flow
 1. User visits protected route (e.g., `/admin`)
-2. Authentication decorator redirects to `/auth/login` if not authenticated  
+2. Authentication decorator redirects to `/auth/login` if not authenticated
 3. Google Identity Services presents OAuth consent screen
 4. User grants permission, Google returns JWT token via POST to `/auth/oauth/callback`
 5. Server verifies token and extracts user email and name
@@ -111,18 +111,18 @@ def get_admin_emails():
 7. Role stored in Flask session for subsequent requests
 8. User redirected to appropriate interface:
    - Admins → `/admin/dashboard`
-   - Leaders → `/leader/dashboard` 
+   - Leaders → `/leader/dashboard`
    - Public → main registration page
 
 ## Core Features
 
 ### Registration System
-- **Personal Information**: First name, last name, email, primary phone number (labeled "Cell Number"), optional secondary phone number
+- **Personal Information**: First name, last name, email, primary phone number (labeled "Cell Phone"), optional secondary phone number
 - **Experience Data**: Birding skill level (Newbie|Beginner|Intermediate|Expert), CBC experience (None|1-2 counts|3+ counts)
-- **Participation Options**: 
+- **Participation Options**:
   - **Participation Type**: Regular participant or FEEDER counter (mandatory selection)
   - **Area Selection**: Interactive map clicking OR dropdown menu OR "Wherever I'm needed most"
-- **Equipment Information**: 
+- **Equipment Information**:
   - Binoculars availability checkbox
   - Spotting scope availability checkbox ("Can bring spotting scope")
 - **Communication**: Notes to organizers (optional textarea with 500+ character limit)
@@ -149,7 +149,7 @@ def get_admin_emails():
 - Accessible via clickable "area leader" text in registration form
 - Preserves all form data during navigation using generic form data capture
 
-**Scribe Information (`/scribe-info`)**  
+**Scribe Information (`/scribe-info`)**
 - Description of new pilot scribe role for partnering with expert birders
 - eBird preparation requirements with direct link to eBird Essentials course
 - Information about pilot program status and leader coordination
@@ -179,34 +179,37 @@ def get_admin_emails():
 - **Email Testing Section (Test Server Only)**: Manual trigger buttons for testing all three email types with immediate feedback
 
 **Participant Management (`/admin/participants`)**
-- **Single Data Source**: All data from unified `participants_2025` collection
-  - **Regular Participants**: Records with `is_leader=False`
-  - **Leader Participants**: Records with `is_leader=True` (includes leadership fields)
-  - **Clean Single-Table Design**: No deduplication needed - one record per person
+- **Unified Data Source**: All data from `participants_2025` collection with integrated leadership information
 - **Dual-Section Display**: Separate tables for FEEDER and regular participants within each area
 - **In-Page Navigation**: Jump links to quickly access areas with participant counts in headers
 - **Area-Based Organization**: Participants grouped alphabetically by area with participant counts in headers
   - **Area Leader Information**: When leaders are assigned, displays leader name, email, and phone in area headers
 - **Comprehensive Information Display**:
-  - Contact info: name, email, phone with clickable mailto links
+  - Contact info: name, email, cell phone + secondary phone with clickable mailto links
   - Experience data: skill level badges, CBC experience
   - **Equipment Icons**: Bootstrap binoculars icon, custom SVG spotting scope icon
   - **Notes Display**: Truncated to 50 characters with full text in hover tooltips
   - Area assignment with links to area detail views
   - Leadership status and interest indicators
   - **Scribe Interest Indicators**: Blue "Interested" badges for participants interested in scribe role (regular participants only)
-  - Registration timestamps
+- **Inline Editing Capabilities**:
+  - **Editable Fields**: Name (first/last), email, cell phone (primary/secondary), skill level, experience, equipment (binoculars/scope), notes, leadership interest, scribe interest
+  - **Edit Mode**: Click pencil icon to enable inline editing with form controls
+  - **Selective Updates**: Backend only updates fields that are explicitly changed by the user, preserving all other participant data unchanged
+  - **Data Protection**: Non-displayed fields (registration date, area assignments, etc.) remain unmodified during edits
+  - **Real-time Updates**: UI updates immediately after successful save with proper validation
+  - **Cell Phone Width**: Optimized width to display 10-digit phone numbers with punctuation
 - **Sorting**: Areas displayed in alphabetical order, participants within each area sorted alphabetically by first name
-- **Actions**: Delete participants with confirmation modal and reason logging
+- **Actions**: Delete participants with confirmation modal and reason logging, inline edit with save/cancel options
 - **Visual Indicators**: FEEDER participants clearly marked with type indicator
 
 **Unassigned Participant Management (`/admin/unassigned`)**
-- Area capacity overview with color-coded participant counts (fixed to show actual counts)
+- Area capacity overview with color-coded participant counts
 - Individual assignment tools with area dropdowns showing current participant counts
 - Streamlined interface focused on essential assignment workflow
 - Quick assignment to areas needing more volunteers
 
-**Area Detail Views (`/admin/area/<code>`)**  
+**Area Detail Views (`/admin/area/<code>`)**
 - Area-specific participant lists and statistics
 - Team composition analysis (skill levels, experience distribution)
 - Area leader assignments and contact information
@@ -218,39 +221,39 @@ def get_admin_emails():
 - Leader names displayed in map tooltips when hovering over areas with leaders
 - Live map updates after edit/delete operations using client-side data management
 - Current area leader assignments with contact information and status
-- **Inline edit/delete functionality**: Edit leader information directly in the table
-  - Edit button (pencil icon) enables inline editing of all fields simultaneously
-  - Area dropdown, name fields, email, and phone become editable
-  - Save button validates and updates leader information with business rule enforcement
-  - Delete button (trash icon) with simple confirmation dialog
-  - Real-time map refresh after successful operations
-  - Client-side data synchronization prevents server round-trips for map updates
+- **Current Leaders Table Display**:
+  - **Columns**: Area, Leader, Email, Cell Phone, Secondary Phone, Actions
+  - **Inline Edit Functionality**: Edit leader information directly in the table
+    - Edit button (pencil icon) enables inline editing of all fields simultaneously
+    - Area dropdown, name fields, email, cell phone, and secondary phone become editable
+    - Save button validates and updates leader information with business rule enforcement
+    - Delete button (trash icon) with simple confirmation dialog
+    - Real-time map refresh after successful operations
+    - Client-side data synchronization prevents server round-trips for map updates
 - Manual leader entry form with validation and business rule enforcement (primary workflow)
 - Participant-to-leader promotion from "Potential Leaders" list (exceptional case)
 - Areas without assigned leaders highlighted on map and listed below
-- Map legend showing accurate counts of areas with/without leaders (template-driven from areas.py configuration)
+- Map legend showing accurate counts of areas with/without leaders
 - Enhanced area dropdowns with proper area codes and names
-- **Potential Leaders Assignment**: Dropdown shows all areas (including admin-only areas T, Y) allowing multiple leaders per area
 - **Admin-Only Leadership Assignment**: No auto-assignment during registration - leadership only assigned by admins
 
 **Export and Reporting**
-- **Centralized Field Management**: All participant fields (including leadership data) defined in `config/fields.py`
+- **Centralized Field Management**: All participant fields defined in `config/fields.py`
   - **Schema Evolution Safety**: New fields guaranteed to appear in all outputs regardless of existing data
   - **Consistent Ordering**: Predictable field order across CSV exports and admin interfaces
   - **Default Value Management**: Missing fields get proper defaults instead of empty values
   - **Single Normalization Function**: `normalize_participant_record()` ensures all records have all fields
-- **Participants CSV Export**: Centralized field enumeration via `/export_csv` route
+- **Participants CSV Export**: Complete participant data export via `/export_csv` route
   - Uses `get_participant_csv_fields()` for consistent field ordering
   - Automatic inclusion of all defined fields with proper defaults
   - Sorted by area → participation type → first name for logical organization
   - Filename format: `cbc_participants_YYYY_MMDD.csv`
   - Includes all registration data, contact information, preferences, and leadership status
-- **Leaders CSV Export**: Filtered participant export showing only records with `is_leader=True`
-  - Uses same participant field structure with leadership-specific filtering
-  - Sorted by assigned area for logical organization
+- **Leaders CSV Export**: Complete participant data for assigned leaders only
+  - Shows all participant fields for records with `is_leader=True`
+  - Sorted by assigned area then by first name for logical organization
   - Filename format: `area_leaders_YYYY_MMDD.csv`
-  - Area assignments and leadership data from participant records
-- **Export Sorting**: Data sorted alphabetically by area → participation type → first name
+  - Includes complete participant information plus leadership assignment data
 - **Multiple Export Locations**: Available from both dashboard and participants pages
 - **Year-specific exports** for historical analysis
 - **Email digest system** for unassigned participants
@@ -266,7 +269,7 @@ def get_admin_emails():
 
 1. **Twice-Daily Team Updates**:
    - Recipients: Area leaders when team composition changes
-   - Subject: "CBC Area X Team Update"  
+   - Subject: "CBC Area X Team Update"
    - Content: New members, removed members, complete current team roster
    - Triggers: Participant additions, removals, area reassignments, email changes
    - Frequency: Automated checks twice daily (production scheduling pending)
@@ -324,14 +327,14 @@ def get_admin_emails():
 - Performance testing with multiple families
 
 **Identity-Based Operations Tests** (`test_identity_synchronization.py` - 10 tests):
-- **Single-table design**: No synchronization needed - leadership data integrated into participant records
+- **Unified data model**: Leadership data integrated into participant records
 - **Leader management**: Adding/removing leadership updates `is_leader` flag and leadership fields directly
 - **Identity-based operations**: All operations use `(first_name, last_name, email)` for unique identification
 - **Case-insensitive matching**: Leader queries work with any case variation while preserving display case
 - **Error handling**: Graceful failure handling with proper logging
 - **Duplicate prevention**: Identity-based validation prevents duplicate leader assignments
 - **Whitespace handling**: Proper normalization of input data
-- **Regression testing**: Validates specific historical bug fixes (Clive Roberts, Some Guy scenarios)
+- **Regression testing**: Validates specific historical bug fixes
 
 **Test Configuration:**
 - **Test Accounts**: `cbc-test-admin1@`, `cbc-test-admin2@`, `cbc-test-leader1@naturevancouver.ca`
@@ -360,12 +363,6 @@ pytest tests/test_identity_synchronization.py -v
 python utils/generate_test_participants.py 20 --scribes 5
 ```
 
-**Critical Bug Fixes Validated by Tests:**
-1. **Database Connection**: Fixed test suite to use correct named databases (`cbc-test` vs `(default)`)
-2. **Bidirectional Synchronization**: Implemented mandatory participant deletion → leader deactivation in `ParticipantModel.delete_participant()`
-3. **Case-Insensitive Identity Matching**: Fixed `get_leaders_by_identity()` to use in-memory case-insensitive filtering while preserving original case for display
-4. **Environment-Based Admin Security**: Automated test account management prevents production security risks
-
 ## Data Models
 
 ### Participants Collection (per year: participants_YYYY)
@@ -373,21 +370,25 @@ python utils/generate_test_participants.py 20 --scribes 5
 {
   id: auto_generated,
   first_name: string,
-  last_name: string, 
+  last_name: string,
   email: string,
-  phone: string,                         // Primary phone (labeled "Cell Number")
+  phone: string,                         // Primary phone (labeled "Cell Phone")
   phone2: string,                        // Secondary phone (optional)
   skill_level: "Newbie|Beginner|Intermediate|Expert",
   experience: "None|1-2 counts|3+ counts",
   preferred_area: "A-X|UNASSIGNED",
-  participation_type: "regular|FEEDER",     // New: Type of participation
-  has_binoculars: boolean,                   // New: Equipment availability
-  spotting_scope: boolean,                   // New: Can bring spotting scope (shortened from can_bring_spotting_scope)
-  notes_to_organizers: string,               // New: Optional participant notes
+  participation_type: "regular|FEEDER",     // Type of participation
+  has_binoculars: boolean,                   // Equipment availability
+  spotting_scope: boolean,                   // Can bring spotting scope
+  notes_to_organizers: string,               // Optional participant notes
   interested_in_leadership: boolean,         // From form checkbox
-  interested_in_scribe: boolean,             // New: Scribe role interest (pilot program)
+  interested_in_scribe: boolean,             // Scribe role interest (pilot program)
   is_leader: boolean,                        // Admin-assigned only
   assigned_area_leader: string,              // Which area they lead, if any
+  leadership_assigned_by: string,            // Admin who assigned leadership
+  leadership_assigned_at: timestamp,         // When leadership assigned
+  leadership_removed_by: string,             // Admin who removed leadership
+  leadership_removed_at: timestamp,          // When leadership removed
   auto_assigned: boolean,                    // True if auto-assigned from leadership
   assigned_by: string,                       // Admin who assigned (if assigned)
   assigned_at: timestamp,                    // When assigned (if assigned)
@@ -397,33 +398,10 @@ python utils/generate_test_participants.py 20 --scribes 5
 }
 ```
 
-### Area Leaders Collection (per year: area_leaders_YYYY)
-```
-{
-  id: auto_generated,
-  area_code: string,              // "A" through "X" 
-  leader_email: string,           // Any email (Google or non-Google)
-  first_name: string,             // Required
-  last_name: string,              // Required  
-  cell_phone: string,             // Required
-  assigned_by: string,            // Admin email who made assignment
-  assigned_at: timestamp,         // When leader was assigned
-  active: boolean,                // Currently active leader
-  year: integer,                  // Explicit year field
-  created_from_participant: boolean, // True if promoted from participant
-  notes: string                   // Optional admin notes
-}
-```
-
 **Business Rules:**
 - Multiple leaders allowed per area
 - One area maximum per person (enforced by identity-based validation: first_name + last_name + email)
 - Leaders with Google emails can access leader UI, others receive notifications only
-- Manual entry creates area_leaders records only (no participant record required)
-- Inline editing enforces business rules: prevents duplicate area assignments per person
-- **Bidirectional synchronization**: Full participant/leader record synchronization implemented
-  - Participant deletion → automatically deactivates corresponding leader records (by identity match)
-  - Leader deletion → resets participant `is_leader` flag (existing functionality)
 - **Family email support**: Multiple family members can share an email address
   - All operations use identity matching: `(first_name, last_name, email)` combination
   - Authentication privileges shared among family members with same email
@@ -503,7 +481,7 @@ The application uses a centralized color management system based on the 20 disti
 # config/colors.py
 DISTINCT_COLOURS = {
     'orange': '#f58231',  # 0-3 registered
-    'maroon': '#800000',  # 4-8 registered  
+    'maroon': '#800000',  # 4-8 registered
     'navy': '#000075',    # 8+ registered
     'yellow': '#ffe119', # Selected area
     # ... 16 additional accessibility colors
@@ -511,7 +489,7 @@ DISTINCT_COLOURS = {
 
 MAP_COLORS = {
     'low_count': DISTINCT_COLOURS['orange'],
-    'med_count': DISTINCT_COLOURS['maroon'], 
+    'med_count': DISTINCT_COLOURS['maroon'],
     'high_count': DISTINCT_COLOURS['navy'],
     'selected': DISTINCT_COLOURS['yellow']
 }
@@ -578,23 +556,19 @@ class ParticipantModel:
 
 **Assignment Methods:**
 1. **Manual Entry (Primary)**: Admins directly enter leader information
-   - Creates records only in `area_leaders_YYYY` collection with standardized field names
-   - No participant registration required
+   - Creates participant records with leadership status (`is_leader=True`)
+   - No separate leader table - integrated into participant data
    - Supports any email address (Google or non-Google)
-   - Uses consistent schema: `first_name`, `last_name`, `cell_phone`, `leader_email`
 
 2. **Participant Promotion (Exceptional)**: Promote existing participants to leaders
-   - Updates both `participants` and `area_leaders` collections
+   - Updates participant record with leadership fields
    - Changes participant's area assignment to match led area
-   - Sets `is_leader=True` in participant record
-   - Creates area leader record with standardized field names
+   - Sets `is_leader=True` and `assigned_area_leader` fields
 
 **Integration Logic:**
 - If leader registers as participant → auto-assign to their led area
-- Leader status tracked in both collections for data consistency
-- **Bidirectional synchronization**: Participant deletion automatically deactivates leader records
-- **Identity-based operations**: All leader operations use `(first_name, last_name, email)` for unique identification
-- Email notifications sent to leaders for team updates (no workflow automation)
+- Leadership status tracked in participant records with dedicated leadership fields
+- Email notifications sent to leaders for team updates
 
 **Access Control:**
 - Leaders with Google emails: Access to leader UI (`/leader` routes)
@@ -605,7 +579,7 @@ class ParticipantModel:
 - Multiple leaders per area allowed
 - One area maximum per person (enforced by identity-based application logic)
 - **Family email support**: Multiple family members can share email addresses
-- Required fields: first_name, last_name, email, cell_phone
+- Required fields: first_name, last_name, email, phone
 - **Identity matching**: All operations use `(first_name, last_name, email)` combination for unique identification
 
 ### Identity-Based Data Management
@@ -614,7 +588,7 @@ class ParticipantModel:
 
 **Identity Tuple**: `(first_name, last_name, email)` - All three fields required for unique identification
 
-**AreaLeaderModel Identity Methods**:
+**Identity Methods**:
 ```python
 # Find leaders by exact identity match (case-insensitive)
 get_leaders_by_identity(first_name: str, last_name: str, email: str) -> List[Dict]
@@ -626,50 +600,6 @@ get_areas_by_identity(first_name: str, last_name: str, email: str) -> List[Dict]
 deactivate_leaders_by_identity(first_name: str, last_name: str, email: str, removed_by: str) -> bool
 ```
 
-**Case-Insensitive Implementation**:
-```python
-# models/area_leader.py - get_leaders_by_identity() uses in-memory filtering
-def get_leaders_by_identity(self, first_name: str, last_name: str, email: str):
-    # Get all active leaders and filter case-insensitively in memory
-    # Preserves original case for display while allowing flexible matching
-    query = self.db.collection(self.collection).where('active', '==', True)
-
-    search_first = first_name.strip().lower()
-    search_last = last_name.strip().lower()
-    search_email = email.lower().strip()
-
-    for doc in query.stream():
-        data = doc.to_dict()
-        if (data.get('first_name', '').strip().lower() == search_first and
-            data.get('last_name', '').strip().lower() == search_last and
-            data.get('leader_email', '').strip().lower() == search_email):
-            leaders.append(data)
-```
-
-**Mandatory Bidirectional Synchronization**:
-```python
-# models/participant.py - delete_participant() with automatic leader deactivation
-def delete_participant(self, participant_id: str) -> bool:
-    participant = self.get_participant(participant_id)
-    self.db.collection(self.collection).document(participant_id).delete()
-
-    # Mandatory synchronization: deactivate corresponding leader records
-    if participant.get('is_leader', False):
-        from models.area_leader import AreaLeaderModel
-        area_leader_model = AreaLeaderModel(self.db, self.year)
-        area_leader_model.deactivate_leaders_by_identity(
-            participant['first_name'], participant['last_name'],
-            participant['email'], 'system-participant-deletion'
-        )
-```
-
-**Synchronization Implementation**:
-- **Participant deletion** (`models/participant.py`): **Mandatory** bidirectional sync at model level deactivates leader records
-- **Admin UI** (`routes/admin.py`): Legacy synchronization logic retained for UI feedback
-- **Leader deletion** (existing): Updates participant `is_leader=False` using email-based lookup
-- **Display logic** (`routes/admin.py`): Participant/leader deduplication uses full identity matching
-- **Duplicate prevention**: Leader assignment checks use identity-based validation
-
 **Family Email Support**:
 - Multiple family members can share one email address
 - Each person identified uniquely by `(first_name, last_name, email)` combination
@@ -677,9 +607,9 @@ def delete_participant(self, participant_id: str) -> bool:
 - All operations (creation, deletion, validation) work correctly with shared emails
 
 **Error Handling**:
-- Missing identity information prevents synchronization (logs warning)
-- Failed deactivation logged with detailed error messages
-- User feedback indicates synchronization success/failure status
+- Missing identity information prevents operations (logs warning)
+- Failed operations logged with detailed error messages
+- User feedback indicates operation success/failure status
 
 ## User Workflows
 
@@ -728,14 +658,13 @@ config/
   admins.py                     # Admin email whitelist
   colors.py                     # Color palette definitions with 20 distinct accessibility colors
   database.py                   # Database configuration helper for environment-specific databases
-  fields.py                     # Centralized field definitions for participants and leaders with defaults and ordering
-  email_settings.py             # Email service configuration and SMTP settings (to be created)
+  fields.py                     # Centralized field definitions for participants with defaults and ordering
+  email_settings.py             # Email service configuration and SMTP settings
   organization.py               # Club-specific settings for contact emails and organization details
   rate_limits.py                # Rate limiting configuration with TEST_MODE-aware settings
 
 models/
-  participant.py                # Year-aware participant operations with Firestore
-  area_leader.py               # Year-aware leader management
+  participant.py                # Year-aware participant operations with Firestore (includes leadership data)
   removal_log.py               # Year-aware removal tracking for audit
 
 routes/
@@ -765,16 +694,16 @@ templates/
     area_detail.html          # Area-specific participant and leader views
     leaders.html              # Leader management with inline edit/delete and live map updates
   leader/                      # Leader interface templates (to be implemented)
-  emails/                      # Email templates directory (to be created)
+  emails/                      # Email templates directory
     team_update.html           # HTML template for twice-daily team updates
-    weekly_summary.html        # HTML template for weekly team summaries  
+    weekly_summary.html        # HTML template for weekly team summaries
     admin_digest.html          # HTML template for daily admin digest
   errors/                      # 404/500 error page templates
 
 static/
   css/main.css                 # Bootstrap-based responsive styling with CSS custom properties
   js/map.js                    # Leaflet.js interactive map functionality for registration
-  js/leaders-map.js            # Leaflet.js interactive map for leaders page with live refresh capability and template-driven area list integration
+  js/leaders-map.js            # Leaflet.js interactive map for leaders page with live refresh capability
   js/registration.js           # Enhanced form validation with FEEDER constraint handling and map-form synchronization
   icons/scope.svg              # Custom spotting scope icon for equipment display
   data/area_boundaries.json    # GeoJSON area polygons for map rendering
@@ -811,12 +740,12 @@ SPECIFICATION.md                # This complete project specification
 def get_historical_participants(area_code, years_back=3):
     current_year = datetime.now().year
     participants = {}  # email -> most recent data
-    
+
     for year in range(current_year - years_back, current_year + 1):
         year_data = ParticipantModel(db, year).get_participants_by_area(area_code)
         for participant in year_data:
             participants[participant['email']] = participant
-    
+
     return list(participants.values())
 ```
 
@@ -854,7 +783,7 @@ The application implements multiple layers of security protection against common
 **Template Security (ALL user input displays):**
 - HTML escaping using `|e` filter: `{{ user_input|e }}`
 - Prevents script injection in names, emails, phone numbers, notes
-- Applied to: `templates/admin/area_detail.html`, `templates/admin/participants.html`, all admin interfaces
+- Applied to all admin interfaces and email templates
 
 ### CSRF Protection
 **Cross-Site Request Forgery prevention:**
@@ -914,9 +843,9 @@ The application implements multiple layers of security protection against common
 
 ### Google Cloud Platform Configuration
 - **Google Cloud Run** for stateless application hosting with automatic HTTPS
-- **Google Firestore** for document-based data persistence  
+- **Google Firestore** for document-based data persistence
 - **Google Secret Manager** for secure OAuth credential storage
-- **Custom domains**: 
+- **Custom domains**:
   - Test: `cbc-test.naturevancouver.ca`
   - Production: `cbc-registration.naturevancouver.ca`
 - **Region**: `us-west1` (Oregon) for data residency
@@ -926,7 +855,7 @@ The application implements multiple layers of security protection against common
 **Automated Scripts:**
 ```bash
 ./deploy.sh test           # Deploy to test environment
-./deploy.sh production     # Deploy to production environment  
+./deploy.sh production     # Deploy to production environment
 ./deploy.sh both          # Deploy to both environments (default)
 ```
 
@@ -944,14 +873,14 @@ rm client_secret.json             # Remove sensitive file
 - `TEST_MODE=true` (redirects all emails to admin with modified subject)
 - `GOOGLE_CLOUD_PROJECT=vancouver-cbc-registration`
 
-**Production Environment:**  
+**Production Environment:**
 - `FLASK_ENV=production`
 - `TEST_MODE=false` (normal email delivery)
 - `GOOGLE_CLOUD_PROJECT=vancouver-cbc-registration`
 
 **Secret Manager Credentials:**
 - `GOOGLE_CLIENT_ID` (Google OAuth client ID)
-- `GOOGLE_CLIENT_SECRET` (Google OAuth client secret) 
+- `GOOGLE_CLIENT_SECRET` (Google OAuth client secret)
 - `SECRET_KEY` (Flask session encryption key)
 
 ### Security Configuration
@@ -980,15 +909,15 @@ rm client_secret.json             # Remove sensitive file
 - Google Identity Services (not traditional OAuth redirect flow)
 - Client credentials must be stored in Google Secret Manager (never in code)
 - OAuth consent screen must be **published** for authentication to work
-- **Common Issues**: 
-   - Trailing newlines in client ID secrets cause "invalid_client" errors
-   - Duplicate email addresses cause registration failures (test script now uses timestamped emails for uniqueness)
+- **Common Issues**:
+  - Trailing newlines in client ID secrets cause "invalid_client" errors
+  - Duplicate email addresses cause registration failures (test script now uses timestamped emails for uniqueness)
 
 **Database Design:**
 - All Firestore operations must include explicit year fields for data integrity
 - Composite indexes required for complex queries (created automatically by setup script)
 - Email deduplication logic prevents duplicate registrations within same year
-- **Consistent Field Names**: All area leader records use standardized schema (`first_name`, `last_name`, `cell_phone`, `leader_email`) across all creation methods
+- **Consistent Field Names**: All participant records use standardized schema with leadership data integrated
 
 **Security Architecture:**
 - No admin links visible to public users (security by obscurity)
@@ -1011,7 +940,7 @@ rm client_secret.json             # Remove sensitive file
    - JavaScript origins required, redirect URIs must be empty
    - Consent screen must be published (not in testing mode)
 
-2. **Secret Management** 
+2. **Secret Management**
    - Never commit OAuth credentials to version control
    - Use `.strip()` on all secret values to remove newlines
    - Test credential access in Cloud Run environment before deployment
@@ -1026,7 +955,6 @@ rm client_secret.json             # Remove sensitive file
    - Always use identity tuple: `(first_name, last_name, email)` for unique identification
    - Family members may share email addresses - email alone is not unique
    - Use `get_leaders_by_identity()` instead of `get_leaders_by_email()` for new code
-   - Ensure bidirectional synchronization: participant deletion must deactivate leader records
    - Test with shared family email scenarios during development
 
 5. **Year-Based Data Access**
@@ -1058,12 +986,15 @@ python setup_databases.py --force        # Recreate all databases (with confirma
 For development and testing purposes:
 ```bash
 # Generate test participants with unique timestamped emails
-python generate_test_participants.py                    # 20 regular + 5 leadership + random scribes
-python generate_test_participants.py 50                # 50 regular + 5 leadership + random scribes  
+python generate_test_participants.py                    # 20 regular + 5 leadership (default --leaders=5)
+python generate_test_participants.py 50                # 50 regular + 5 leadership (default --leaders=5)
 python generate_test_participants.py 10 --seq 100      # 10 regular + 5 leadership, start at email 0100
 python generate_test_participants.py 0 --seq 5000      # 0 regular + 5 leadership, start at email 5000
 python generate_test_participants.py 20 --scribes 5    # 20 regular + 5 leadership + 5 explicit scribes
+python generate_test_participants.py 20 --leaders 10   # 20 regular + 10 leadership (override default)
+python generate_test_participants.py 30 --leaders 0    # 30 regular + 0 leadership (no leaders)
 
+# Note: 10% of all participants have random scribe interest regardless of --scribes flag
 # Email format includes timestamp for uniqueness: birdcount-YYYY-MM-DD-TIMESTAMP-NNNN@naturevancouver.ca
 ```
 
@@ -1092,7 +1023,7 @@ gcloud run services logs read SERVICE --region=us-west1 --limit=50
 # (Admin dashboard should load without database errors)
 
 # Test participant registration
-python utils/generate_test_participants.py 2 --scribes 1  # Should create 2 regular + 5 leadership + 1 scribe participants
+python utils/generate_test_participants.py 2 --scribes 1  # Should create 2 regular + 5 leadership + 1 scribe participants (8 total)
 
 # Run comprehensive test suite (all 21 tests should pass)
 pytest tests/ -m identity -v  # Identity-based tests only
@@ -1110,7 +1041,7 @@ pytest tests/ -v              # All tests (when more test categories are added)
 
 ### Timestamp Comments
 When modifying files, add timestamp comments using date only (not specific times):
-- **Python files**: `# Updated by Claude AI on YYYY-MM-DD` 
+- **Python files**: `# Updated by Claude AI on YYYY-MM-DD`
 - **HTML templates (Jinja2)**: `{# Updated by Claude AI on YYYY-MM-DD #}`
 - **JavaScript/CSS**: `/* Updated by Claude AI on YYYY-MM-DD */`
 

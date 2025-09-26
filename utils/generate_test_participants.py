@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Updated by Claude AI on 2025-09-12
+Updated by Claude AI on 2025-09-26
 Test Participant Data Generator for Christmas Bird Count Registration
 
 This script generates test participants by submitting data to the registration endpoint.
@@ -10,13 +10,15 @@ Usage:
     python generate_test_participants.py [num_regular] [--seq starting_number] [--leaders N] [--scribes N]
 
 Examples:
-    python generate_test_participants.py                    # 20 regular + 5 leadership + random scribes
-    python generate_test_participants.py 50                # 50 regular + 5 leadership + random scribes
+    python generate_test_participants.py                    # 20 regular + 5 leadership (default --leaders=5)
+    python generate_test_participants.py 50                # 50 regular + 5 leadership (default --leaders=5)
     python generate_test_participants.py 10 --seq 100      # 10 regular + 5 leadership, emails start at 0100
     python generate_test_participants.py 0 --seq 5000      # 0 regular + 5 leadership, emails start at 5000
     python generate_test_participants.py 20 --scribes 5    # 20 regular + 5 leadership + 5 explicit scribes
-    python generate_test_participants.py 20 --leaders 10   # 20 regular + 10 leadership + random scribes
-    python generate_test_participants.py 0 --leaders 0     # 0 regular + 0 leadership + random scribes
+    python generate_test_participants.py 20 --leaders 10   # 20 regular + 10 leadership (override default)
+    python generate_test_participants.py 30 --leaders 0    # 30 regular + 0 leadership (no leaders)
+
+Note: 10% of all participants randomly receive scribe interest regardless of --scribes flag
 """
 
 import argparse
@@ -298,14 +300,16 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    python generate_test_participants.py                    # 20 regular + 5 leadership + random scribes
-    python generate_test_participants.py 50                # 50 regular + 5 leadership + random scribes
+    python generate_test_participants.py                    # 20 regular + 5 leadership (default --leaders=5)
+    python generate_test_participants.py 50                # 50 regular + 5 leadership (default --leaders=5)
     python generate_test_participants.py 10 --seq 100      # 10 regular + 5 leadership, emails start at 0100
     python generate_test_participants.py 0 --seq 5000      # 0 regular + 5 leadership, emails start at 5000
     python generate_test_participants.py 20 --scribes 5    # 20 regular + 5 leadership + 5 explicit scribes
-    python generate_test_participants.py 20 --leaders 10   # 20 regular + 10 leadership + random scribes
-    python generate_test_participants.py 0 --leaders 0     # 0 regular + 0 leadership + random scribes
+    python generate_test_participants.py 20 --leaders 10   # 20 regular + 10 leadership (override default)
+    python generate_test_participants.py 30 --leaders 0    # 30 regular + 0 leadership (no leaders)
     python generate_test_participants.py --test-rate-limit # Send 100 registrations rapidly to test rate limiting
+
+Note: 10% of all participants randomly receive scribe interest regardless of --scribes flag
         """
     )
     

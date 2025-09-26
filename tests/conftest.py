@@ -222,8 +222,8 @@ def browser(chrome_options, firefox_options):
             driver = webdriver.Chrome(service=driver_service, options=chrome_options)
             logger.info("Chrome browser instance created")
 
-        driver.implicitly_wait(10)
-        driver.set_page_load_timeout(TEST_CONFIG['page_load_timeout'])
+        driver.implicitly_wait(3)  # Reduced for faster element finding
+        driver.set_page_load_timeout(15)  # Reduced from 30s for faster navigation
         yield driver
 
     except Exception as e:
@@ -385,12 +385,21 @@ def test_session_setup():
 # Error handling for missing dependencies
 def pytest_runtest_setup(item):
     """Check for test dependencies before running tests."""
-    # Check if browser tests require Chrome
+    # Check if browser tests require configured browser
     if 'browser' in item.fixturenames:
+        browser_type = TEST_CONFIG.get('browser', 'firefox').lower()
         try:
-            webdriver.Chrome()
-        except Exception:
-            pytest.skip("Chrome browser not available for testing")
+            if browser_type == 'firefox':
+                # Test Firefox availability
+                from webdriver_manager.firefox import GeckoDriverManager
+                from selenium.webdriver.firefox.service import Service as FirefoxService
+                GeckoDriverManager().install()  # Verify geckodriver can be installed
+            else:
+                # Test Chrome availability
+                from webdriver_manager.chrome import ChromeDriverManager
+                ChromeDriverManager().install()  # Verify chromedriver can be installed
+        except Exception as e:
+            pytest.skip(f"{browser_type.title()} browser not available for testing: {e}")
 
     # Check for admin tests requiring credentials
     if item.get_closest_marker('admin') and 'test_credentials' not in item.fixturenames:
