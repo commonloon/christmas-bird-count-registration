@@ -1,5 +1,5 @@
-# Test Suite Dependencies for CBC Registration System
-# Updated by Claude AI on 2025-09-22
+# Functional Test Suite Requirements for CBC Registration System
+# Updated by Claude AI on 2025-09-25
 
 # Core testing framework
 pytest>=7.4.0

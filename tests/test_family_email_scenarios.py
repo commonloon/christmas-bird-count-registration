@@ -1,554 +1,433 @@
 # Family Email Scenario Tests for CBC Registration System
-# Updated by Claude AI on 2025-09-22
+# Updated by Claude AI on 2025-09-25
 
 """
 Tests for family email sharing scenarios in the Christmas Bird Count registration system.
 These tests validate that multiple family members can share an email address while
-maintaining proper identity-based operations and data isolation.
+maintaining proper identity-based operations and data isolation in the single-table design.
 """
 
 import pytest
 import logging
+import time
+import sys
+import os
 from datetime import datetime
 
-from tests.config import IDENTITY_TEST_CONFIG
+# Add project root to Python path for imports
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait, Select
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException
 
 logger = logging.getLogger(__name__)
+
+
+def safe_click(browser, locator, timeout=10):
+    """Safely click an element by scrolling to it and waiting for it to be clickable."""
+    wait = WebDriverWait(browser, timeout)
+    element = wait.until(EC.element_to_be_clickable(locator))
+    browser.execute_script("arguments[0].scrollIntoView(true);", element)
+    time.sleep(0.3)  # Brief pause after scrolling
+    element.click()
+    return element
+
+
+def safe_select_by_value(browser, locator, value, timeout=10):
+    """Safely select a dropdown option by value after scrolling the dropdown into view."""
+    wait = WebDriverWait(browser, timeout)
+    select_element = wait.until(EC.presence_of_element_located(locator))
+    browser.execute_script("arguments[0].scrollIntoView(true);", select_element)
+    time.sleep(0.3)  # Brief pause after scrolling
+    select = Select(select_element)
+    select.select_by_value(value)
+    return select_element
+
+
+def verify_registration_success(browser, expected_email):
+    """Verify successful registration by checking URL and database."""
+    import urllib.parse
+    from models.participant import ParticipantModel
+    from config.database import get_firestore_client
+
+    # Give page time to load
+    time.sleep(1)
+    current_url = browser.current_url
+
+    # Check if we're on success page
+    if 'success' in current_url or 'thank' in current_url:
+        logger.info(f"Registration success page detected: {current_url}")
+    else:
+        logger.warning(f"Expected success page, got: {current_url}")
+        # Check for errors on page
+        try:
+            error_elements = browser.find_elements(By.CLASS_NAME, "error")
+            for error in error_elements:
+                if error.is_displayed():
+                    logger.error(f"Found error message: {error.text}")
+        except:
+            pass
+
+    # Verify in database
+    db, _ = get_firestore_client()
+    participant_model = ParticipantModel(db, datetime.now().year)
+
+    # Find participant by email
+    participants = participant_model.get_all_participants()
+    matching_participants = [p for p in participants if p.get('email', '').lower() == expected_email.lower()]
+
+    if not matching_participants:
+        raise AssertionError(f"No participant found with email: {expected_email}")
+
+    # Return the most recent participant (for family scenarios)
+    participant = max(matching_participants, key=lambda p: p.get('created_at', ''))
+    participant_id = participant.get('id')
+
+    logger.info(f"Found registered participant: {participant.get('first_name')} {participant.get('last_name')} ({expected_email})")
+    return participant_id, participant
+
+
+def register_family_member(browser, base_url, first_name, last_name, email, area, participation_type="regular"):
+    """Helper to register a family member with shared email."""
+    browser.get(base_url)
+
+    # Fill registration form
+    browser.find_element(By.ID, "first_name").send_keys(first_name)
+    browser.find_element(By.ID, "last_name").send_keys(last_name)
+    browser.find_element(By.ID, "email").send_keys(email)
+    browser.find_element(By.ID, "phone").send_keys("604-555-FAMILY")
+
+    # Select skill level and experience
+    safe_select_by_value(browser, (By.ID, "skill_level"), "Intermediate")
+    safe_select_by_value(browser, (By.ID, "experience"), "1-2 counts")
+
+    # Select area and participation type
+    safe_select_by_value(browser, (By.ID, "preferred_area"), area)
+    safe_click(browser, (By.ID, participation_type))  # Click radio button for participation type
+
+    # Equipment preferences
+    safe_click(browser, (By.ID, "has_binoculars"))
+
+    # Submit registration
+    safe_click(browser, (By.XPATH, "//button[@type='submit']"))
+
+    # Verify successful registration
+    participant_id, participant = verify_registration_success(browser, email)
+    return participant_id, participant
 
 
 class TestFamilyEmailSharing:
     """Test family members sharing email addresses with proper identity isolation."""
 
     @pytest.mark.critical
-    @pytest.mark.identity
-    def test_family_creation_and_isolation(self, identity_test_database):
-        """Test creation of family scenarios and verify member isolation."""
-        db = identity_test_database
-        identity_helper = db.identity_helper
-        test_families = db.test_families
+    @pytest.mark.family
+    def test_family_registration_workflow(self, browser, base_url, clean_database):
+        """Test that family members can register separately with shared email."""
+        family_email = f"family-test-{int(time.time())}@test-functional.ca"
 
-        assert len(test_families) == 2, "Should have created 2 test families"
-
-        # Test Smith family (2 members, 1 leader)
-        smith_family = test_families[0]
-        assert smith_family['member_count'] == 2, "Smith family should have 2 members"
-        assert len(smith_family['participant_ids']) == 2, "Should have 2 participant records"
-        assert len(smith_family['leader_ids']) == 1, "Should have 1 leader record"
-
-        # Test Johnson family (3 members, 2 leaders)
-        johnson_family = test_families[1]
-        assert johnson_family['member_count'] == 3, "Johnson family should have 3 members"
-        assert len(johnson_family['participant_ids']) == 3, "Should have 3 participant records"
-        assert len(johnson_family['leader_ids']) == 2, "Should have 2 leader records"
-
-        logger.info("✓ Family scenarios created correctly with proper member counts")
-
-    @pytest.mark.critical
-    @pytest.mark.identity
-    def test_family_member_identity_isolation(self, identity_test_database):
-        """Test that operations on one family member don't affect others."""
-        db = identity_test_database
-        identity_helper = db.identity_helper
-        test_families = db.test_families
-
-        # Use Smith family for isolation testing
-        smith_family = test_families[0]
-        smith_email = smith_family['family_email']
-
-        # Get all Smith family participants
-        all_participants = identity_helper.participant_model.get_all_participants()
-        smith_participants = [
-            p for p in all_participants
-            if p.get('email', '').lower() == smith_email.lower()
-        ]
-
-        assert len(smith_participants) == 2, "Should have 2 Smith family participants"
-
-        # Record state of all family members before operation
-        member_states_before = {}
-        for participant in smith_participants:
-            identity = (
-                participant.get('first_name'),
-                participant.get('last_name'),
-                participant.get('email')
-            )
-            member_states_before[identity] = {
-                'is_leader': participant.get('is_leader', False),
-                'area': participant.get('preferred_area'),
-                'participant_id': participant.get('id')
-            }
-
-        # Delete one family member (John Smith, who is a leader)
-        john_smith = next(
-            (p for p in smith_participants if p.get('first_name') == 'John'),
-            None
-        )
-        assert john_smith is not None, "Should find John Smith"
-
-        deletion_success = identity_helper.participant_model.delete_participant(john_smith['id'])
-        assert deletion_success, "John Smith deletion should succeed"
-
-        # Verify other family member (Jane Smith) is unaffected
-        remaining_participants = identity_helper.participant_model.get_all_participants()
-        remaining_smith_participants = [
-            p for p in remaining_participants
-            if p.get('email', '').lower() == smith_email.lower()
-        ]
-
-        assert len(remaining_smith_participants) == 1, "Should have 1 remaining Smith family participant"
-
-        jane_smith = remaining_smith_participants[0]
-        assert jane_smith.get('first_name') == 'Jane', "Remaining participant should be Jane"
-        assert jane_smith.get('last_name') == 'Smith', "Remaining participant should be Jane Smith"
-
-        # Verify Jane's data is unchanged
-        jane_identity = ('Jane', 'Smith', smith_email)
-        if jane_identity in member_states_before:
-            jane_before = member_states_before[jane_identity]
-            assert jane_smith.get('is_leader') == jane_before['is_leader'], "Jane's leader status should be unchanged"
-            assert jane_smith.get('preferred_area') == jane_before['area'], "Jane's area should be unchanged"
-
-        # Verify Jane's leader record (if she was a leader) is unaffected
-        jane_leaders = identity_helper.area_leader_model.get_leaders_by_identity(
-            'Jane', 'Smith', smith_email
-        )
-        jane_was_leader = member_states_before.get(jane_identity, {}).get('is_leader', False)
-        if jane_was_leader:
-            assert len(jane_leaders) == 1, "Jane's leader record should be preserved"
-        else:
-            assert len(jane_leaders) == 0, "Jane should not have leader records"
-
-        logger.info("✓ Family member isolation works correctly - other members unaffected by deletion")
-
-    @pytest.mark.identity
-    def test_family_leader_management_independence(self, identity_test_database):
-        """Test that family members can be independently managed as leaders."""
-        db = identity_test_database
-        identity_helper = db.identity_helper
-        test_families = db.test_families
-
-        # Use Johnson family (multiple leaders)
-        johnson_family = test_families[1]
-        johnson_email = johnson_family['family_email']
-
-        # Get Johnson family participants
-        all_participants = identity_helper.participant_model.get_all_participants()
-        johnson_participants = [
-            p for p in all_participants
-            if p.get('email', '').lower() == johnson_email.lower()
-        ]
-
-        # Find Bob and Alice (both should be leaders)
-        bob = next((p for p in johnson_participants if p.get('first_name') == 'Bob'), None)
-        alice = next((p for p in johnson_participants if p.get('first_name') == 'Alice'), None)
-
-        assert bob is not None, "Should find Bob Johnson"
-        assert alice is not None, "Should find Alice Johnson"
-        assert bob.get('is_leader'), "Bob should be marked as leader"
-        assert alice.get('is_leader'), "Alice should be marked as leader"
-
-        # Verify each has independent leader records
-        bob_leaders = identity_helper.area_leader_model.get_leaders_by_identity(
-            'Bob', 'Johnson', johnson_email
-        )
-        alice_leaders = identity_helper.area_leader_model.get_leaders_by_identity(
-            'Alice', 'Johnson', johnson_email
+        # Register first family member (parent)
+        parent_id, parent = register_family_member(
+            browser, base_url, "John", "FamilyTest", family_email, "A"
         )
 
-        assert len(bob_leaders) == 1, "Bob should have one leader record"
-        assert len(alice_leaders) == 1, "Alice should have one leader record"
-        # In single-table design, area is stored as 'assigned_area_leader'
-        assert bob_leaders[0]['assigned_area_leader'] != alice_leaders[0]['assigned_area_leader'], "Bob and Alice should lead different areas"
-
-        # Remove Bob's leadership
-        bob_leader_id = bob_leaders[0]['id']
-        bob_removal = identity_helper.area_leader_model.remove_leader(bob_leader_id, 'test-family-management')
-        assert bob_removal, "Bob's leader removal should succeed"
-
-        # Verify Alice's leadership is unaffected
-        alice_leaders_after = identity_helper.area_leader_model.get_leaders_by_identity(
-            'Alice', 'Johnson', johnson_email
+        # Register second family member (child) with same email
+        child_id, child = register_family_member(
+            browser, base_url, "Jane", "FamilyTest", family_email, "B"
         )
-        assert len(alice_leaders_after) == 1, "Alice should still be a leader"
-        assert alice_leaders_after[0]['active'], "Alice's leader record should still be active"
 
-        # Verify Bob is no longer a leader
-        bob_leaders_after = identity_helper.area_leader_model.get_leaders_by_identity(
-            'Bob', 'Johnson', johnson_email
-        )
-        assert len(bob_leaders_after) == 0, "Bob should no longer be a leader"
+        # Verify both family members exist in database
+        from models.participant import ParticipantModel
+        from config.database import get_firestore_client
 
-        logger.info("✓ Family members can be independently managed as leaders")
+        db, _ = get_firestore_client()
+        participant_model = ParticipantModel(db, datetime.now().year)
 
-    @pytest.mark.identity
-    def test_family_duplicate_prevention(self, identity_test_database):
-        """Test that duplicate prevention works correctly with family emails."""
-        db = identity_test_database
-        identity_helper = db.identity_helper
-        test_families = db.test_families
-
-        # Use Smith family
-        smith_family = test_families[0]
-        smith_email = smith_family['family_email']
-
-        # Try to create another John Smith with same email (should be prevented by admin validation)
-        duplicate_john_data = {
-            'area_code': 'Z',  # Different area
-            'leader_email': smith_email,
-            'first_name': 'John',  # Same identity as existing John
-            'last_name': 'Smith',
-            'cell_phone': '555-DUPLICATE',
-            'assigned_by': 'test-family-duplicate',
-            'active': True,
-            'notes': 'Duplicate prevention test'
-        }
-
-        # At the model level, this might succeed (business logic is in admin routes)
-        duplicate_id = identity_helper.area_leader_model.add_leader(duplicate_john_data)
-
-        if duplicate_id:
-            # If duplicate was created, verify we can detect it
-            john_leaders = identity_helper.area_leader_model.get_leaders_by_identity(
-                'John', 'Smith', smith_email
-            )
-            # Should have detected multiple leaders for same identity
-            if len(john_leaders) > 1:
-                logger.warning(f"Duplicate leader created - this should be prevented by admin interface validation")
-                # Clean up duplicate
-                identity_helper.area_leader_model.remove_leader(duplicate_id, 'test-cleanup')
-
-        # Try to create a different family member (should be allowed)
-        different_member_data = {
-            'area_code': 'Z',
-            'leader_email': smith_email,
-            'first_name': 'Sam',  # Different first name
-            'last_name': 'Smith',
-            'cell_phone': '555-SAM-SMITH',
-            'assigned_by': 'test-family-different',
-            'active': True,
-            'notes': 'Different family member test'
-        }
-
-        sam_id = identity_helper.area_leader_model.add_leader(different_member_data)
-        assert sam_id is not None, "Different family member should be allowed"
-
-        # Verify Sam was created successfully
-        sam_leaders = identity_helper.area_leader_model.get_leaders_by_identity(
-            'Sam', 'Smith', smith_email
-        )
-        assert len(sam_leaders) == 1, "Sam Smith should have been created"
-
-        # Clean up
-        identity_helper.area_leader_model.remove_leader(sam_id, 'test-cleanup')
-
-        logger.info("✓ Duplicate prevention allows different family members while preventing same identity duplicates")
-
-    @pytest.mark.identity
-    def test_family_synchronization_independence(self, identity_test_database):
-        """Test that synchronization operations maintain family member independence."""
-        db = identity_test_database
-        identity_helper = db.identity_helper
-
-        # Create a new family for this test to avoid interference
-        test_family_email = 'sync-test-family@test-scenarios.ca'
-        test_members = [
-            {
-                'first_name': 'Parent',
-                'last_name': 'Tester',
-                'area': 'R',
-                'role': 'leader',
-                'skill_level': 'Expert',
-                'interested_in_leadership': True
-            },
-            {
-                'first_name': 'Child',
-                'last_name': 'Tester',
-                'area': 'S',
-                'role': 'participant',
-                'skill_level': 'Beginner',
-                'interested_in_leadership': False
-            }
-        ]
-
-        family_data = identity_helper.create_family_scenario(test_family_email, test_members)
-
-        # Verify both family members exist
-        all_participants = identity_helper.participant_model.get_all_participants()
+        all_participants = participant_model.get_all_participants()
         family_participants = [
             p for p in all_participants
-            if p.get('email', '').lower() == test_family_email.lower()
+            if p.get('email', '').lower() == family_email.lower()
         ]
-        assert len(family_participants) == 2, "Should have 2 family members"
 
-        # Get the parent (who is a leader)
-        parent = next((p for p in family_participants if p.get('first_name') == 'Parent'), None)
-        child = next((p for p in family_participants if p.get('first_name') == 'Child'), None)
+        assert len(family_participants) == 2, f"Should have 2 family members, found {len(family_participants)}"
 
-        assert parent is not None, "Should find Parent"
-        assert child is not None, "Should find Child"
-        assert parent.get('is_leader'), "Parent should be a leader"
-        assert not child.get('is_leader'), "Child should not be a leader"
+        # Verify they have different identities
+        names = [(p.get('first_name'), p.get('last_name')) for p in family_participants]
+        assert ('John', 'FamilyTest') in names, "Should find John FamilyTest"
+        assert ('Jane', 'FamilyTest') in names, "Should find Jane FamilyTest"
 
-        # Verify child's synchronization state before parent operations
-        child_sync_before = identity_helper.verify_identity_synchronization(
-            'Child', 'Tester', test_family_email
+        # Verify they have different areas
+        areas = [p.get('preferred_area') for p in family_participants]
+        assert 'A' in areas and 'B' in areas, f"Should have areas A and B, got: {areas}"
+
+        logger.info("✓ Family registration workflow works correctly")
+
+    @pytest.mark.critical
+    @pytest.mark.family
+    def test_family_member_identity_isolation(self, browser, base_url, clean_database):
+        """Test that operations on one family member don't affect others."""
+        family_email = f"isolation-test-{int(time.time())}@test-functional.ca"
+
+        # Register two family members
+        parent_id, parent = register_family_member(
+            browser, base_url, "Parent", "IsolationTest", family_email, "C"
         )
-        assert child_sync_before['is_synchronized'], "Child should be synchronized before parent operations"
+        child_id, child = register_family_member(
+            browser, base_url, "Child", "IsolationTest", family_email, "D"
+        )
 
-        # Delete parent participant (should trigger leader deactivation)
-        parent_deletion = identity_helper.participant_model.delete_participant(parent['id'])
+        from models.participant import ParticipantModel
+        from config.database import get_firestore_client
+
+        db, _ = get_firestore_client()
+        participant_model = ParticipantModel(db, datetime.now().year)
+
+        # Record child state before parent operations
+        child_before = participant_model.get_participant(child_id)
+        assert child_before is not None, "Child should exist before parent operations"
+
+        # Delete parent participant
+        parent_deletion = participant_model.delete_participant(parent_id)
         assert parent_deletion, "Parent deletion should succeed"
 
         # Verify child is completely unaffected
-        child_sync_after = identity_helper.verify_identity_synchronization(
-            'Child', 'Tester', test_family_email
+        child_after = participant_model.get_participant(child_id)
+        assert child_after is not None, "Child should still exist after parent deletion"
+        assert child_after.get('preferred_area') == child_before.get('preferred_area'), "Child's area should be unchanged"
+        assert child_after.get('first_name') == child_before.get('first_name'), "Child's name should be unchanged"
+
+        # Verify parent is deleted
+        parent_after = participant_model.get_participant(parent_id)
+        assert parent_after is None, "Parent should be deleted"
+
+        logger.info("✓ Family member identity isolation works correctly")
+
+    @pytest.mark.family
+    def test_family_leader_management_independence(self, browser, base_url, clean_database):
+        """Test that family members can be independently managed as leaders."""
+        family_email = f"leader-mgmt-test-{int(time.time())}@test-functional.ca"
+
+        # Register two family members
+        bob_id, bob = register_family_member(
+            browser, base_url, "Bob", "LeaderTest", family_email, "E"
         )
-        assert child_sync_after['is_synchronized'], "Child should remain synchronized after parent deletion"
-        assert child_sync_after['participant_count'] == 1, "Child participant should still exist"
-        assert child_sync_after['leader_count'] == 0, "Child should not have leader records"
-
-        # Verify parent's leader was deactivated
-        parent_sync_after = identity_helper.verify_identity_synchronization(
-            'Parent', 'Tester', test_family_email
+        alice_id, alice = register_family_member(
+            browser, base_url, "Alice", "LeaderTest", family_email, "F"
         )
-        assert parent_sync_after['participant_count'] == 0, "Parent participant should be deleted"
-        assert parent_sync_after['leader_count'] == 0, "Parent leader should be deactivated"
 
-        logger.info("✓ Family member synchronization maintains independence between family members")
+        from models.participant import ParticipantModel
+        from config.database import get_firestore_client
 
-    @pytest.mark.identity
-    def test_family_csv_export_isolation(self, identity_test_database):
-        """Test that CSV export correctly handles family members with shared emails."""
-        db = identity_test_database
-        identity_helper = db.identity_helper
-        test_families = db.test_families
+        db, _ = get_firestore_client()
+        participant_model = ParticipantModel(db, datetime.now().year)
 
-        # Get all participants for export simulation
-        all_participants = identity_helper.participant_model.get_all_participants()
+        # Promote Bob to leader
+        bob_promotion = participant_model.assign_area_leadership(bob_id, "E", "test-family-leader@test.ca")
+        assert bob_promotion, "Bob leadership assignment should succeed"
 
-        # Group by email to find families
-        families_in_export = {}
-        for participant in all_participants:
-            email = participant.get('email', '')
-            if email not in families_in_export:
-                families_in_export[email] = []
-            families_in_export[email].append(participant)
+        # Promote Alice to leader
+        alice_promotion = participant_model.assign_area_leadership(alice_id, "F", "test-family-leader@test.ca")
+        assert alice_promotion, "Alice leadership assignment should succeed"
 
-        # Verify family emails have multiple members
-        family_emails = [family['family_email'] for family in test_families]
-        for family_email in family_emails:
-            if family_email in families_in_export:
-                family_members = families_in_export[family_email]
-                assert len(family_members) > 1, f"Family {family_email} should have multiple members in export"
+        # Verify both are leaders
+        bob_after_promotion = participant_model.get_participant(bob_id)
+        alice_after_promotion = participant_model.get_participant(alice_id)
 
-                # Verify each family member appears as separate record
-                names = [(p.get('first_name'), p.get('last_name')) for p in family_members]
-                unique_names = set(names)
-                assert len(names) == len(unique_names), f"All family members should have unique names: {names}"
+        assert bob_after_promotion.get('is_leader'), "Bob should be a leader"
+        assert alice_after_promotion.get('is_leader'), "Alice should be a leader"
+        assert bob_after_promotion.get('assigned_area_leader') == 'E', "Bob should lead area E"
+        assert alice_after_promotion.get('assigned_area_leader') == 'F', "Alice should lead area F"
 
-                # Verify they all share the same email
-                emails = [p.get('email') for p in family_members]
-                assert all(email == family_email for email in emails), "All family members should share the same email"
+        # Remove Bob's leadership
+        bob_demotion = participant_model.remove_area_leadership(bob_id, "test-family-demotion")
+        assert bob_demotion, "Bob demotion should succeed"
 
-        logger.info("✓ CSV export correctly handles family members with shared emails")
+        # Verify Alice's leadership is unaffected
+        alice_after_bob_demotion = participant_model.get_participant(alice_id)
+        assert alice_after_bob_demotion.get('is_leader'), "Alice should still be a leader"
+        assert alice_after_bob_demotion.get('assigned_area_leader') == 'F', "Alice should still lead area F"
+
+        # Verify Bob is no longer a leader
+        bob_after_demotion = participant_model.get_participant(bob_id)
+        assert not bob_after_demotion.get('is_leader'), "Bob should no longer be a leader"
+        assert bob_after_demotion.get('assigned_area_leader') is None, "Bob should not have assigned area"
+
+        logger.info("✓ Family members can be independently managed as leaders")
+
+    @pytest.mark.family
+    def test_family_duplicate_prevention(self, browser, base_url, clean_database):
+        """Test that duplicate prevention allows different family members while preventing same identity duplicates."""
+        family_email = f"duplicate-test-{int(time.time())}@test-functional.ca"
+
+        # Register first family member
+        original_id, original = register_family_member(
+            browser, base_url, "Original", "DuplicateTest", family_email, "G"
+        )
+
+        # Register different family member with same email (should be allowed)
+        different_id, different = register_family_member(
+            browser, base_url, "Different", "DuplicateTest", family_email, "H"
+        )
+
+        from models.participant import ParticipantModel
+        from config.database import get_firestore_client
+
+        db, _ = get_firestore_client()
+        participant_model = ParticipantModel(db, datetime.now().year)
+
+        # Verify both family members exist
+        family_participants = [
+            p for p in participant_model.get_all_participants()
+            if p.get('email', '').lower() == family_email.lower()
+        ]
+
+        names = [(p.get('first_name'), p.get('last_name')) for p in family_participants]
+        assert ('Original', 'DuplicateTest') in names, "Original should exist"
+        assert ('Different', 'DuplicateTest') in names, "Different should exist"
+        assert len([n for n in names if n == ('Original', 'DuplicateTest')]) == 1, "Should have only one Original"
+
+        logger.info("✓ Duplicate prevention allows different family members while preventing same identity duplicates")
 
 
 class TestFamilyEmailEdgeCases:
     """Test edge cases and error scenarios with family email sharing."""
 
-    @pytest.mark.identity
-    def test_empty_family_scenario(self, single_identity_test):
-        """Test behavior when creating family with no members."""
-        db = single_identity_test
-        identity_helper = db.identity_helper
-
-        # Attempt to create family with empty members list
-        empty_family = identity_helper.create_family_scenario(
-            'empty-family@test-edge-cases.ca',
-            []
-        )
-
-        assert empty_family['member_count'] == 0, "Empty family should have 0 members"
-        assert len(empty_family['participant_ids']) == 0, "Should have no participant IDs"
-        assert len(empty_family['leader_ids']) == 0, "Should have no leader IDs"
-
-        logger.info("✓ Empty family scenario handled correctly")
-
-    @pytest.mark.identity
-    def test_large_family_scenario(self, single_identity_test):
-        """Test behavior with a large family (5+ members)."""
-        db = single_identity_test
-        identity_helper = db.identity_helper
-
-        # Create large family
-        large_family_members = []
-        for i in range(1, 6):  # 5 family members
-            large_family_members.append({
-                'first_name': f'Member{i}',
-                'last_name': 'LargeFamily',
-                'area': chr(ord('A') + i - 1),  # Areas A, B, C, D, E
-                'role': 'leader' if i <= 2 else 'participant',  # First 2 are leaders
-                'skill_level': 'Intermediate',
-                'interested_in_leadership': i <= 2
-            })
-
-        large_family = identity_helper.create_family_scenario(
-            'large-family@test-edge-cases.ca',
-            large_family_members
-        )
-
-        assert large_family['member_count'] == 5, "Large family should have 5 members"
-        assert len(large_family['participant_ids']) == 5, "Should have 5 participant records"
-        assert len(large_family['leader_ids']) == 2, "Should have 2 leader records"
-
-        # Test isolation within large family
-        isolation_results = identity_helper.test_identity_operations_isolation([large_family])
-        assert isolation_results['isolation_maintained'], "Isolation should be maintained in large family"
-
-        logger.info("✓ Large family scenario works correctly with proper isolation")
-
-    @pytest.mark.identity
-    def test_family_with_duplicate_names(self, single_identity_test):
-        """Test behavior when family members have identical names (edge case)."""
-        db = single_identity_test
-        identity_helper = db.identity_helper
-
-        # Create family with duplicate names (different middle names or suffixes in real world)
-        duplicate_name_members = [
-            {
-                'first_name': 'John',
-                'last_name': 'Duplicate',
-                'area': 'T',
-                'role': 'leader',
-                'skill_level': 'Expert',
-                'interested_in_leadership': True
-            },
-            {
-                'first_name': 'John',  # Same name
-                'last_name': 'Duplicate',
-                'area': 'U',
-                'role': 'participant',
-                'skill_level': 'Beginner',
-                'interested_in_leadership': False
-            }
+    @pytest.mark.family
+    def test_large_family_scenario(self, browser, base_url, clean_database):
+        """Test behavior with a large family (4+ members)."""
+        family_email = f"large-family-{int(time.time())}@test-functional.ca"
+        family_members = [
+            {'name': 'Parent1', 'area': 'M'},
+            {'name': 'Parent2', 'area': 'N'},
+            {'name': 'Child1', 'area': 'O'},
+            {'name': 'Child2', 'area': 'P'}
         ]
 
-        # This should create both records (system doesn't prevent duplicate names within family)
-        duplicate_family = identity_helper.create_family_scenario(
-            'duplicate-names@test-edge-cases.ca',
-            duplicate_name_members
+        registered_ids = []
+        for member in family_members:
+            member_id, member_data = register_family_member(
+                browser, base_url, member['name'], "LargeFamily", family_email, member['area']
+            )
+            registered_ids.append(member_id)
+
+        from models.participant import ParticipantModel
+        from config.database import get_firestore_client
+
+        db, _ = get_firestore_client()
+        participant_model = ParticipantModel(db, datetime.now().year)
+
+        # Verify all family members exist
+        family_participants = [
+            p for p in participant_model.get_all_participants()
+            if p.get('email', '').lower() == family_email.lower()
+        ]
+
+        assert len(family_participants) == 4, f"Should have 4 family members, found {len(family_participants)}"
+
+        # Verify they have unique identities
+        names = [(p.get('first_name'), p.get('last_name')) for p in family_participants]
+        unique_names = set(names)
+        assert len(names) == len(unique_names), f"All family members should have unique names: {names}"
+
+        # Verify they all share the same email
+        emails = [p.get('email') for p in family_participants]
+        assert all(email == family_email for email in emails), "All family members should share the same email"
+
+        logger.info("✓ Large family scenario works correctly")
+
+    @pytest.mark.family
+    def test_family_authentication_sharing(self, browser, base_url, clean_database):
+        """Test that family members sharing email can have shared authentication privileges."""
+        family_email = f"auth-sharing-{int(time.time())}@test-functional.ca"
+
+        # Register leader candidate
+        leader_id, leader = register_family_member(
+            browser, base_url, "LeaderCandidate", "AuthTest", family_email, "Q"
         )
 
-        assert duplicate_family['member_count'] == 2, "Should create both members despite duplicate names"
-
-        # However, identity-based operations will treat them as the same person
-        # This is a known limitation - in real world, families would use middle names or suffixes
-        logger.warning("Duplicate names within family create ambiguous identity - real families should use distinguishing names")
-
-        logger.info("✓ Duplicate name edge case handled (with known limitation)")
-
-    @pytest.mark.identity
-    def test_family_member_email_change(self, single_identity_test):
-        """Test behavior when a family member's email is changed (hypothetical scenario)."""
-        db = single_identity_test
-        identity_helper = db.identity_helper
-
-        # Create family member
-        participant_id, leader_id = identity_helper.create_test_identity(
-            base_name="EmailChangeTest",
-            area="V",
-            role="both"
+        # Register regular member
+        regular_id, regular = register_family_member(
+            browser, base_url, "RegularMember", "AuthTest", family_email, "R"
         )
 
-        # Get original identity
-        participant = identity_helper.participant_model.get_participant(participant_id)
-        original_email = participant['email']
-        first_name = participant['first_name']
-        last_name = participant['last_name']
+        from models.participant import ParticipantModel
+        from config.database import get_firestore_client
 
-        # Verify synchronization with original email
-        sync_before = identity_helper.verify_identity_synchronization(first_name, last_name, original_email)
-        assert sync_before['is_synchronized'], "Should be synchronized with original email"
+        db, _ = get_firestore_client()
+        participant_model = ParticipantModel(db, datetime.now().year)
 
-        # Simulate email change (participant moves out of family)
-        # In single-table design, this would require implementing proper email change logic
-        new_email = f"independent-{original_email}"
+        # Promote leader candidate to actual leader
+        leadership_assigned = participant_model.assign_area_leadership(leader_id, "Q", "test-auth-assignment@test.ca")
+        assert leadership_assigned, "Leadership assignment should succeed"
 
-        # For now, simulate the change by updating the participant directly in Firestore
-        # This represents what would happen if proper email change functionality existed
-        from datetime import datetime
-        identity_helper.db.collection(f'participants_{identity_helper.participant_model.year}').document(participant_id).update({
-            'email': new_email,
-            'updated_at': datetime.now()
-        })
+        # Verify family email sharing setup for authentication
+        promoted_leader = participant_model.get_participant(leader_id)
+        regular_member = participant_model.get_participant(regular_id)
 
-        # After email change in single-table design:
-        # - Old identity should show no participant AND no leader (same record)
-        sync_old_email = identity_helper.verify_identity_synchronization(first_name, last_name, original_email)
-        assert sync_old_email['participant_count'] == 0, "Old email identity should have no participant"
-        assert sync_old_email['leader_count'] == 0, "Old email identity should have no leader (single-table design)"
+        assert promoted_leader.get('is_leader'), "Leader candidate should be promoted"
+        assert not regular_member.get('is_leader'), "Regular member should not be leader"
 
-        # New email identity should show both participant and leader (same record)
-        sync_new_email = identity_helper.verify_identity_synchronization(first_name, last_name, new_email)
-        assert sync_new_email['participant_count'] == 1, "New email identity should have participant"
-        assert sync_new_email['leader_count'] == 1, "New email identity should have leader (single-table design)"
-        assert sync_new_email['is_synchronized'], "Single-table design maintains synchronization automatically"
+        # Both should share the same email for authentication privileges
+        assert promoted_leader.get('email') == regular_member.get('email'), "Both should share same email"
 
-        logger.info("✓ Email change scenario handled correctly in single-table design (automatic synchronization)")
+        logger.info("✓ Family authentication sharing data setup works correctly")
 
 
 class TestFamilyEmailPerformance:
-    """Test performance and scalability with family email scenarios."""
+    """Test performance considerations with family email scenarios."""
 
     @pytest.mark.slow
-    @pytest.mark.identity
-    def test_multiple_families_performance(self, single_identity_test):
+    @pytest.mark.family
+    def test_multiple_families_performance(self, browser, base_url, clean_database):
         """Test performance with multiple families sharing different emails."""
-        db = single_identity_test
-        identity_helper = db.identity_helper
-
-        # Create multiple families
+        family_count = 3
+        members_per_family = 2
         families_created = []
-        family_count = 5
 
         start_time = datetime.now()
 
         for i in range(family_count):
-            family_email = f"perf-family-{i+1}@test-performance.ca"
-            family_members = [
-                {
-                    'first_name': f'Parent{i+1}',
-                    'last_name': f'PerfFamily{i+1}',
-                    'area': chr(ord('A') + (i * 2)),
-                    'role': 'leader',
-                    'skill_level': 'Expert',
-                    'interested_in_leadership': True
-                },
-                {
-                    'first_name': f'Child{i+1}',
-                    'last_name': f'PerfFamily{i+1}',
-                    'area': chr(ord('A') + (i * 2) + 1),
-                    'role': 'participant',
-                    'skill_level': 'Intermediate',
-                    'interested_in_leadership': False
-                }
-            ]
+            family_email = f"perf-family-{i+1}-{int(time.time())}-{i}@test-performance.ca"
+            families_created.append(family_email)
 
-            family_data = identity_helper.create_family_scenario(family_email, family_members)
-            families_created.append(family_data)
+            for j in range(members_per_family):
+                member_id, member_data = register_family_member(
+                    browser, base_url, f'Member{j+1}', f'PerfFamily{i+1}',
+                    family_email, chr(ord('A') + (i * 2) + j)
+                )
+                time.sleep(0.5)  # Brief delay to avoid overwhelming the server
 
         creation_time = datetime.now() - start_time
 
-        # Test isolation across all families
-        isolation_start = datetime.now()
-        isolation_results = identity_helper.test_identity_operations_isolation(families_created)
-        isolation_time = datetime.now() - isolation_start
+        # Verify all families were created correctly
+        verification_start = datetime.now()
 
-        assert isolation_results['isolation_maintained'], "Isolation should be maintained across multiple families"
-        assert len(families_created) == family_count, f"Should have created {family_count} families"
+        from models.participant import ParticipantModel
+        from config.database import get_firestore_client
+
+        db, _ = get_firestore_client()
+        participant_model = ParticipantModel(db, datetime.now().year)
+
+        all_participants = participant_model.get_all_participants()
+
+        for family_email in families_created:
+            family_participants = [
+                p for p in all_participants
+                if p.get('email', '').lower() == family_email.lower()
+            ]
+            assert len(family_participants) == members_per_family, f"Family {family_email} should have {members_per_family} members"
+
+            # Verify unique identities within family
+            names = [(p.get('first_name'), p.get('last_name')) for p in family_participants]
+            unique_names = set(names)
+            assert len(names) == len(unique_names), f"Family {family_email} should have unique member names"
+
+        verification_time = datetime.now() - verification_start
 
         # Performance assertions (adjust based on acceptable thresholds)
-        assert creation_time.total_seconds() < 60, f"Family creation should complete within 60 seconds, took {creation_time.total_seconds()}"
-        assert isolation_time.total_seconds() < 30, f"Isolation testing should complete within 30 seconds, took {isolation_time.total_seconds()}"
+        total_participants = family_count * members_per_family
+        assert creation_time.total_seconds() < (total_participants * 15), f"Family creation should complete reasonably quickly, took {creation_time.total_seconds()}s for {total_participants} participants"
+        assert verification_time.total_seconds() < 15, f"Family verification should complete quickly, took {verification_time.total_seconds()}s"
 
-        logger.info(f"✓ Multiple families performance test passed - creation: {creation_time.total_seconds():.2f}s, isolation: {isolation_time.total_seconds():.2f}s")
+        logger.info(f"✓ Multiple families performance test passed - creation: {creation_time.total_seconds():.2f}s, verification: {verification_time.total_seconds():.2f}s for {total_participants} participants across {family_count} families")

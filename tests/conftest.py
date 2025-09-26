@@ -280,7 +280,7 @@ def clean_database(firestore_client):
     # logger.info("Database cleaned after test")
 
 @pytest.fixture
-def populated_database(firestore_client, test_credentials):
+def populated_database(firestore_client):
     """Provide a database with realistic test data."""
     # This will be implemented when we create the dataset generation utilities
     logger.info("Populated database fixture (to be implemented)")
@@ -401,6 +401,5 @@ def pytest_runtest_setup(item):
         except Exception as e:
             pytest.skip(f"{browser_type.title()} browser not available for testing: {e}")
 
-    # Check for admin tests requiring credentials
-    if item.get_closest_marker('admin') and 'test_credentials' not in item.fixturenames:
-        pytest.skip("Admin tests require credentials fixture")
+    # Note: Admin tests use get_test_password() for credentials, so no skip needed
+    # The test_credentials fixture is only needed for specific regression tests

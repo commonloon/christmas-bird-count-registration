@@ -32,6 +32,7 @@ import requests
 import csv
 import io
 import re
+from tests.data import get_test_account, get_test_password
 
 logger = logging.getLogger(__name__)
 
@@ -223,7 +224,7 @@ class TestLeaderPromotionWorkflows:
 
     @pytest.mark.critical
     @pytest.mark.admin
-    def test_participant_to_leader_promotion(self, browser, base_url, test_credentials, single_identity_test):
+    def test_participant_to_leader_promotion(self, browser, base_url, single_identity_test):
         """Test promoting a participant to area leader through admin interface."""
         # First create a participant
         identity_helper = single_identity_test.identity_helper
@@ -232,7 +233,9 @@ class TestLeaderPromotionWorkflows:
         )
 
         # Login as admin
-        admin_creds = test_credentials['admin_primary']
+        admin_account = get_test_account('admin1')
+        admin_password = get_test_password('admin1')
+        admin_creds = {'email': admin_account['email'], 'password': admin_password}
         self._admin_login(browser, base_url, admin_creds)
 
         # Navigate to participants page
@@ -267,7 +270,7 @@ class TestLeaderPromotionWorkflows:
 
     @pytest.mark.critical
     @pytest.mark.admin
-    def test_clive_roberts_scenario(self, browser, base_url, test_credentials, single_identity_test):
+    def test_clive_roberts_scenario(self, browser, base_url, single_identity_test):
         """
         Test the Clive Roberts bug scenario:
         1. Promote participant to leader
@@ -283,7 +286,9 @@ class TestLeaderPromotionWorkflows:
         )
 
         # Login as admin
-        admin_creds = test_credentials['admin_primary']
+        admin_account = get_test_account('admin1')
+        admin_password = get_test_password('admin1')
+        admin_creds = {'email': admin_account['email'], 'password': admin_password}
         self._admin_login(browser, base_url, admin_creds)
 
         # Step 2: Delete the leader
@@ -336,10 +341,12 @@ class TestAdminLeaderManagement:
     """Test admin leader management UI functionality."""
 
     @pytest.mark.admin
-    def test_add_new_leader_via_ui(self, browser, base_url, test_credentials, clean_database):
+    def test_add_new_leader_via_ui(self, browser, base_url, clean_database):
         """Test adding a new leader through the admin leaders interface."""
         # Login as admin
-        admin_creds = test_credentials['admin_primary']
+        admin_account = get_test_account('admin1')
+        admin_password = get_test_password('admin1')
+        admin_creds = {'email': admin_account['email'], 'password': admin_password}
         self._admin_login(browser, base_url, admin_creds)
 
         # Navigate to leaders page
@@ -376,7 +383,7 @@ class TestAdminLeaderManagement:
         assert leaders[0]['last_name'] == "AdminTest"
 
     @pytest.mark.admin
-    def test_edit_leader_via_ui(self, browser, base_url, test_credentials, single_identity_test):
+    def test_edit_leader_via_ui(self, browser, base_url, single_identity_test):
         """Test editing leader information through inline editing."""
         # Create a leader to edit
         identity_helper = single_identity_test.identity_helper
@@ -385,7 +392,9 @@ class TestAdminLeaderManagement:
         )
 
         # Login as admin
-        admin_creds = test_credentials['admin_primary']
+        admin_account = get_test_account('admin1')
+        admin_password = get_test_password('admin1')
+        admin_creds = {'email': admin_account['email'], 'password': admin_password}
         self._admin_login(browser, base_url, admin_creds)
 
         # Navigate to leaders page
@@ -443,10 +452,12 @@ class TestCSVExportFunctionality:
 
     @pytest.mark.admin
     @pytest.mark.slow
-    def test_participants_csv_export(self, browser, base_url, test_credentials, populated_database):
+    def test_participants_csv_export(self, browser, base_url, populated_database):
         """Test CSV export of all participants."""
         # Login as admin
-        admin_creds = test_credentials['admin_primary']
+        admin_account = get_test_account('admin1')
+        admin_password = get_test_password('admin1')
+        admin_creds = {'email': admin_account['email'], 'password': admin_password}
         self._admin_login(browser, base_url, admin_creds)
 
         # Navigate to participants page
@@ -464,7 +475,7 @@ class TestCSVExportFunctionality:
         assert "export_csv" in browser.current_url
 
     @pytest.mark.admin
-    def test_leaders_csv_export(self, browser, base_url, test_credentials, single_identity_test):
+    def test_leaders_csv_export(self, browser, base_url, single_identity_test):
         """Test CSV export of leaders only."""
         # Create some leaders first
         identity_helper = single_identity_test.identity_helper
@@ -474,7 +485,9 @@ class TestCSVExportFunctionality:
             )
 
         # Login as admin
-        admin_creds = test_credentials['admin_primary']
+        admin_account = get_test_account('admin1')
+        admin_password = get_test_password('admin1')
+        admin_creds = {'email': admin_account['email'], 'password': admin_password}
         self._admin_login(browser, base_url, admin_creds)
 
         # Navigate to leaders page
@@ -491,7 +504,7 @@ class TestCSVExportFunctionality:
         assert "export_csv" in browser.current_url
 
     @pytest.mark.admin
-    def test_csv_export_content_validation(self, base_url, test_credentials, single_identity_test):
+    def test_csv_export_content_validation(self, base_url, single_identity_test):
         """Test CSV export content using direct HTTP requests."""
         # Create test data
         identity_helper = single_identity_test.identity_helper
@@ -500,7 +513,9 @@ class TestCSVExportFunctionality:
         )
 
         # Login and get session
-        admin_creds = test_credentials['admin_primary']
+        admin_account = get_test_account('admin1')
+        admin_password = get_test_password('admin1')
+        admin_creds = {'email': admin_account['email'], 'password': admin_password}
         session = requests.Session()
 
         # Simplified login (real implementation would handle OAuth)
