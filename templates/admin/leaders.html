@@ -23,6 +23,21 @@
     </ol>
 </nav>
 
+<!-- Admin Navigation -->
+<div class="card mb-4">
+    <div class="card-body">
+        <h5 class="card-title">Admin Navigation</h5>
+        <div class="btn-group" role="group" aria-label="Admin navigation">
+            <a href="{{ url_for('admin.participants', year=selected_year) }}" class="btn btn-outline-primary">
+                <i class="fas fa-users"></i> View All Participants
+            </a>
+            <a href="{{ url_for('admin.dashboard', year=selected_year) }}" class="btn btn-outline-secondary">
+                <i class="fas fa-chart-bar"></i> Dashboard
+            </a>
+        </div>
+    </div>
+</div>
+
 <!-- Year selector -->
 {% if available_years and available_years|length > 1 %}
 <div class="card mb-4">

@@ -221,8 +221,10 @@ def get_admin_emails():
 - Leader names displayed in map tooltips when hovering over areas with leaders
 - Live map updates after edit/delete operations using client-side data management
 - Current area leader assignments with contact information and status
+- **Admin Navigation Section**: Includes "View All Participants" button with Bootstrap styling and icons, preserves year context
 - **Current Leaders Table Display**:
   - **Columns**: Area, Leader, Email, Cell Phone, Secondary Phone, Actions
+  - **Sorting**: Sorted by area code then by first name (ascending order)
   - **Inline Edit Functionality**: Edit leader information directly in the table
     - Edit button (pencil icon) enables inline editing of all fields simultaneously
     - Area dropdown, name fields, email, cell phone, and secondary phone become editable
@@ -230,6 +232,9 @@ def get_admin_emails():
     - Delete button (trash icon) with simple confirmation dialog
     - Real-time map refresh after successful operations
     - Client-side data synchronization prevents server round-trips for map updates
+- **Potential Leaders Table Display**:
+  - **Columns**: Name, Email, Skill Level, Preferred Area, Action
+  - **Sorting**: Sorted by preferred area then by first name (ascending order)
 - Manual leader entry form with validation and business rule enforcement (primary workflow)
 - Participant-to-leader promotion from "Potential Leaders" list (exceptional case)
 - Areas without assigned leaders highlighted on map and listed below
@@ -401,6 +406,7 @@ python utils/generate_test_participants.py 20 --scribes 5
 **Business Rules:**
 - Multiple leaders allowed per area
 - One area maximum per person (enforced by identity-based validation: first_name + last_name + email)
+- **Leader area assignment**: When a participant is promoted to leader of an area, their `preferred_area` is automatically updated to match their `assigned_area_leader` to ensure leaders are participants in the areas they lead
 - Leaders with Google emails can access leader UI, others receive notifications only
 - **Family email support**: Multiple family members can share an email address
   - All operations use identity matching: `(first_name, last_name, email)` combination
