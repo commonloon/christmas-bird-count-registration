@@ -335,7 +335,7 @@ def deploy_cloud_function(config):
         # Deploy function
         deploy_args = [
             'functions', 'deploy', config['function_name'],
-            '--runtime', 'python39',
+            '--runtime', 'python312',
             '--trigger-http',
             '--allow-unauthenticated',
             '--timeout', '540s',
