@@ -26,7 +26,7 @@ class AdminParticipantsPage(BasePage):
         indicators = [
             'participants-table',
             (By.CSS_SELECTOR, '.participants-table'),
-            (By.CSS_SELECTOR, 'h1:contains("Participants")'),
+            (By.XPATH, '//h1[contains(text(), "Participants")]'),
             (By.CSS_SELECTOR, 'table.table')
         ]
 

@@ -1,5 +1,5 @@
 # Christmas Bird Count Registration Test Suite Specification
-{# Updated by Claude AI on 2025-09-26 #}
+{# Updated by Claude AI on 2025-09-27 #}
 
 ## Overview
 
@@ -55,6 +55,32 @@ tests/
 - **Rate Limit Handling**: Batch requests with delays to stay under rate limits
 - **Realistic Data**: Use area distributions that match actual usage patterns
 - **Deterministic Output**: Consistent data generation for reproducible tests
+
+#### ⚠️ **Critical Test Data Requirements (2025-09-27)**
+**Name Sanitization Constraints:**
+- **NEVER use numbers in participant names**: Input sanitization strips numbers from names, causing identity conflicts
+- **Use alphabetic-only names**: Test names like `Parent1`, `Child1` become `Parent`, `Child` after sanitization
+- **Identity conflict prevention**: Sanitized names must remain unique (e.g., `Mom`, `Dad`, `Alice`, `Bob`)
+- **Family scenarios**: Use distinct alphabetic names for family members sharing email addresses
+
+**Root Cause**: The `sanitize_name()` function in `services/security.py` removes numbers for security, causing test data with numeric suffixes to create duplicate identities.
+
+**Correct Test Pattern**:
+```python
+# ❌ WRONG - Numbers stripped, causes conflicts
+family_members = [
+    {'name': 'Parent1', 'email': 'family@example.com'},
+    {'name': 'Parent2', 'email': 'family@example.com'}
+]
+# After sanitization: Both become 'Parent' with same email = conflict
+
+# ✅ CORRECT - Alphabetic names remain unique
+family_members = [
+    {'name': 'Mom', 'email': 'family@example.com'},
+    {'name': 'Dad', 'email': 'family@example.com'}
+]
+# After sanitization: 'Mom' and 'Dad' remain distinct
+```
 
 ### Authentication Testing
 
@@ -294,6 +320,36 @@ tests/
 - **Reporting**: pytest-html for detailed test reports
 - **Retry Logic**: tenacity library for robust network operations
 
+### ⚠️ **Element Selector Best Practices (2025-09-27)**
+**Selector Ordering Strategy:**
+- **Order selectors by success probability**: Place most reliable selectors first in lists
+- **Specific before generic**: Use targeted selectors (IDs, data attributes) before broad patterns
+- **Cross-browser compatibility**: Test Firefox compatibility (primary) and avoid Chrome-specific selectors
+
+**Browser Compatibility Issues:**
+- **Firefox CSS limitations**: `:contains()` pseudo-class not supported in Firefox CSS selectors
+- **XPath alternative**: Use `//h1[contains(text(), "Dashboard")]` instead of `h1:contains("Dashboard")`
+- **Selector fallback pattern**: Provide multiple selector alternatives ordered by reliability
+
+**Correct Selector Pattern**:
+```python
+# ✅ CORRECT - Ordered by success probability
+dashboard_selectors = [
+    'dashboard-title',                                    # Most specific - ID/data attribute
+    (By.XPATH, '//h1[contains(text(), "Dashboard")]'),   # Cross-browser XPath
+    (By.CSS_SELECTOR, '.admin-dashboard'),               # CSS class fallback
+    (By.PARTIAL_LINK_TEXT, 'Dashboard')                  # Generic fallback
+]
+
+# ❌ WRONG - Browser-specific selector first
+dashboard_selectors = [
+    (By.CSS_SELECTOR, 'h1:contains("Dashboard")'),       # Firefox incompatible
+    'dashboard-title'                                     # Should be first priority
+]
+```
+
+**Root Cause**: Firefox WebDriver doesn't support CSS `:contains()` pseudo-class, causing element detection failures in tests that worked during development with different browser configurations.
+
 ### Dependencies & Setup
 - Full requirement specification in test-specific requirements file
 - Browser installation and PATH configuration instructions
@@ -320,7 +376,64 @@ tests/
 - **Data Integrity Assurance**: Comprehensive validation of single-table operations
 - **User Experience Protection**: Ensure UI workflows remain functional
 
-## Test Implementation Status (Updated 2025-09-26)
+## Critical Bug Fixes and Lessons Learned (2025-09-27)
+
+### ✅ **Resolved Critical Issues**
+**Test Framework Timeout Resolution:**
+- **Issue**: Tests timing out at 2 minutes during execution
+- **Root Cause**: Claude Code Bash tool default 2-minute timeout, not pytest timeout
+- **Solution**: Use `timeout=600000` (10 minutes) parameter in Bash tool calls
+- **Lesson**: Distinguish between tool limitations and application timeouts
+
+**Email Validation Security Fix:**
+- **Issue**: Invalid emails with consecutive dots (`test..test@example.com`) accepted
+- **Root Cause**: Regex pattern allowed consecutive dots in email validation
+- **Solution**: Rewrote `is_valid_email()` function with RFC 5322 compliance
+- **Location**: `routes/main.py:254-303`
+- **Lesson**: Email validation requires explicit consecutive dot checking
+
+**Browser Compatibility - CSS Selector Issues:**
+- **Issue**: Firefox doesn't support `:contains()` pseudo-class in CSS selectors
+- **Root Cause**: CSS selectors like `h1:contains("Dashboard")` invalid in Firefox
+- **Solution**: Replaced with XPath selectors: `//h1[contains(text(), "Dashboard")]`
+- **Files**: `tests/page_objects/admin_dashboard_page.py`, `admin_participants_page.py`
+- **Lesson**: Always test selectors in target browser, provide XPath alternatives
+
+**Name Sanitization Identity Conflicts:**
+- **Issue**: Family registration tests failing with identical participant names
+- **Root Cause**: Names with numbers (`Parent1`, `Child1`) sanitized to remove numbers
+- **Solution**: Use alphabetic-only names (`Mom`, `Dad`, `Alice`, `Bob`) in test data
+- **Files**: `tests/test_family_email_scenarios.py`
+- **Lesson**: Test data must account for application security sanitization
+
+**Experience Field UI Bug:**
+- **Issue**: Experience field displayed as text input instead of dropdown
+- **Root Cause**: Template used `<input type="text">` instead of `<select>`
+- **Solution**: Fixed frontend template and added backend validation
+- **Files**: `templates/admin/participants.html:182-188`, `routes/admin.py`
+- **Lesson**: UI field types must match specification, require both frontend and backend fixes
+
+### 🔧 **Test Development Patterns Established**
+**Systematic Bug Investigation:**
+1. Reproduce issue in test environment
+2. Identify root cause through code inspection
+3. Apply minimal targeted fix (avoid speculative changes)
+4. Verify fix resolves specific issue without side effects
+5. Document lesson learned for future sessions
+
+**Element Detection Strategy:**
+1. Start with most specific selectors (IDs, data attributes)
+2. Provide cross-browser compatible alternatives (XPath)
+3. Test in actual target browser (Firefox primary)
+4. Order selectors by success probability
+
+**Test Data Generation Guidelines:**
+1. Use alphabetic-only names to avoid sanitization conflicts
+2. Create realistic family scenarios with shared emails
+3. Generate unique identities that survive input sanitization
+4. Test identity-based operations with proper tuples
+
+## Test Implementation Status (Updated 2025-09-27)
 
 ### ✅ **Completed and Verified**
 **Core Registration Tests (4/4 passing)**:

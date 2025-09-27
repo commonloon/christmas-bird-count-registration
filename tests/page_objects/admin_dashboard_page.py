@@ -31,7 +31,7 @@ class AdminDashboardPage(BasePage):
         dashboard_indicators = [
             'dashboard-title',
             'admin-dashboard',
-            (By.CSS_SELECTOR, 'h1:contains("Dashboard")'),
+            (By.XPATH, '//h1[contains(text(), "Dashboard")]'),
             (By.CSS_SELECTOR, '.admin-dashboard'),
             (By.PARTIAL_LINK_TEXT, 'Participants'),
             (By.PARTIAL_LINK_TEXT, 'Leaders')

@@ -252,6 +252,52 @@ def scribe_info():
 
 
 def is_valid_email(email):
-    """Basic email validation."""
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    return re.match(pattern, email) is not None
+    """
+    RFC 5322 compliant email validation.
+
+    Validates:
+    - No consecutive dots in local part
+    - No dots at start/end of local part
+    - Proper domain format
+    - Standard email characters only
+    """
+    if not email or len(email) > 254:
+        return False
+
+    # Check for consecutive dots
+    if '..' in email:
+        return False
+
+    # Split on @ - must have exactly one @
+    try:
+        local, domain = email.rsplit('@', 1)
+    except ValueError:
+        return False
+
+    # Local part validation (before @)
+    if not local or len(local) > 64:
+        return False
+
+    # Local part cannot start or end with dot
+    if local.startswith('.') or local.endswith('.'):
+        return False
+
+    # Local part pattern: alphanumeric, dots, underscores, percent, plus, hyphens
+    local_pattern = r'^[a-zA-Z0-9._%-]+$'
+    if not re.match(local_pattern, local):
+        return False
+
+    # Domain part validation (after @)
+    if not domain or len(domain) > 255:
+        return False
+
+    # Domain must have at least one dot and end with 2+ letter TLD
+    domain_pattern = r'^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    if not re.match(domain_pattern, domain):
+        return False
+
+    # Domain cannot start or end with dot or hyphen
+    if domain.startswith('.') or domain.endswith('.') or domain.startswith('-') or domain.endswith('-'):
+        return False
+
+    return True

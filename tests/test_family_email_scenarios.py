@@ -46,8 +46,16 @@ def safe_select_by_value(browser, locator, value, timeout=10):
     return select_element
 
 
-def verify_registration_success(browser, expected_email):
-    """Verify successful registration by checking URL and database."""
+def verify_registration_success(browser, expected_email, expected_first_name=None, expected_last_name=None):
+    """
+    Verify successful registration by checking URL and database.
+
+    Args:
+        browser: Selenium WebDriver instance
+        expected_email: Email address to search for
+        expected_first_name: Expected first name (if provided, will verify exact match)
+        expected_last_name: Expected last name (if provided, will verify exact match)
+    """
     import urllib.parse
     from models.participant import ParticipantModel
     from config.database import get_firestore_client
@@ -56,66 +64,114 @@ def verify_registration_success(browser, expected_email):
     time.sleep(1)
     current_url = browser.current_url
 
-    # Check if we're on success page
-    if 'success' in current_url or 'thank' in current_url:
-        logger.info(f"Registration success page detected: {current_url}")
-    else:
-        logger.warning(f"Expected success page, got: {current_url}")
-        # Check for errors on page
+    # Check if we're on success page - FAIL FAST if not
+    if not ('success' in current_url or 'thank' in current_url):
+        # Check for rate limiting or other errors
+        error_messages = []
         try:
             error_elements = browser.find_elements(By.CLASS_NAME, "error")
             for error in error_elements:
                 if error.is_displayed():
-                    logger.error(f"Found error message: {error.text}")
+                    error_messages.append(error.text)
         except:
             pass
+
+        error_text = "; ".join(error_messages) if error_messages else "No specific error found"
+        raise AssertionError(f"Registration failed - not on success page. URL: {current_url}, Errors: {error_text}")
+
+    logger.info(f"Registration success page detected: {current_url}")
 
     # Verify in database
     db, _ = get_firestore_client()
     participant_model = ParticipantModel(db, datetime.now().year)
 
-    # Find participant by email
-    participants = participant_model.get_all_participants()
-    matching_participants = [p for p in participants if p.get('email', '').lower() == expected_email.lower()]
+    # If we have specific names to verify, search for that exact identity
+    if expected_first_name and expected_last_name:
+        # Look for exact identity match (supports family email scenarios)
+        participants = participant_model.get_all_participants()
+        matching_participants = [
+            p for p in participants
+            if (p.get('email', '').lower() == expected_email.lower() and
+                p.get('first_name', '') == expected_first_name and
+                p.get('last_name', '') == expected_last_name)
+        ]
 
-    if not matching_participants:
-        raise AssertionError(f"No participant found with email: {expected_email}")
+        if not matching_participants:
+            # Debug: show what participants we DO have with this email
+            email_participants = [p for p in participants if p.get('email', '').lower() == expected_email.lower()]
+            debug_info = [(p.get('first_name'), p.get('last_name')) for p in email_participants]
+            raise AssertionError(
+                f"Expected participant '{expected_first_name} {expected_last_name}' with email {expected_email} not found. "
+                f"Found participants with this email: {debug_info}"
+            )
 
-    # Return the most recent participant (for family scenarios)
-    participant = max(matching_participants, key=lambda p: p.get('created_at', ''))
+        participant = matching_participants[0]  # Should be exactly one match
+    else:
+        # Fallback to old behavior for backward compatibility
+        participants = participant_model.get_all_participants()
+        matching_participants = [p for p in participants if p.get('email', '').lower() == expected_email.lower()]
+
+        if not matching_participants:
+            raise AssertionError(f"No participant found with email: {expected_email}")
+
+        participant = max(matching_participants, key=lambda p: p.get('created_at', ''))
+
     participant_id = participant.get('id')
-
     logger.info(f"Found registered participant: {participant.get('first_name')} {participant.get('last_name')} ({expected_email})")
     return participant_id, participant
 
 
-def register_family_member(browser, base_url, first_name, last_name, email, area, participation_type="regular"):
-    """Helper to register a family member with shared email."""
-    browser.get(base_url)
+def register_family_member(browser, base_url, first_name, last_name, email, area, participation_type="regular", max_retries=3):
+    """Helper to register a family member with shared email, with retry logic for rate limiting."""
 
-    # Fill registration form
-    browser.find_element(By.ID, "first_name").send_keys(first_name)
-    browser.find_element(By.ID, "last_name").send_keys(last_name)
-    browser.find_element(By.ID, "email").send_keys(email)
-    browser.find_element(By.ID, "phone").send_keys("604-555-FAMILY")
+    for attempt in range(max_retries):
+        try:
+            browser.get(base_url)
 
-    # Select skill level and experience
-    safe_select_by_value(browser, (By.ID, "skill_level"), "Intermediate")
-    safe_select_by_value(browser, (By.ID, "experience"), "1-2 counts")
+            # Add delay between attempts to avoid rate limiting
+            if attempt > 0:
+                delay = 2 ** attempt  # Exponential backoff: 2s, 4s, 8s
+                logger.info(f"Registration attempt {attempt + 1} for {first_name} {last_name}, waiting {delay}s...")
+                time.sleep(delay)
 
-    # Select area and participation type
-    safe_select_by_value(browser, (By.ID, "preferred_area"), area)
-    safe_click(browser, (By.ID, participation_type))  # Click radio button for participation type
+            # Fill registration form
+            browser.find_element(By.ID, "first_name").clear()
+            browser.find_element(By.ID, "first_name").send_keys(first_name)
+            browser.find_element(By.ID, "last_name").clear()
+            browser.find_element(By.ID, "last_name").send_keys(last_name)
+            browser.find_element(By.ID, "email").clear()
+            browser.find_element(By.ID, "email").send_keys(email)
+            browser.find_element(By.ID, "phone").clear()
+            browser.find_element(By.ID, "phone").send_keys("604-555-FAMILY")
 
-    # Equipment preferences
-    safe_click(browser, (By.ID, "has_binoculars"))
+            # Select skill level and experience
+            safe_select_by_value(browser, (By.ID, "skill_level"), "Intermediate")
+            safe_select_by_value(browser, (By.ID, "experience"), "1-2 counts")
 
-    # Submit registration
-    safe_click(browser, (By.XPATH, "//button[@type='submit']"))
+            # Select area and participation type
+            safe_select_by_value(browser, (By.ID, "preferred_area"), area)
+            safe_click(browser, (By.ID, participation_type))  # Click radio button for participation type
 
-    # Verify successful registration
-    participant_id, participant = verify_registration_success(browser, email)
-    return participant_id, participant
+            # Equipment preferences
+            safe_click(browser, (By.ID, "has_binoculars"))
+
+            # Submit registration
+            safe_click(browser, (By.XPATH, "//button[@type='submit']"))
+
+            # Verify successful registration
+            participant_id, participant = verify_registration_success(browser, email, expected_first_name=first_name, expected_last_name=last_name)
+            logger.info(f"✓ Successfully registered {first_name} {last_name} on attempt {attempt + 1}")
+            return participant_id, participant
+
+        except AssertionError as e:
+            if attempt == max_retries - 1:
+                logger.error(f"Failed to register {first_name} {last_name} after {max_retries} attempts: {e}")
+                raise
+            else:
+                logger.warning(f"Registration attempt {attempt + 1} failed for {first_name} {last_name}: {e}")
+                continue
+
+    raise AssertionError(f"Failed to register {first_name} {last_name} after {max_retries} attempts")
 
 
 class TestFamilyEmailSharing:
@@ -298,10 +354,10 @@ class TestFamilyEmailEdgeCases:
         """Test behavior with a large family (4+ members)."""
         family_email = f"large-family-{int(time.time())}@test-functional.ca"
         family_members = [
-            {'name': 'Parent1', 'area': 'M'},
-            {'name': 'Parent2', 'area': 'N'},
-            {'name': 'Child1', 'area': 'O'},
-            {'name': 'Child2', 'area': 'P'}
+            {'name': 'Mom', 'area': 'M'},
+            {'name': 'Dad', 'area': 'N'},
+            {'name': 'Alice', 'area': 'O'},
+            {'name': 'Bob', 'area': 'P'}
         ]
 
         registered_ids = []
@@ -392,11 +448,14 @@ class TestFamilyEmailPerformance:
             families_created.append(family_email)
 
             for j in range(members_per_family):
+                # Use alphabetic names to avoid sanitization issues
+                member_names = ['Alex', 'Betty']  # Two members per family
+                family_names = ['TestOne', 'TestTwo', 'TestThree']  # Alphabetic family names
                 member_id, member_data = register_family_member(
-                    browser, base_url, f'Member{j+1}', f'PerfFamily{i+1}',
+                    browser, base_url, member_names[j], family_names[i],
                     family_email, chr(ord('A') + (i * 2) + j)
                 )
-                time.sleep(0.5)  # Brief delay to avoid overwhelming the server
+                time.sleep(1.5)  # Longer delay to avoid rate limiting (50/min = ~1.2s per registration)
 
         creation_time = datetime.now() - start_time
 
