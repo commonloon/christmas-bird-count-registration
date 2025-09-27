@@ -300,12 +300,13 @@ class ParticipantModel:
             updates = {
                 'is_leader': True,
                 'assigned_area_leader': area_code,
+                'preferred_area': area_code,  # Update participant area to match leadership area
                 'leadership_assigned_by': assigned_by,
                 'leadership_assigned_at': datetime.now(),
                 'updated_at': datetime.now()
             }
             self.db.collection(self.collection).document(participant_id).update(updates)
-            self.logger.info(f"Assigned area leadership of {area_code} to participant {participant_id}")
+            self.logger.info(f"Assigned area leadership of {area_code} to participant {participant_id} and updated their area preference")
             return True
         except Exception as e:
             self.logger.error(f"Failed to assign area leadership: {e}")
