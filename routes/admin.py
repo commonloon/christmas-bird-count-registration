@@ -288,6 +288,12 @@ def leaders():
     # Normalize leader data to ensure all fields are present (single-table design uses participant fields)
     normalized_leaders = [normalize_participant_record(leader) for leader in all_leaders]
 
+    # Sort current leaders by area code then by first name
+    normalized_leaders.sort(key=lambda x: (x.get('assigned_area_leader', ''), x.get('first_name', '')))
+
+    # Sort potential leaders by area preference then by first name
+    leadership_interested.sort(key=lambda x: (x.get('preferred_area', ''), x.get('first_name', '')))
+
     # Check if CSV export is requested
     if request.args.get('format') == 'csv':
         # Create CSV in memory
