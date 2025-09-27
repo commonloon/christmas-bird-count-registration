@@ -15,7 +15,7 @@ from routes.auth import require_admin, get_current_user
 from services.email_service import email_service
 from services.security import (
     sanitize_name, sanitize_email, sanitize_phone, sanitize_notes,
-    validate_area_code, is_suspicious_input, log_security_event
+    validate_area_code, validate_experience, is_suspicious_input, log_security_event
 )
 from services.limiter import limiter
 from config.rate_limits import RATE_LIMITS, get_rate_limit_message
@@ -842,6 +842,10 @@ def edit_participant():
         valid_skill_levels = ['Beginner', 'Intermediate', 'Expert']
         if skill_level and skill_level not in valid_skill_levels:
             return jsonify({'success': False, 'message': f'Invalid skill level: {skill_level}'})
+
+        # Validate experience
+        if experience and not validate_experience(experience):
+            return jsonify({'success': False, 'message': f'Invalid experience level: {experience}'})
 
         # Initialize models
         participant_model = ParticipantModel(g.db, selected_year)

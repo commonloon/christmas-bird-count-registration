@@ -180,7 +180,11 @@
                             <td>
                                 <div class="experience-display">{{ participant.experience }}</div>
                                 <div class="experience-edit" style="display: none;">
-                                    <input type="text" class="form-control form-control-sm experience-input" value="{{ participant.experience or '' }}">
+                                    <select class="form-select form-select-sm experience-input">
+                                        <option value="None" {% if participant.experience == 'None' %}selected{% endif %}>None</option>
+                                        <option value="1-2 counts" {% if participant.experience == '1-2 counts' %}selected{% endif %}>1-2 counts</option>
+                                        <option value="3+ counts" {% if participant.experience == '3+ counts' %}selected{% endif %}>3+ counts</option>
+                                    </select>
                                 </div>
                             </td>
                             <td>
