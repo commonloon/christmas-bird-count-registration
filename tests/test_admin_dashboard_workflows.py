@@ -19,8 +19,8 @@ sys.path.insert(0, project_root)
 
 from tests.config import get_base_url, get_database_name
 from tests.page_objects import AdminDashboardPage
-from tests.data import get_test_account, get_test_password, get_test_participant
-from tests.utils.auth_utils import login_with_google
+from tests.data import get_test_participant
+from tests.utils.auth_utils import admin_login_for_test
 from models.participant import ParticipantModel
 from google.cloud import firestore
 from selenium import webdriver
@@ -54,44 +54,6 @@ def participant_model(db_client):
     current_year = datetime.now().year
     return ParticipantModel(db_client, current_year)
 
-
-@pytest.fixture
-def authenticated_admin(admin_dashboard):
-    """Authenticate as admin user."""
-    try:
-        # Get admin credentials
-        admin_account = get_test_account('admin1')
-        admin_email = admin_account['email']
-        admin_password = get_test_password('admin1')
-
-        logger.info(f"Attempting admin authentication for: {admin_email}")
-
-        # Navigate to admin page (should redirect to login)
-        assert admin_dashboard.navigate_to_admin(), "Failed to navigate to admin"
-
-        # Check if already authenticated
-        if admin_dashboard.is_dashboard_loaded():
-            logger.info("Already authenticated as admin")
-            return admin_dashboard
-
-        # Check if on login page
-        if admin_dashboard.is_login_page():
-            # Perform OAuth login using working auth utils
-            login_success = login_with_google(browser, admin_email, admin_password, base_url)
-
-            if login_success and admin_dashboard.is_dashboard_loaded():
-                logger.info("✓ Admin authentication successful")
-                return admin_dashboard
-            else:
-                logger.error("Admin authentication failed")
-                pytest.skip("Admin authentication failed - check OAuth configuration")
-        else:
-            logger.error("Unexpected page state during authentication")
-            pytest.skip("Could not reach login page")
-
-    except Exception as e:
-        logger.error(f"Admin authentication setup failed: {e}")
-        pytest.skip(f"Admin authentication not available: {e}")
 
 
 class TestAdminAuthentication:
@@ -164,11 +126,16 @@ class TestAdminDashboard:
 
     @pytest.mark.critical
     @pytest.mark.admin
-    def test_dashboard_loads_with_statistics(self, authenticated_admin, participant_model):
+    def test_dashboard_loads_with_statistics(self, browser, test_credentials, participant_model):
         """Test that dashboard loads and displays statistics."""
         logger.info("Testing dashboard statistics display")
 
-        dashboard = authenticated_admin
+        admin_creds = test_credentials['admin_primary']
+        base_url = get_base_url()
+        admin_login_for_test(browser, base_url, admin_creds)
+
+        dashboard = AdminDashboardPage(browser, base_url)
+        browser.get(f"{base_url}/admin")
 
         # Ensure we're on the dashboard
         assert dashboard.is_dashboard_loaded(), "Dashboard should be loaded"
@@ -199,11 +166,16 @@ class TestAdminDashboard:
         logger.info("✓ Dashboard statistics display working")
 
     @pytest.mark.admin
-    def test_year_selector_functionality(self, authenticated_admin):
+    def test_year_selector_functionality(self, browser, test_credentials):
         """Test year selector dropdown functionality."""
         logger.info("Testing year selector functionality")
 
-        dashboard = authenticated_admin
+        admin_creds = test_credentials['admin_primary']
+        base_url = get_base_url()
+        admin_login_for_test(browser, base_url, admin_creds)
+
+        dashboard = AdminDashboardPage(browser, base_url)
+        browser.get(f"{base_url}/admin")
 
         # Get available years
         years = dashboard.get_year_selector_years()
@@ -233,11 +205,16 @@ class TestAdminDashboard:
             logger.warning("No years available in year selector")
 
     @pytest.mark.admin
-    def test_recent_participants_display(self, authenticated_admin):
+    def test_recent_participants_display(self, browser, test_credentials):
         """Test recent participants display on dashboard."""
         logger.info("Testing recent participants display")
 
-        dashboard = authenticated_admin
+        admin_creds = test_credentials['admin_primary']
+        base_url = get_base_url()
+        admin_login_for_test(browser, base_url, admin_creds)
+
+        dashboard = AdminDashboardPage(browser, base_url)
+        browser.get(f"{base_url}/admin")
 
         # Get recent participants shown on dashboard
         recent_participants = dashboard.get_recent_participants()
@@ -252,11 +229,16 @@ class TestAdminDashboard:
         logger.info("✓ Recent participants display working")
 
     @pytest.mark.admin
-    def test_admin_navigation_elements(self, authenticated_admin):
+    def test_admin_navigation_elements(self, browser, test_credentials):
         """Test admin navigation menu elements."""
         logger.info("Testing admin navigation elements")
 
-        dashboard = authenticated_admin
+        admin_creds = test_credentials['admin_primary']
+        base_url = get_base_url()
+        admin_login_for_test(browser, base_url, admin_creds)
+
+        dashboard = AdminDashboardPage(browser, base_url)
+        browser.get(f"{base_url}/admin")
 
         # Verify navigation elements are present
         nav_elements = dashboard.verify_admin_navigation()
@@ -288,11 +270,16 @@ class TestAdminDataAccess:
     """Test admin data access and operations."""
 
     @pytest.mark.admin
-    def test_csv_export_functionality(self, authenticated_admin):
+    def test_csv_export_functionality(self, browser, test_credentials):
         """Test CSV export functionality from dashboard."""
         logger.info("Testing CSV export functionality")
 
-        dashboard = authenticated_admin
+        admin_creds = test_credentials['admin_primary']
+        base_url = get_base_url()
+        admin_login_for_test(browser, base_url, admin_creds)
+
+        dashboard = AdminDashboardPage(browser, base_url)
+        browser.get(f"{base_url}/admin")
 
         # Attempt to click export CSV button
         export_clicked = dashboard.click_export_participants_csv()
@@ -305,11 +292,16 @@ class TestAdminDataAccess:
             logger.warning("CSV export button not found or not clickable")
 
     @pytest.mark.admin
-    def test_dashboard_with_populated_data(self, authenticated_admin, participant_model):
+    def test_dashboard_with_populated_data(self, browser, test_credentials, participant_model):
         """Test dashboard behavior with populated participant data."""
         logger.info("Testing dashboard with populated data")
 
-        dashboard = authenticated_admin
+        admin_creds = test_credentials['admin_primary']
+        base_url = get_base_url()
+        admin_login_for_test(browser, base_url, admin_creds)
+
+        dashboard = AdminDashboardPage(browser, base_url)
+        browser.get(f"{base_url}/admin")
 
         # Create a test participant for dashboard display
         try:
@@ -357,11 +349,16 @@ class TestAdminWorkflowIntegration:
     """Test admin workflow integration and transitions."""
 
     @pytest.mark.admin
-    def test_dashboard_to_participants_workflow(self, authenticated_admin):
+    def test_dashboard_to_participants_workflow(self, browser, test_credentials):
         """Test workflow from dashboard to participants management."""
         logger.info("Testing dashboard to participants workflow")
 
-        dashboard = authenticated_admin
+        admin_creds = test_credentials['admin_primary']
+        base_url = get_base_url()
+        admin_login_for_test(browser, base_url, admin_creds)
+
+        dashboard = AdminDashboardPage(browser, base_url)
+        browser.get(f"{base_url}/admin")
 
         # Start from dashboard
         assert dashboard.navigate_to_admin(), "Should be on dashboard"
@@ -380,11 +377,16 @@ class TestAdminWorkflowIntegration:
             logger.warning("Participants navigation not available from dashboard")
 
     @pytest.mark.admin
-    def test_year_persistence_across_pages(self, authenticated_admin):
+    def test_year_persistence_across_pages(self, browser, test_credentials):
         """Test that selected year persists across admin pages."""
         logger.info("Testing year persistence across admin pages")
 
-        dashboard = authenticated_admin
+        admin_creds = test_credentials['admin_primary']
+        base_url = get_base_url()
+        admin_login_for_test(browser, base_url, admin_creds)
+
+        dashboard = AdminDashboardPage(browser, base_url)
+        browser.get(f"{base_url}/admin")
 
         # Select a specific year
         years = dashboard.get_year_selector_years()

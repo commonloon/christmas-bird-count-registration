@@ -74,25 +74,49 @@ class AdminParticipantsPage(BasePage):
 
                 participant = {}
 
-                # Try to extract common fields based on typical table structure
-                # This may need adjustment based on actual table structure
+                # Extract fields based on actual table structure:
+                # Name | Email | Cell Phone | Skill Level | Experience | Equipment | Notes | Leader | Scribe | Actions
                 try:
-                    participant['name'] = cells[0].text.strip()
+                    # Column 1: Name (contains FEEDER indicator if applicable)
+                    name_cell = cells[0]
+                    try:
+                        name_element = name_cell.find_element(By.CSS_SELECTOR, '.participant-name')
+                        participant['name'] = name_element.text.strip()
+                    except:
+                        # Fallback to cell text if specific selector fails
+                        participant['name'] = name_cell.text.strip()
+
+                    # Check for FEEDER indicator within name cell
+                    feeder_indicators = name_cell.find_elements(By.CSS_SELECTOR, 'div.small.text-muted')
+                    participant['participation_type'] = 'FEEDER' if any('FEEDER' in indicator.text for indicator in feeder_indicators) else 'regular'
+
+                    # Check for leader badge within name cell
+                    leader_badges = name_cell.find_elements(By.CSS_SELECTOR, 'span.badge.bg-success')
+                    participant['is_leader'] = len(leader_badges) > 0
+
+                    # Column 2: Email
                     participant['email'] = cells[1].text.strip()
-                    participant['area'] = cells[2].text.strip()
 
-                    # Additional fields if available
+                    # Column 3: Cell Phone
+                    if len(cells) > 2:
+                        participant['phone'] = cells[2].text.strip()
+
+                    # Column 4: Skill Level
                     if len(cells) > 3:
-                        participant['participation_type'] = cells[3].text.strip()
-                    if len(cells) > 4:
-                        participant['skill_level'] = cells[4].text.strip()
-                    if len(cells) > 5:
-                        participant['phone'] = cells[5].text.strip()
+                        participant['skill_level'] = cells[3].text.strip()
 
-                    # Look for action buttons or indicators
-                    participant['has_edit_button'] = bool(row.find_elements(By.CSS_SELECTOR, 'button:contains("Edit")'))
-                    participant['has_delete_button'] = bool(row.find_elements(By.CSS_SELECTOR, 'button:contains("Delete")'))
-                    participant['is_leader'] = bool(row.find_elements(By.CSS_SELECTOR, '.leader-indicator'))
+                    # Column 5: Experience
+                    if len(cells) > 4:
+                        participant['experience'] = cells[4].text.strip()
+
+                    # Check for FEEDER row styling (alternative detection method)
+                    row_classes = row.get_attribute('class') or ''
+                    if 'table-info' in row_classes:
+                        participant['participation_type'] = 'FEEDER'
+
+                    # Look for action buttons (use XPath for text matching)
+                    participant['has_edit_button'] = bool(row.find_elements(By.XPATH, './/button[contains(text(), "Edit")]'))
+                    participant['has_delete_button'] = bool(row.find_elements(By.XPATH, './/button[contains(text(), "Delete")]'))
 
                     # Get row ID for actions
                     participant['row_id'] = row.get_attribute('id') or row.get_attribute('data-participant-id')
@@ -460,16 +484,20 @@ class AdminParticipantsPage(BasePage):
             'feeder_indicators_present': False
         }
 
-        # Look for FEEDER section headers
-        feeder_headers = self.driver.find_elements(By.XPATH, '//h4[contains(text(), "FEEDER")]')
-        if feeder_headers:
-            feeder_info['feeder_section_exists'] = True
+        # Look for FEEDER rows (have class="table-info")
+        feeder_rows = self.driver.find_elements(By.CSS_SELECTOR, 'tr.table-info')
+        if feeder_rows:
+            feeder_info['feeder_participants_found'] = True
+            logger.info(f"Found {len(feeder_rows)} FEEDER participant rows")
 
-        # Look for FEEDER participant indicators
-        feeder_indicators = self.driver.find_elements(By.CSS_SELECTOR, '.feeder-participant, .participation-type:contains("FEEDER")')
-        if feeder_indicators:
+        # Look for FEEDER text indicators within name cells
+        feeder_text_indicators = self.driver.find_elements(By.XPATH, '//div[@class="small text-muted"][contains(text(), "FEEDER")]')
+        if feeder_text_indicators:
             feeder_info['feeder_indicators_present'] = True
-            feeder_info['feeder_participants_found'] = len(feeder_indicators) > 0
+            logger.info(f"Found {len(feeder_text_indicators)} FEEDER text indicators")
+
+        # Note: There are no separate FEEDER sections in the current HTML structure
+        # FEEDER participants are mixed with regular participants, sorted by type then name
 
         return feeder_info
 

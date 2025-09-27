@@ -89,6 +89,9 @@ pytest tests/ -v --html=test_reports/report.html --self-contained-html
 # Registration and authentication workflows
 pytest tests/ -m critical -v
 
+# Minimal functional test suite (6 smoke tests, ~3.5 minutes)
+pytest tests/test_admin_core_functionality.py -v
+
 # Specific critical test files
 pytest tests/test_registration.py -v
 pytest tests/test_authentication.py -v
@@ -381,9 +384,23 @@ python tests/utils/update_csv_expectations.py
 
 ## Common Test Scenarios
 
+### Minimal Functional Test Suite Execution
+```bash
+# Basic functional smoke tests (6 tests, ~3.5 minutes)
+# Note: These provide minimal validation of core admin workflows - foundation for comprehensive testing
+pytest tests/test_admin_core_functionality.py -v
+
+# Individual functional smoke tests
+pytest tests/test_admin_core_functionality.py::TestAdminCoreFunctionality::test_01_admin_authentication_and_dashboard_access -v
+pytest tests/test_admin_core_functionality.py::TestAdminCoreFunctionality::test_02_participant_search_and_filtering -v
+pytest tests/test_admin_core_functionality.py::TestAdminCoreFunctionality::test_03_participant_editing_with_field_preservation -v
+pytest tests/test_admin_core_functionality.py::TestAdminCoreFunctionality::test_04_leader_promotion_and_demotion_workflow -v
+pytest tests/test_admin_core_functionality.py::TestAdminCoreFunctionality::test_05_area_assignment_changes -v
+pytest tests/test_admin_core_functionality.py::TestAdminCoreFunctionality::test_06_basic_csv_export_functionality -v
+```
+
 ### Registration Workflow Testing
 ```bash
-# [TO BE IMPLEMENTED]
 # Basic registration flow
 pytest tests/test_registration.py::test_basic_registration -v
 
@@ -396,7 +413,6 @@ pytest tests/test_registration.py::test_form_validation -v
 
 ### Admin Workflow Testing
 ```bash
-# [TO BE IMPLEMENTED]
 # Leader management workflow
 pytest tests/test_admin_workflows.py::test_leader_promotion_deletion -v
 

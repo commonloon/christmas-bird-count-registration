@@ -27,9 +27,9 @@ TEST_CONFIG = {
     # Network resilience settings
     'retry_attempts': 3,
     'retry_delay_base': 2,  # seconds, for exponential backoff
-    'request_timeout': 30,  # seconds for web requests
-    'page_load_timeout': 30,  # seconds for page loads
-    'oauth_timeout': 60,  # seconds for OAuth flow completion
+    'request_timeout': 10,  # seconds for web requests
+    'page_load_timeout': 10,  # seconds for page loads
+    'oauth_timeout': 15,  # seconds for OAuth flow completion (reduced from 60)
 
     # Browser configuration
     'browser': 'firefox',  # Primary browser - better OAuth stability than Chrome

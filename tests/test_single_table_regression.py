@@ -32,7 +32,7 @@ import requests
 import csv
 import io
 import re
-from tests.data import get_test_account, get_test_password
+from tests.utils.auth_utils import admin_login_for_test
 
 logger = logging.getLogger(__name__)
 
@@ -224,7 +224,7 @@ class TestLeaderPromotionWorkflows:
 
     @pytest.mark.critical
     @pytest.mark.admin
-    def test_participant_to_leader_promotion(self, browser, base_url, single_identity_test):
+    def test_participant_to_leader_promotion(self, browser, base_url, test_credentials, single_identity_test):
         """Test promoting a participant to area leader through admin interface."""
         # First create a participant
         identity_helper = single_identity_test.identity_helper
@@ -233,10 +233,8 @@ class TestLeaderPromotionWorkflows:
         )
 
         # Login as admin
-        admin_account = get_test_account('admin1')
-        admin_password = get_test_password('admin1')
-        admin_creds = {'email': admin_account['email'], 'password': admin_password}
-        self._admin_login(browser, base_url, admin_creds)
+        admin_creds = test_credentials['admin_primary']
+        admin_login_for_test(browser, base_url, admin_creds)
 
         # Navigate to participants page
         browser.get(f"{base_url}/admin/participants")
@@ -270,7 +268,7 @@ class TestLeaderPromotionWorkflows:
 
     @pytest.mark.critical
     @pytest.mark.admin
-    def test_clive_roberts_scenario(self, browser, base_url, single_identity_test):
+    def test_clive_roberts_scenario(self, browser, base_url, test_credentials, single_identity_test):
         """
         Test the Clive Roberts bug scenario:
         1. Promote participant to leader
@@ -286,10 +284,8 @@ class TestLeaderPromotionWorkflows:
         )
 
         # Login as admin
-        admin_account = get_test_account('admin1')
-        admin_password = get_test_password('admin1')
-        admin_creds = {'email': admin_account['email'], 'password': admin_password}
-        self._admin_login(browser, base_url, admin_creds)
+        admin_creds = test_credentials['admin_primary']
+        admin_login_for_test(browser, base_url, admin_creds)
 
         # Step 2: Delete the leader
         browser.get(f"{base_url}/admin/leaders")
@@ -327,27 +323,16 @@ class TestLeaderPromotionWorkflows:
         updated_participant = participant_model.get_participant(participant_id)
         assert updated_participant.get('is_leader', False) == True
 
-    def _admin_login(self, browser, base_url, credentials):
-        """Helper method to login as admin using existing auth utilities."""
-        from tests.utils.auth_utils import login_with_google, AuthenticationError
-        try:
-            login_with_google(browser, credentials['email'], credentials['password'], base_url)
-        except AuthenticationError as e:
-            # If OAuth login fails, skip the test rather than fail
-            pytest.skip(f"Authentication failed for {credentials['email']}: {e}")
-
 
 class TestAdminLeaderManagement:
     """Test admin leader management UI functionality."""
 
     @pytest.mark.admin
-    def test_add_new_leader_via_ui(self, browser, base_url, clean_database):
+    def test_add_new_leader_via_ui(self, browser, base_url, test_credentials, clean_database):
         """Test adding a new leader through the admin leaders interface."""
         # Login as admin
-        admin_account = get_test_account('admin1')
-        admin_password = get_test_password('admin1')
-        admin_creds = {'email': admin_account['email'], 'password': admin_password}
-        self._admin_login(browser, base_url, admin_creds)
+        admin_creds = test_credentials['admin_primary']
+        admin_login_for_test(browser, base_url, admin_creds)
 
         # Navigate to leaders page
         browser.get(f"{base_url}/admin/leaders")
@@ -383,7 +368,7 @@ class TestAdminLeaderManagement:
         assert leaders[0]['last_name'] == "AdminTest"
 
     @pytest.mark.admin
-    def test_edit_leader_via_ui(self, browser, base_url, single_identity_test):
+    def test_edit_leader_via_ui(self, browser, base_url, test_credentials, single_identity_test):
         """Test editing leader information through inline editing."""
         # Create a leader to edit
         identity_helper = single_identity_test.identity_helper
@@ -392,10 +377,8 @@ class TestAdminLeaderManagement:
         )
 
         # Login as admin
-        admin_account = get_test_account('admin1')
-        admin_password = get_test_password('admin1')
-        admin_creds = {'email': admin_account['email'], 'password': admin_password}
-        self._admin_login(browser, base_url, admin_creds)
+        admin_creds = test_credentials['admin_primary']
+        admin_login_for_test(browser, base_url, admin_creds)
 
         # Navigate to leaders page
         browser.get(f"{base_url}/admin/leaders")
@@ -437,28 +420,17 @@ class TestAdminLeaderManagement:
         updated_participant = participant_model.get_participant(participant_id)
         assert updated_participant['first_name'] == "EditedLeader"
 
-    def _admin_login(self, browser, base_url, credentials):
-        """Helper method to login as admin using existing auth utilities."""
-        from tests.utils.auth_utils import login_with_google, AuthenticationError
-        try:
-            login_with_google(browser, credentials['email'], credentials['password'], base_url)
-        except AuthenticationError as e:
-            # If OAuth login fails, skip the test rather than fail
-            pytest.skip(f"Authentication failed for {credentials['email']}: {e}")
-
 
 class TestCSVExportFunctionality:
     """Test CSV export functionality for participants and leaders."""
 
     @pytest.mark.admin
     @pytest.mark.slow
-    def test_participants_csv_export(self, browser, base_url, populated_database):
+    def test_participants_csv_export(self, browser, base_url, test_credentials, populated_database):
         """Test CSV export of all participants."""
         # Login as admin
-        admin_account = get_test_account('admin1')
-        admin_password = get_test_password('admin1')
-        admin_creds = {'email': admin_account['email'], 'password': admin_password}
-        self._admin_login(browser, base_url, admin_creds)
+        admin_creds = test_credentials['admin_primary']
+        admin_login_for_test(browser, base_url, admin_creds)
 
         # Navigate to participants page
         browser.get(f"{base_url}/admin/participants")
@@ -475,7 +447,7 @@ class TestCSVExportFunctionality:
         assert "export_csv" in browser.current_url
 
     @pytest.mark.admin
-    def test_leaders_csv_export(self, browser, base_url, single_identity_test):
+    def test_leaders_csv_export(self, browser, base_url, test_credentials, single_identity_test):
         """Test CSV export of leaders only."""
         # Create some leaders first
         identity_helper = single_identity_test.identity_helper
@@ -485,10 +457,8 @@ class TestCSVExportFunctionality:
             )
 
         # Login as admin
-        admin_account = get_test_account('admin1')
-        admin_password = get_test_password('admin1')
-        admin_creds = {'email': admin_account['email'], 'password': admin_password}
-        self._admin_login(browser, base_url, admin_creds)
+        admin_creds = test_credentials['admin_primary']
+        admin_login_for_test(browser, base_url, admin_creds)
 
         # Navigate to leaders page
         browser.get(f"{base_url}/admin/leaders")
@@ -504,7 +474,7 @@ class TestCSVExportFunctionality:
         assert "export_csv" in browser.current_url
 
     @pytest.mark.admin
-    def test_csv_export_content_validation(self, base_url, single_identity_test):
+    def test_csv_export_content_validation(self, base_url, test_credentials, single_identity_test):
         """Test CSV export content using direct HTTP requests."""
         # Create test data
         identity_helper = single_identity_test.identity_helper
@@ -541,15 +511,6 @@ class TestCSVExportFunctionality:
         assert test_participant_row is not None
         assert test_participant_row['last_name'] == 'TestLastName'
         assert test_participant_row['is_leader'] == 'True'
-
-    def _admin_login(self, browser, base_url, credentials):
-        """Helper method to login as admin using existing auth utilities."""
-        from tests.utils.auth_utils import login_with_google, AuthenticationError
-        try:
-            login_with_google(browser, credentials['email'], credentials['password'], base_url)
-        except AuthenticationError as e:
-            # If OAuth login fails, skip the test rather than fail
-            pytest.skip(f"Authentication failed for {credentials['email']}: {e}")
 
 
 class TestDataIntegrityAndSynchronization:

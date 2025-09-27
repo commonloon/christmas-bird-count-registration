@@ -22,7 +22,7 @@ sys.path.insert(0, project_root)
 from tests.config import get_base_url, get_database_name
 from tests.page_objects import AdminDashboardPage, AdminParticipantsPage
 from tests.data import get_test_participant, get_test_dataset, get_test_account, get_test_password
-from tests.utils.auth_utils import login_with_google
+from tests.utils.auth_utils import login_with_google, admin_login_for_test
 from models.participant import ParticipantModel
 from google.cloud import firestore
 from selenium import webdriver
@@ -68,31 +68,6 @@ def participant_model(db_client):
     return ParticipantModel(db_client, current_year)
 
 
-@pytest.fixture
-def authenticated_admin(admin_dashboard):
-    """Authenticate as admin user for CSV tests."""
-    try:
-        admin_account = get_test_account('admin1')
-        admin_email = admin_account['email']
-        admin_password = get_test_password('admin1')
-
-        logger.info(f"Authenticating for CSV tests: {admin_email}")
-
-        # Navigate and authenticate
-        assert admin_dashboard.navigate_to_admin(), "Failed to navigate to admin"
-
-        if admin_dashboard.is_dashboard_loaded():
-            return admin_dashboard
-
-        if admin_dashboard.is_login_page():
-            login_success = login_with_google(browser, admin_email, admin_password, base_url)
-            if login_success and admin_dashboard.is_dashboard_loaded():
-                return admin_dashboard
-
-        pytest.skip("Admin authentication failed for CSV tests")
-
-    except Exception as e:
-        pytest.skip(f"CSV test authentication not available: {e}")
 
 
 @pytest.fixture
@@ -161,11 +136,16 @@ class TestCSVExportFunctionality:
 
     @pytest.mark.critical
     @pytest.mark.csv
-    def test_csv_export_button_availability(self, authenticated_admin):
+    def test_csv_export_button_availability(self, browser, test_credentials):
         """Test that CSV export buttons are available to admin users."""
         logger.info("Testing CSV export button availability")
 
-        dashboard = authenticated_admin
+        admin_creds = test_credentials['admin_primary']
+        base_url = get_base_url()
+        admin_login_for_test(browser, base_url, admin_creds)
+
+        dashboard = AdminDashboardPage(browser, base_url)
+        browser.get(f"{base_url}/admin")
 
         # Test export from dashboard
         assert dashboard.is_dashboard_loaded(), "Should be on dashboard"
@@ -192,12 +172,16 @@ class TestCSVExportFunctionality:
         logger.info("CSV export button availability test completed")
 
     @pytest.mark.csv
-    def test_direct_csv_route_access(self, authenticated_admin):
+    def test_direct_csv_route_access(self, browser, test_credentials):
         """Test direct access to CSV export route."""
         logger.info("Testing direct CSV route access")
 
-        dashboard = authenticated_admin
-        base_url = dashboard.base_url
+        admin_creds = test_credentials['admin_primary']
+        base_url = get_base_url()
+        admin_login_for_test(browser, base_url, admin_creds)
+
+        dashboard = AdminDashboardPage(browser, base_url)
+        browser.get(f"{base_url}/admin")
 
         # Try to access CSV export route directly
         csv_urls = [
@@ -251,12 +235,16 @@ class TestCSVContentValidation:
 
     @pytest.mark.critical
     @pytest.mark.csv
-    def test_csv_export_with_known_data(self, authenticated_admin, populated_test_data):
+    def test_csv_export_with_known_data(self, browser, test_credentials, populated_test_data):
         """Test CSV export content against known test data."""
         logger.info("Testing CSV export content validation with known test data")
 
-        dashboard = authenticated_admin
-        base_url = dashboard.base_url
+        admin_creds = test_credentials['admin_primary']
+        base_url = get_base_url()
+        admin_login_for_test(browser, base_url, admin_creds)
+
+        dashboard = AdminDashboardPage(browser, base_url)
+        browser.get(f"{base_url}/admin")
         test_participants = populated_test_data
 
         logger.info(f"Validating CSV export against {len(test_participants)} test participants")
@@ -337,12 +325,16 @@ class TestCSVContentValidation:
             logger.warning("CSV export appears to be empty")
 
     @pytest.mark.csv
-    def test_csv_field_completeness(self, authenticated_admin):
+    def test_csv_field_completeness(self, browser, test_credentials):
         """Test that CSV export contains all expected fields."""
         logger.info("Testing CSV field completeness")
 
-        dashboard = authenticated_admin
-        base_url = dashboard.base_url
+        admin_creds = test_credentials['admin_primary']
+        base_url = get_base_url()
+        admin_login_for_test(browser, base_url, admin_creds)
+
+        dashboard = AdminDashboardPage(browser, base_url)
+        browser.get(f"{base_url}/admin")
 
         # Get CSV export
         csv_content = self._get_csv_export_content(dashboard, base_url)
@@ -397,12 +389,16 @@ class TestCSVContentValidation:
             logger.warning(f"CSV export field completeness low: {field_coverage:.1f}%")
 
     @pytest.mark.csv
-    def test_csv_sorting_order(self, authenticated_admin):
+    def test_csv_sorting_order(self, browser, test_credentials):
         """Test CSV export sorting order (area → type → name)."""
         logger.info("Testing CSV export sorting order")
 
-        dashboard = authenticated_admin
-        base_url = dashboard.base_url
+        admin_creds = test_credentials['admin_primary']
+        base_url = get_base_url()
+        admin_login_for_test(browser, base_url, admin_creds)
+
+        dashboard = AdminDashboardPage(browser, base_url)
+        browser.get(f"{base_url}/admin")
 
         # Get CSV export
         csv_content = self._get_csv_export_content(dashboard, base_url)
@@ -486,12 +482,16 @@ class TestCSVExportPerformance:
 
     @pytest.mark.csv
     @pytest.mark.slow
-    def test_large_dataset_export_performance(self, authenticated_admin, db_client):
+    def test_large_dataset_export_performance(self, browser, test_credentials, db_client):
         """Test CSV export performance with larger datasets."""
         logger.info("Testing CSV export performance with large dataset")
 
-        dashboard = authenticated_admin
-        base_url = dashboard.base_url
+        admin_creds = test_credentials['admin_primary']
+        base_url = get_base_url()
+        admin_login_for_test(browser, base_url, admin_creds)
+
+        dashboard = AdminDashboardPage(browser, base_url)
+        browser.get(f"{base_url}/admin")
         current_year = datetime.now().year
         participant_model = ParticipantModel(db_client, current_year)
 

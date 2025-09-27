@@ -19,8 +19,8 @@ sys.path.insert(0, project_root)
 
 from tests.config import get_base_url, get_database_name
 from tests.page_objects import AdminDashboardPage, AdminParticipantsPage
-from tests.data import get_test_participant, get_test_account, get_test_password
-from tests.utils.auth_utils import login_with_google
+from tests.data import get_test_participant
+from tests.utils.auth_utils import admin_login_for_test
 from models.participant import ParticipantModel
 from google.cloud import firestore
 from selenium import webdriver
@@ -64,30 +64,6 @@ def participant_model(db_client):
     return ParticipantModel(db_client, current_year)
 
 
-@pytest.fixture
-def authenticated_admin(admin_dashboard):
-    """Authenticate as admin user."""
-    try:
-        admin_account = get_test_account('admin1')
-        admin_email = admin_account['email']
-        admin_password = get_test_password('admin1')
-
-        logger.info(f"Authenticating for participant management tests: {admin_email}")
-
-        assert admin_dashboard.navigate_to_admin(), "Failed to navigate to admin"
-
-        if admin_dashboard.is_dashboard_loaded():
-            return admin_dashboard
-
-        if admin_dashboard.is_login_page():
-            login_success = login_with_google(browser, admin_email, admin_password, base_url)
-            if login_success and admin_dashboard.is_dashboard_loaded():
-                return admin_dashboard
-
-        pytest.skip("Admin authentication failed for participant management tests")
-
-    except Exception as e:
-        pytest.skip(f"Participant management test authentication not available: {e}")
 
 
 class TestParticipantViewing:
@@ -95,22 +71,25 @@ class TestParticipantViewing:
 
     @pytest.mark.critical
     @pytest.mark.admin
-    def test_participants_page_loads(self, authenticated_admin, admin_participants_page):
+    def test_participants_page_loads(self, browser, test_credentials):
         """Test that participants page loads correctly."""
         logger.info("Testing participants page loading")
 
-        dashboard = authenticated_admin
+        # Login as admin
+        admin_creds = test_credentials['admin_primary']
+        base_url = get_base_url()
+        admin_login_for_test(browser, base_url, admin_creds)
 
         # Navigate to participants page
-        assert dashboard.navigate_to_participants(), "Failed to navigate to participants page"
+        browser.get(f"{base_url}/admin/participants")
 
-        # Verify participants page loads
-        assert admin_participants_page.is_participants_page_loaded(), "Participants page did not load"
+        # Verify we're on the participants page
+        assert "participants" in browser.current_url, f"Expected participants URL, got: {browser.current_url}"
 
         logger.info("✓ Participants page loads correctly")
 
     @pytest.mark.admin
-    def test_participant_display_with_data(self, authenticated_admin, admin_participants_page, participant_model):
+    def test_participant_display_with_data(self, browser, test_credentials, admin_participants_page, participant_model):
         """Test participant display with populated data."""
         logger.info("Testing participant display with data")
 
@@ -153,9 +132,11 @@ class TestParticipantViewing:
         if not test_participants:
             pytest.skip("Could not create test participants for display testing")
 
-        # Navigate to participants page
-        dashboard = authenticated_admin
-        assert dashboard.navigate_to_participants(), "Failed to navigate to participants"
+        # Login as admin and navigate to participants page
+        admin_creds = test_credentials['admin_primary']
+        base_url = get_base_url()
+        admin_login_for_test(browser, base_url, admin_creds)
+        browser.get(f"{base_url}/admin/participants")
 
         # Give page time to load
         time.sleep(2)
@@ -189,12 +170,15 @@ class TestParticipantViewing:
                 pass
 
     @pytest.mark.admin
-    def test_area_organization_display(self, authenticated_admin, admin_participants_page):
+    def test_area_organization_display(self, browser, test_credentials, admin_participants_page):
         """Test that participants are organized by area."""
         logger.info("Testing area organization display")
 
-        dashboard = authenticated_admin
-        assert dashboard.navigate_to_participants(), "Failed to navigate to participants"
+        # Login as admin and navigate to participants page
+        admin_creds = test_credentials['admin_primary']
+        base_url = get_base_url()
+        admin_login_for_test(browser, base_url, admin_creds)
+        browser.get(f"{base_url}/admin/participants")
 
         # Get area headers
         area_headers = admin_participants_page.get_area_headers()
@@ -211,12 +195,15 @@ class TestParticipantViewing:
             logger.warning("No area organization detected")
 
     @pytest.mark.admin
-    def test_feeder_participant_separation(self, authenticated_admin, admin_participants_page):
+    def test_feeder_participant_separation(self, browser, test_credentials, admin_participants_page):
         """Test FEEDER vs regular participant separation."""
         logger.info("Testing FEEDER participant separation")
 
-        dashboard = authenticated_admin
-        assert dashboard.navigate_to_participants(), "Failed to navigate to participants"
+        # Login as admin and navigate to participants page
+        admin_creds = test_credentials['admin_primary']
+        base_url = get_base_url()
+        admin_login_for_test(browser, base_url, admin_creds)
+        browser.get(f"{base_url}/admin/participants")
 
         # Check FEEDER display
         feeder_display = admin_participants_page.verify_feeder_participant_display()
@@ -236,7 +223,7 @@ class TestParticipantOperations:
 
     @pytest.mark.critical
     @pytest.mark.admin
-    def test_participant_deletion_workflow(self, authenticated_admin, admin_participants_page, participant_model):
+    def test_participant_deletion_workflow(self, browser, test_credentials, admin_participants_page, participant_model):
         """Test participant deletion workflow."""
         logger.info("Testing participant deletion workflow")
 
@@ -270,8 +257,12 @@ class TestParticipantOperations:
             participant_email = participant_record['email']
 
             # Navigate to participants page
-            dashboard = authenticated_admin
-            assert dashboard.navigate_to_participants(), "Failed to navigate to participants"
+            admin_creds = test_credentials['admin_primary']
+            base_url = get_base_url()
+            admin_login_for_test(browser, base_url, admin_creds)
+
+            dashboard = AdminParticipantsPage(browser, base_url)
+            browser.get(f"{base_url}/admin/participants")
             time.sleep(2)
 
             # Attempt to delete participant
@@ -307,7 +298,7 @@ class TestParticipantOperations:
                 pass
 
     @pytest.mark.admin
-    def test_participant_assignment_workflow(self, authenticated_admin, admin_participants_page, participant_model):
+    def test_participant_assignment_workflow(self, browser, test_credentials, admin_participants_page, participant_model):
         """Test participant area assignment workflow."""
         logger.info("Testing participant assignment workflow")
 
@@ -343,8 +334,12 @@ class TestParticipantOperations:
             target_area = participant_data.get('reassignment_target_area', 'B')
 
             # Navigate to participants page
-            dashboard = authenticated_admin
-            assert dashboard.navigate_to_participants(), "Failed to navigate to participants"
+            admin_creds = test_credentials['admin_primary']
+            base_url = get_base_url()
+            admin_login_for_test(browser, base_url, admin_creds)
+
+            dashboard = AdminParticipantsPage(browser, base_url)
+            browser.get(f"{base_url}/admin/participants")
             time.sleep(2)
 
             # Attempt to assign participant
@@ -384,7 +379,7 @@ class TestLeadershipManagement:
 
     @pytest.mark.critical
     @pytest.mark.admin
-    def test_participant_to_leader_promotion(self, authenticated_admin, admin_participants_page, participant_model):
+    def test_participant_to_leader_promotion(self, browser, test_credentials, admin_participants_page, participant_model):
         """Test promoting participant to leader (single-table design)."""
         logger.info("Testing participant to leader promotion (single-table)")
 
@@ -419,8 +414,12 @@ class TestLeadershipManagement:
             promotion_area = participant_data.get('promotion_target_area', participant_record['preferred_area'])
 
             # Navigate to participants page
-            dashboard = authenticated_admin
-            assert dashboard.navigate_to_participants(), "Failed to navigate to participants"
+            admin_creds = test_credentials['admin_primary']
+            base_url = get_base_url()
+            admin_login_for_test(browser, base_url, admin_creds)
+
+            dashboard = AdminParticipantsPage(browser, base_url)
+            browser.get(f"{base_url}/admin/participants")
             time.sleep(2)
 
             # Attempt to promote participant to leader
@@ -468,7 +467,7 @@ class TestLeadershipManagement:
                     pass
 
     @pytest.mark.admin
-    def test_leader_demotion_to_participant(self, authenticated_admin, admin_participants_page, participant_model):
+    def test_leader_demotion_to_participant(self, browser, test_credentials, admin_participants_page, participant_model):
         """Test demoting leader back to participant (single-table design)."""
         logger.info("Testing leader to participant demotion (single-table)")
 
@@ -502,8 +501,12 @@ class TestLeadershipManagement:
             participant_email = participant_record['email']
 
             # Navigate to participants page
-            dashboard = authenticated_admin
-            assert dashboard.navigate_to_participants(), "Failed to navigate to participants"
+            admin_creds = test_credentials['admin_primary']
+            base_url = get_base_url()
+            admin_login_for_test(browser, base_url, admin_creds)
+
+            dashboard = AdminParticipantsPage(browser, base_url)
+            browser.get(f"{base_url}/admin/participants")
             time.sleep(2)
 
             # Attempt to demote leader
@@ -548,7 +551,7 @@ class TestLeadershipManagement:
                     pass
 
     @pytest.mark.admin
-    def test_leadership_flag_consistency(self, authenticated_admin, participant_model):
+    def test_leadership_flag_consistency(self, browser, test_credentials, participant_model):
         """Test leadership flag consistency in single-table design."""
         logger.info("Testing leadership flag consistency (single-table)")
 

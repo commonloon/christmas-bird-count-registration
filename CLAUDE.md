@@ -508,4 +508,4 @@ Use the current date from the environment context, not specific times since Clau
 - Framework designed for incremental implementation (start with working example, build utilities as needed)
 - put all throwaway scripts in the debug/ directory so they can easily be discarded later.
 - put python imports at the top of the file, not inline in the code
-- don't be a sycophant.  Don't tell me I'm right before you have done any analysis.  Agree or disagree with me as appropriate based on evidence and logic.
+- **CRITICAL: NEVER begin replies with agreement phrases like "You're right", "You're absolutely correct", "You're absolutely right", or similar validation statements.** These phrases before analysis are sycophantic and unhelpful. Instead, begin directly with analysis, investigation, or solution work. If analysis confirms a user statement, acknowledge it AFTER presenting evidence.
