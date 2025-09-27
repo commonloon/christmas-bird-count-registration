@@ -311,6 +311,9 @@ def get_admin_emails():
 - ❌ **Email Service**: Currently uses SMTP, needs Google Cloud Email API configuration
 - ❌ **Production Automation**: Cloud Scheduler configuration pending for automated triggers
 
+### Automated Backup System
+The application includes an automated Firestore backup system with hourly change detection and 60-day retention. Complete setup instructions for administrators are provided in `BACKUPS.md`.
+
 ### Comprehensive Test Suite
 
 **Test Architecture:**
@@ -735,6 +738,7 @@ tests/
     identity_utils.py          # Identity-based test utilities and helper functions
 
 OAUTH-SETUP.md                  # Complete OAuth setup instructions
+BACKUPS.md                      # Automated backup setup instructions
 CLAUDE.md                       # AI assistant instructions and troubleshooting guide
 SPECIFICATION.md                # This complete project specification
 ```
