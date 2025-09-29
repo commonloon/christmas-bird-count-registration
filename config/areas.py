@@ -139,7 +139,7 @@ AREA_CONFIG = {
         'description': 'Vancouver International Airport and surrounds',
         'difficulty': 'Easy',
         'terrain': 'Airport and surrounds',
-        'admin_assignment_only': True
+        'admin_assignment_only': False
     },
     'U': {
         'name': 'Area U - Northwest Richmond',
