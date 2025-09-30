@@ -1,0 +1,239 @@
+{# Updated by Claude AI on 2025-09-29 #}
+{% extends "base.html" %}
+
+{% block title %}Leader Dashboard - Vancouver Christmas Bird Count{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Leader Dashboard - Area {{ area_code }}</h1>
+    <div>
+        <span class="badge bg-info">{{ selected_year }}</span>
+        {% if current_user.email %}
+        <span class="text-muted">{{ current_user.email }}</span>
+        <a href="{{ url_for('auth.logout') }}" class="btn btn-sm btn-outline-secondary ms-2">Logout</a>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Year selector (currently only shows current year, historical deferred) -->
+{% if available_years and available_years|length > 1 %}
+<div class="card mb-4">
+    <div class="card-body">
+        <h5 class="card-title">Year Selection</h5>
+        <form method="GET" class="d-inline-block">
+            <select name="year" class="form-select d-inline-block w-auto" onchange="this.form.submit()">
+                {% for year in available_years %}
+                <option value="{{ year }}" {% if year == selected_year %}selected{% endif %}>{{ year }}</option>
+                {% endfor %}
+            </select>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<!-- Leader Info Card -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-person-badge-fill"></i> Your Information</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
+                <p><strong>Name:</strong> {{ leader_info.first_name|e }} {{ leader_info.last_name|e }}</p>
+                <p><strong>Email:</strong> <a href="mailto:{{ leader_info.email|e }}">{{ leader_info.email|e }}</a></p>
+            </div>
+            <div class="col-md-6">
+                <p><strong>Cell Phone:</strong> {{ leader_info.phone|e }}</p>
+                {% if leader_info.get('phone2') %}
+                <p><strong>Secondary Phone:</strong> {{ leader_info.phone2|e }}</p>
+                {% endif %}
+                <p><strong>Area:</strong> {{ area_code }} - {{ area_info.name }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Team Summary -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-people-fill"></i> Team Summary</h5>
+    </div>
+    <div class="card-body">
+        <h3 class="text-center">{{ total_participants }} Total Participants</h3>
+        <div class="row text-center mt-3">
+            <div class="col-md-6">
+                <h4>{{ regular_participants|length }}</h4>
+                <p class="text-muted">Regular Participants</p>
+            </div>
+            <div class="col-md-6">
+                <h4>{{ feeder_participants|length }}</h4>
+                <p class="text-muted">FEEDER Participants</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Regular Participants -->
+{% if regular_participants %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">Regular Participants ({{ regular_participants|length }})</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Cell Phone</th>
+                        <th>Skill Level</th>
+                        <th>Experience</th>
+                        <th>Equipment</th>
+                        <th>Notes</th>
+                        <th>Leader</th>
+                        <th>Scribe</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for participant in regular_participants %}
+                    <tr>
+                        <td>
+                            <strong>{{ participant.first_name|e }} {{ participant.last_name|e }}</strong>
+                            {% if participant.is_leader %}
+                                <span class="badge bg-success ms-1">Leader</span>
+                            {% endif %}
+                        </td>
+                        <td><a href="mailto:{{ participant.email|e }}">{{ participant.email|e }}</a></td>
+                        <td>
+                            {{ participant.phone|e or 'N/A' }}
+                            {% if participant.get('phone2') %}
+                                <div class="small text-muted">{{ participant.phone2|e }}</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge bg-{% if participant.skill_level == 'Expert' %}success{% elif participant.skill_level == 'Intermediate' %}primary{% elif participant.skill_level == 'Beginner' %}info{% else %}secondary{% endif %}">
+                                {{ participant.skill_level }}
+                            </span>
+                        </td>
+                        <td>{{ participant.experience }}</td>
+                        <td>
+                            {% if participant.has_binoculars %}<i class="bi bi-binoculars" title="Has binoculars"></i>{% endif %}
+                            {% if participant.spotting_scope %}<img src="{{ url_for('static', filename='icons/scope.svg') }}" alt="Spotting scope" title="Can bring spotting scope" class="scope-icon ms-1" style="width: 16px; height: 16px; vertical-align: text-bottom;">{% endif %}
+                            {% if not participant.has_binoculars and not participant.spotting_scope %}<span class="text-muted">None</span>{% endif %}
+                        </td>
+                        <td>
+                            {% if participant.notes_to_organizers %}
+                                {{ participant.notes_to_organizers|e }}
+                            {% else %}
+                                <span class="text-muted">None</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if participant.interested_in_leadership %}
+                                <span class="badge bg-warning">Interested</span>
+                            {% else %}
+                                <span class="text-muted">No</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if participant.get('interested_in_scribe') %}
+                                <span class="badge bg-info">Interested</span>
+                            {% else %}
+                                <span class="text-muted">No</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- FEEDER Participants -->
+{% if feeder_participants %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">FEEDER Participants ({{ feeder_participants|length }})</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover table-info">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Cell Phone</th>
+                        <th>Skill Level</th>
+                        <th>Experience</th>
+                        <th>Equipment</th>
+                        <th>Notes</th>
+                        <th>Leader</th>
+                        <th>Scribe</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for participant in feeder_participants %}
+                    <tr class="table-info">
+                        <td>
+                            <strong>{{ participant.first_name|e }} {{ participant.last_name|e }}</strong>
+                            <div class="small text-muted">FEEDER</div>
+                        </td>
+                        <td><a href="mailto:{{ participant.email|e }}">{{ participant.email|e }}</a></td>
+                        <td>
+                            {{ participant.phone|e or 'N/A' }}
+                            {% if participant.get('phone2') %}
+                                <div class="small text-muted">{{ participant.phone2|e }}</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge bg-{% if participant.skill_level == 'Expert' %}success{% elif participant.skill_level == 'Intermediate' %}primary{% elif participant.skill_level == 'Beginner' %}info{% else %}secondary{% endif %}">
+                                {{ participant.skill_level }}
+                            </span>
+                        </td>
+                        <td>{{ participant.experience }}</td>
+                        <td>
+                            {% if participant.has_binoculars %}<i class="bi bi-binoculars" title="Has binoculars"></i>{% endif %}
+                            {% if participant.spotting_scope %}<img src="{{ url_for('static', filename='icons/scope.svg') }}" alt="Spotting scope" title="Can bring spotting scope" class="scope-icon ms-1" style="width: 16px; height: 16px; vertical-align: text-bottom;">{% endif %}
+                            {% if not participant.has_binoculars and not participant.spotting_scope %}<span class="text-muted">None</span>{% endif %}
+                        </td>
+                        <td>
+                            {% if participant.notes_to_organizers %}
+                                {{ participant.notes_to_organizers|e }}
+                            {% else %}
+                                <span class="text-muted">None</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if participant.interested_in_leadership %}
+                                <span class="badge bg-warning">Interested</span>
+                            {% else %}
+                                <span class="text-muted">No</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if participant.get('interested_in_scribe') %}
+                                <span class="badge bg-info">Interested</span>
+                            {% else %}
+                                <span class="text-muted">No</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- No participants message -->
+{% if not regular_participants and not feeder_participants %}
+<div class="alert alert-info" role="alert">
+    <i class="bi bi-info-circle-fill"></i> No participants registered for Area {{ area_code }} yet.
+</div>
+{% endif %}
+
+{% endblock %}

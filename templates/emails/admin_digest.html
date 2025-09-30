@@ -14,19 +14,44 @@
             padding: 20px;
         }
         .header {
-            background-color: #ffc107;
-            color: #212529;
-            padding: 20px;
-            text-align: center;
+            background-color: {{ branding.background_color }};
+            color: {{ branding.primary_color }};
+            padding: 15px 20px;
             border-radius: 5px 5px 0 0;
+            display: flex;
+            align-items: center;
+            gap: 30px;
+        }
+        .header-logo {
+            height: 70px;
+            width: auto;
+            flex-shrink: 0;
+        }
+        .header-text {
+            flex-grow: 1;
+        }
+        .header h1, .header h2, .header h3 {
+            margin: 0;
+            line-height: 1.2;
+        }
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 2px;
+        }
+        .header h2 {
+            font-size: 18px;
+            margin-bottom: 2px;
+        }
+        .header h3 {
+            font-size: 16px;
         }
         .content {
-            background-color: #f8f9fa;
+            background-color: {{ branding.background_color }};
             padding: 30px;
-            border: 1px solid #dee2e6;
+            border: 1px solid {{ branding.accent_color }};
         }
         .footer {
-            background-color: #6c757d;
+            background-color: {{ branding.secondary_color }};
             color: white;
             padding: 15px;
             text-align: center;
@@ -60,16 +85,14 @@
         }
         .btn {
             display: inline-block;
-            padding: 12px 24px;
-            background-color: #ffc107;
-            color: #212529;
+            padding: 10px 20px;
+            background-color: {{ branding.accent_color }};
+            color: {{ branding.secondary_color }};
+            font-weight: bold;
             text-decoration: none;
             border-radius: 5px;
-            margin-top: 20px;
-            font-weight: bold;
-        }
-        .btn:hover {
-            background-color: #e0a800;
+            margin-top: 15px;
+            white-space: nowrap;
         }
         .stats {
             background-color: white;
@@ -96,13 +119,27 @@
 </head>
 <body>
     <div class="header">
-        <h1><i>⚠️</i> Vancouver Christmas Bird Count</h1>
-        <h2>Admin Digest - Unassigned Participants</h2>
-        <p>{{ current_date.strftime('%B %d, %Y') }}</p>
+        {% if branding.logo_url %}
+        <img src="{{ branding.logo_url }}" alt="{{ branding.logo_alt }}" class="header-logo">
+        {% endif %}
+        <div class="header-text">
+            <h1>{{ branding.organization_name }}</h1>
+            <h2>Vancouver Christmas Bird Count</h2>
+            <h3>Admin Digest - Unassigned Participants</h3>
+        </div>
     </div>
 
     <div class="content">
-        <p>Dear CBC Administrators,</p>
+        <!-- Salutation with Dashboard Button -->
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-bottom: 20px;">
+            <div>
+                <p style="font-size: 18px; font-weight: bold; margin: 0;">Dear CBC Administrators,</p>
+                <p style="margin: 5px 0 0 0; color: #666;">{{ current_date.strftime('%B %d, %Y') }}</p>
+            </div>
+            {% if unassigned_participants %}
+            <a href="{{ admin_unassigned_url }}" class="btn">⚠️ Assign Participants</a>
+            {% endif %}
+        </div>
 
         {% if unassigned_participants %}
         <div class="alert">
@@ -129,8 +166,7 @@
             </div>
             <div class="participant-details">
                 <strong>Email:</strong> {{ participant.email }}<br>
-                <strong>Cell Phone:</strong> {{ participant.phone or 'Not provided' }}<br>
-                <strong>Secondary Phone:</strong> {{ participant.get('phone2') or 'None' }}<br>
+                <strong>Phone:</strong> {{ participant.phone or 'Not provided' }}<br>
                 <strong>Skill Level:</strong> {{ participant.skill_level or 'Not specified' }} | 
                 <strong>CBC Experience:</strong> {{ participant.experience or 'Not specified' }}<br>
                 <strong>Registered:</strong> {{ participant.created_at.strftime('%Y-%m-%d %H:%M') if participant.created_at else 'Unknown' }}
@@ -148,9 +184,6 @@
             <li>Prioritize participants who have been waiting longest</li>
             <li>Contact participants if clarification is needed on their preferences</li>
         </ul>
-
-        <p>Click below to access the assignment interface:</p>
-        <a href="{{ admin_unassigned_url }}" class="btn">🔧 Assign Participants to Areas</a>
 
         {% else %}
         <div style="background-color: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 20px; border-radius: 5px; text-align: center;">

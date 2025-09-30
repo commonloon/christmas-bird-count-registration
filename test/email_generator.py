@@ -1,10 +1,11 @@
+# Updated by Claude AI on 2025-09-29
 #!/usr/bin/env python3
 """
 Email Generation System for Vancouver CBC Registration
 
 This module handles the generation and sending of automated emails:
 1. Twice-daily team updates to area leaders
-2. Weekly team summaries for areas with no changes  
+2. Weekly team summaries for ALL area leaders
 3. Daily admin digest of unassigned participants
 
 Implements race condition prevention and change detection logic.
@@ -23,7 +24,7 @@ from config.database import get_firestore_client
 from config.admins import ADMIN_EMAILS
 from config.email_settings import (
     is_test_server, get_admin_unassigned_url, get_leader_dashboard_url,
-    EMAIL_SUBJECTS
+    EMAIL_SUBJECTS, get_email_branding
 )
 from models.participant import ParticipantModel
 from models.removal_log import RemovalLogModel
@@ -208,7 +209,8 @@ def generate_team_update_emails(app=None) -> Dict[str, Any]:
                     'current_team': current_team,
                     'current_date': current_time,
                     'leader_dashboard_url': get_leader_dashboard_url(),
-                    'test_mode': is_test_server()
+                    'test_mode': is_test_server(),
+                    'branding': get_email_branding()
                 }
                 
                 # Render email template
@@ -223,7 +225,10 @@ def generate_team_update_emails(app=None) -> Dict[str, Any]:
                     logger.error(f"Template rendering error for area {area_code}: {template_error}")
                     # Fallback to basic text email
                     html_content = None
-                subject = EMAIL_SUBJECTS['team_update'].format(area_code=area_code)
+                subject = EMAIL_SUBJECTS['team_update'].format(
+                    date=current_time.strftime('%Y-%m-%d'),
+                    area_code=area_code
+                )
                 
                 # Send email
                 if email_service.send_email(leader_emails, subject, '', html_content):
@@ -248,7 +253,7 @@ def generate_team_update_emails(app=None) -> Dict[str, Any]:
 
 
 def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
-    """Generate weekly summary emails for areas with no changes in the past week."""
+    """Generate weekly summary emails for ALL area leaders."""
     try:
         db, _ = get_firestore_client()
         current_year = datetime.now().year
@@ -272,16 +277,13 @@ def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
             try:
                 results['areas_processed'] += 1
                 
-                # Check if there have been changes in the past week
+                # Check for changes in the past week for context
                 new_participants, removed_participants = get_participants_changes_since(
                     participant_model, area_code, one_week_ago
                 )
-                
-                # Only send weekly summary if NO changes in past week
-                if new_participants or removed_participants:
-                    logger.info(f"Area {area_code} has recent changes, skipping weekly summary")
-                    continue
-                
+                has_changes = bool(new_participants or removed_participants)
+
+                # Send weekly summary to ALL leaders regardless of changes
                 # Get leader emails and names
                 leader_emails = get_area_leaders_emails(participant_model, area_code)
                 if not leader_emails:
@@ -303,12 +305,14 @@ def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
                     'area_code': area_code,
                     'leader_names': leader_names,
                     'current_team': current_team,
+                    'has_changes': has_changes,
                     'skill_breakdown': skill_breakdown,
                     'experience_breakdown': experience_breakdown,
                     'leadership_interest_count': leadership_interest_count,
                     'current_date': current_time,
                     'leader_dashboard_url': get_leader_dashboard_url(),
-                    'test_mode': is_test_server()
+                    'test_mode': is_test_server(),
+                    'branding': get_email_branding()
                 }
                 
                 # Render email template
@@ -323,7 +327,10 @@ def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
                     logger.error(f"Template rendering error for weekly summary {area_code}: {template_error}")
                     # Fallback to basic text email
                     html_content = None
-                subject = EMAIL_SUBJECTS['weekly_summary'].format(area_code=area_code)
+                subject = EMAIL_SUBJECTS['weekly_summary'].format(
+                    date=current_time.strftime('%Y-%m-%d'),
+                    area_code=area_code
+                )
                 
                 # Send email
                 if email_service.send_email(leader_emails, subject, '', html_content):
@@ -405,7 +412,8 @@ def generate_admin_digest_email(app=None) -> Dict[str, Any]:
             'average_wait_days': average_wait_days,
             'current_date': current_time,
             'admin_unassigned_url': get_admin_unassigned_url(),
-            'test_mode': is_test_server()
+            'test_mode': is_test_server(),
+            'branding': get_email_branding()
         }
         
         # Render email template
@@ -420,7 +428,9 @@ def generate_admin_digest_email(app=None) -> Dict[str, Any]:
             logger.error(f"Template rendering error for admin digest: {template_error}")
             # Fallback to basic text email
             html_content = None
-        subject = EMAIL_SUBJECTS['admin_digest']
+        subject = EMAIL_SUBJECTS['admin_digest'].format(
+            date=current_time.strftime('%Y-%m-%d')
+        )
         
         # Send email to all admins
         if email_service.send_email(ADMIN_EMAILS, subject, '', html_content):

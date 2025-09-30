@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leader Reminder - {{ count_event_name }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #ffc107;
+            color: #212529;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px 5px 0 0;
+        }
+        .content {
+            background-color: #f8f9fa;
+            padding: 30px;
+            border: 1px solid #dee2e6;
+        }
+        .footer {
+            background-color: #6c757d;
+            color: white;
+            padding: 15px;
+            text-align: center;
+            font-size: 12px;
+            border-radius: 0 0 5px 5px;
+        }
+        .reminder-box {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .countdown-box {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+            text-align: center;
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+        .responsibilities-section {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+            border-left: 4px solid #ffc107;
+        }
+        .timing-section {
+            background-color: #e2e3e5;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 4px solid #6c757d;
+        }
+        .checklist {
+            background-color: #d4edda;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 4px solid #28a745;
+        }
+        .support-section {
+            background-color: #d1ecf1;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 4px solid #0c5460;
+        }
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            background-color: #ffc107;
+            color: #212529;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-top: 15px;
+            font-weight: bold;
+            text-align: center;
+        }
+        .btn:hover {
+            background-color: #e0a800;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📢 {{ count_event_name }}</h1>
+        <h2>Leader Reminder - Send Team Instructions</h2>
+    </div>
+
+    <div class="content">
+        <p>Dear Area {{ area_code }} Leader{{ 's' if leader_names|length > 1 else '' }},</p>
+
+        {% if leader_names %}
+        <p><strong>Area Leaders:</strong> {{ leader_names|join(', ') }}</p>
+        {% endif %}
+
+        {% if days_until_count is defined %}
+        <div class="countdown-box">
+            {% if days_until_count > 0 %}
+            <h3>⏰ {{ days_until_count }} day{{ 's' if days_until_count != 1 else '' }} until count day!</h3>
+            {% elif days_until_count == 0 %}
+            <h3>🎯 Count day is TODAY!</h3>
+            {% else %}
+            <h3>📅 Count has completed</h3>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <div class="reminder-box">
+            <h3>📋 Important Reminder</h3>
+            <p><strong>Time to send detailed count day instructions to your team members!</strong></p>
+            {% if participant_reminder_date %}
+            <p>In {{ days_until_participant_reminder }} day{{ 's' if days_until_participant_reminder != 1 else '' }} ({{ participant_reminder_date }}),
+            your team members will receive an automated reminder that tells them to contact you if they haven't received detailed instructions.</p>
+            {% endif %}
+        </div>
+
+        <div class="responsibilities-section">
+            <h4>✅ Your Leadership Checklist</h4>
+            <p>Please send an email to your team members covering these important details:</p>
+
+            <div class="checklist">
+                <h5>📍 Meeting & Logistics</h5>
+                <ul>
+                    <li><strong>Meeting location and time</strong> - Where and when to gather</li>
+                    <li><strong>Contact information</strong> - Your phone number for count day</li>
+                    <li><strong>Area boundaries</strong> - Which specific areas you'll be surveying</li>
+                    <li><strong>Transportation</strong> - Carpool arrangements or meeting points</li>
+                </ul>
+            </div>
+
+            <div class="checklist">
+                <h5>🌤️ Weather & Preparation</h5>
+                <ul>
+                    <li><strong>Weather contingency plans</strong> - What happens if conditions are severe</li>
+                    <li><strong>Clothing recommendations</strong> - Dress for warmth and weather</li>
+                    <li><strong>Duration expectations</strong> - How long the count will last</li>
+                    <li><strong>Break and meal plans</strong> - Lunch arrangements or snack suggestions</li>
+                </ul>
+            </div>
+
+            <div class="checklist">
+                <h5>🔭 Equipment & Preparation</h5>
+                <ul>
+                    <li><strong>Equipment checklist</strong> - Binoculars, warm clothes, notebooks</li>
+                    <li><strong>Field guides</strong> - Recommended resources or apps</li>
+                    <li><strong>Data recording</strong> - How you'll track species and counts</li>
+                    <li><strong>Emergency supplies</strong> - First aid, emergency contacts</li>
+                </ul>
+            </div>
+
+            {% if feeder_participants_count is defined and feeder_participants_count > 0 %}
+            <div class="checklist">
+                <h5>🏠 FEEDER Participant Coordination</h5>
+                <p>You have {{ feeder_participants_count }} FEEDER participant{{ 's' if feeder_participants_count != 1 else '' }} who will count at home feeders:</p>
+                <ul>
+                    <li><strong>FEEDER instructions</strong> - Specific guidelines for backyard counting</li>
+                    <li><strong>Data collection</strong> - How FEEDER participants should record and submit their counts</li>
+                    <li><strong>Coordination timing</strong> - When to expect their data</li>
+                </ul>
+            </div>
+            {% endif %}
+
+            {% if scribe_participants_count is defined and scribe_participants_count > 0 %}
+            <div class="checklist">
+                <h5>📝 Scribe Coordination</h5>
+                <p>You have {{ scribe_participants_count }} participant{{ 's' if scribe_participants_count != 1 else '' }} interested in the scribe role:</p>
+                <ul>
+                    <li><strong>eBird preparation</strong> - Ensure scribes have completed eBird training if required</li>
+                    <li><strong>Data entry roles</strong> - Coordinate who will handle eBird submissions</li>
+                    <li><strong>Backup plans</strong> - Alternative data recording if eBird isn't available</li>
+                </ul>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="timing-section">
+            <h4>📅 Important Dates</h4>
+            <ul>
+                {% if count_date %}
+                <li><strong>Count Date:</strong> {{ count_date }}</li>
+                {% endif %}
+                {% if participant_reminder_date %}
+                <li><strong>Participant Reminder:</strong> {{ participant_reminder_date }} - Your team will be reminded to contact you for instructions</li>
+                {% endif %}
+                <li><strong>Today's Action:</strong> Send detailed instructions to your team members</li>
+            </ul>
+        </div>
+
+        <div class="support-section">
+            <h4>🆘 Need Support?</h4>
+            <p><strong>Count Coordination Questions:</strong> Contact {{ count_contact }} for help with:</p>
+            <ul>
+                <li>Area boundary clarifications</li>
+                <li>Equipment or logistics support</li>
+                <li>Data submission procedures</li>
+                <li>Weather contingency guidance</li>
+            </ul>
+            {% if leader_resources_url %}
+            <p><strong>Leader Resources:</strong> Visit our leader resources page for templates and additional guidance.</p>
+            {% endif %}
+        </div>
+
+        <div style="text-align: center; margin-top: 20px;">
+            <p><strong>Thank you for your leadership!</strong> Your preparation and communication make the count successful.</p>
+            {% if leader_dashboard_url %}
+            <a href="{{ leader_dashboard_url }}" class="btn">📊 View Your Team Information</a>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>This reminder is from the {{ count_event_name }} registration system.<br>
+        For support, contact: {{ count_contact }}</p>
+        {% if test_mode %}
+        <p><strong>TEST MODE:</strong> This email was generated for testing purposes.</p>
+        {% endif %}
+    </div>
+</body>
+</html>
+<!-- Updated by Claude AI on 2025-09-15 -->

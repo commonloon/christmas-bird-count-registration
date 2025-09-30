@@ -9,155 +9,303 @@
             font-family: Arial, sans-serif;
             line-height: 1.6;
             color: #333;
-            max-width: 600px;
+            max-width: 800px;
             margin: 0 auto;
             padding: 20px;
         }
         .header {
-            background-color: #17a2b8;
-            color: white;
-            padding: 20px;
-            text-align: center;
+            background-color: {{ branding.background_color }};
+            color: {{ branding.primary_color }};
+            padding: 15px 20px;
             border-radius: 5px 5px 0 0;
+            display: flex;
+            align-items: center;
+            gap: 30px;
+        }
+        .header-logo {
+            height: 70px;
+            width: auto;
+            flex-shrink: 0;
+        }
+        .header-text {
+            flex-grow: 1;
+        }
+        .header h1, .header h2, .header h3 {
+            margin: 0;
+            line-height: 1.2;
+        }
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 2px;
+        }
+        .header h2 {
+            font-size: 18px;
+            margin-bottom: 2px;
+        }
+        .header h3 {
+            font-size: 16px;
         }
         .content {
-            background-color: #f8f9fa;
+            background-color: {{ branding.background_color }};
             padding: 30px;
-            border: 1px solid #dee2e6;
+            border: 1px solid {{ branding.accent_color }};
         }
         .footer {
-            background-color: #6c757d;
+            background-color: {{ branding.secondary_color }};
             color: white;
             padding: 15px;
             text-align: center;
             font-size: 12px;
             border-radius: 0 0 5px 5px;
         }
-        .no-changes {
-            background-color: #d4edda;
-            border: 1px solid #c3e6cb;
-            color: #155724;
-            padding: 15px;
+        .email-summary {
+            background-color: {{ branding.background_color }};
+            border: 2px solid {{ branding.primary_color }};
             border-radius: 5px;
+            padding: 15px;
             margin: 20px 0;
+        }
+        .email-list {
+            background-color: white;
+            border: 1px solid #ccc;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 14px;
+            border-radius: 3px;
+            margin: 10px 0;
+            user-select: all;
+            -webkit-user-select: all;
+            -moz-user-select: all;
+        }
+        .participant-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background-color: white;
+        }
+        .participant-table th,
+        .participant-table td {
+            padding: 8px 12px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+            font-size: 14px;
+        }
+        .participant-table th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+            border-bottom: 2px solid #dee2e6;
+        }
+        .participant-table tr:hover {
+            background-color: #f8f9fa;
+        }
+        .feeder-row {
+            background-color: #d1ecf1;
+        }
+        .feeder-row:hover {
+            background-color: #bee5eb;
+        }
+        .badge {
+            display: inline-block;
+            padding: 2px 6px;
+            font-size: 11px;
+            font-weight: bold;
+            border-radius: 3px;
+            text-transform: uppercase;
+        }
+        .badge-warning {
+            background-color: #ffc107;
+            color: #212529;
+        }
+        .badge-info {
+            background-color: #17a2b8;
+            color: white;
+        }
+        .badge-success {
+            background-color: #28a745;
+            color: white;
+        }
+        .status-section {
+            background-color: white;
+            border-radius: 5px;
+            padding: 15px;
+            margin: 20px 0;
+            border-left: 4px solid {{ branding.primary_color }};
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 15px;
+            margin: 15px 0;
+        }
+        .stat-box {
+            background-color: white;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 10px;
             text-align: center;
         }
-        .participant {
-            background-color: white;
-            padding: 10px;
-            margin: 5px 0;
-            border-left: 4px solid #17a2b8;
-            border-radius: 3px;
+        .stat-number {
+            font-size: 20px;
+            font-weight: bold;
+            color: {{ branding.primary_color }};
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
         }
         .section-title {
-            color: #17a2b8;
+            color: {{ branding.primary_color }};
             font-weight: bold;
             margin-top: 25px;
             margin-bottom: 10px;
         }
-        .team-roster {
-            background-color: white;
-            padding: 15px;
-            border-radius: 5px;
-            margin-top: 20px;
-        }
         .btn {
             display: inline-block;
             padding: 10px 20px;
-            background-color: #17a2b8;
-            color: white;
+            background-color: {{ branding.accent_color }};
+            color: {{ branding.secondary_color }};
+            font-weight: bold;
             text-decoration: none;
             border-radius: 5px;
             margin-top: 15px;
-        }
-        .stats {
-            background-color: white;
-            padding: 15px;
-            border-radius: 5px;
-            margin: 15px 0;
-            border-left: 4px solid #28a745;
         }
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>Vancouver Christmas Bird Count</h1>
-        <h2>Area {{ area_code }} Weekly Summary</h2>
-        <p>{{ current_date.strftime('%B %d, %Y') }}</p>
+        {% if branding.logo_url %}
+        <img src="{{ branding.logo_url }}" alt="{{ branding.logo_alt }}" class="header-logo">
+        {% endif %}
+        <div class="header-text">
+            <h1>{{ branding.organization_name }}</h1>
+            <h2>Vancouver Christmas Bird Count</h2>
+            <h3>Area {{ area_code }} Weekly Summary</h3>
+        </div>
     </div>
 
     <div class="content">
-        <p>Dear Area {{ area_code }} Leader{{ 's' if leader_names|length > 1 else '' }},</p>
-        
-        {% if leader_names %}
-        <p><strong>Area Leaders:</strong> {{ leader_names|join(', ') }}</p>
-        {% endif %}
-
-        <div class="no-changes">
-            <h3><i>✅</i> No Team Changes This Week</h3>
-            <p>Your team composition has remained stable with no additions, removals, or reassignments in the past week.</p>
+        <!-- Salutation with Dashboard Button -->
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-bottom: 20px;">
+            <div>
+                <p style="font-size: 18px; font-weight: bold; margin: 0;">Dear Area {{ area_code }} Leader{{ 's' if leader_names|length > 1 else '' }},</p>
+                {% if leader_names %}
+                <p style="margin: 5px 0 0 0;"><strong>Area Leaders:</strong> {{ leader_names|join(', ') }}</p>
+                {% endif %}
+            </div>
+            <a href="{{ leader_dashboard_url }}" class="btn">View Leader Dashboard</a>
         </div>
 
-        {% if current_team %}
-        <div class="stats">
-            <h4><i>📊</i> Team Statistics</h4>
-            <p><strong>Total Team Members:</strong> {{ current_team|length }}</p>
-            <p><strong>Skill Level Breakdown:</strong></p>
-            <ul>
-                {% for skill, count in skill_breakdown.items() %}
-                <li>{{ skill }}: {{ count }} member{{ 's' if count != 1 else '' }}</li>
-                {% endfor %}
-            </ul>
-            <p><strong>CBC Experience Breakdown:</strong></p>
-            <ul>
-                {% for exp, count in experience_breakdown.items() %}
-                <li>{{ exp }}: {{ count }} member{{ 's' if count != 1 else '' }}</li>
-                {% endfor %}
-            </ul>
-            {% if leadership_interest_count > 0 %}
-            <p><strong>Leadership Interest:</strong> {{ leadership_interest_count }} member{{ 's' if leadership_interest_count != 1 else '' }}</p>
+        <!-- Status -->
+        <div class="status-section">
+            <h3>📅 Weekly Status</h3>
+            {% if has_changes %}
+            <p><strong>Status:</strong> <span class="badge badge-info">Changes this week</span> - Your team has been updated with new members or changes.</p>
+            {% else %}
+            <p><strong>Status:</strong> <span class="badge badge-success">No changes this week</span> - Your team roster remains stable.</p>
             {% endif %}
         </div>
 
+        {% if current_team %}
+        <!-- Complete Team Roster -->
         <div class="section-title">
-            <i>👥</i> COMPLETE TEAM ROSTER ({{ current_team|length }} members)
+            👥 COMPLETE CURRENT TEAM ROSTER ({{ current_team|length }} members)
         </div>
-        <div class="team-roster">
-            {% for participant in current_team %}
-            <div class="participant">
-                <strong>{{ participant.first_name }} {{ participant.last_name }}</strong><br>
-                <strong>Email:</strong> {{ participant.email }}<br>
-                <strong>Cell Phone:</strong> {{ participant.phone or 'Not provided' }}<br>
-                <strong>Secondary Phone:</strong> {{ participant.get('phone2') or 'None' }}<br>
-                <strong>Skill:</strong> {{ participant.skill_level or 'Not specified' }} | 
-                <strong>Experience:</strong> {{ participant.experience or 'Not specified' }}
-                {% if participant.interested_in_leadership %}
-                | <strong>Leadership Interest:</strong> Yes
-                {% endif %}
-                <br><small><strong>Registered:</strong> {{ participant.created_at.strftime('%Y-%m-%d') if participant.created_at else 'Unknown' }}</small>
-            </div>
-            {% endfor %}
+
+        <table class="participant-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Cell Phone</th>
+                    <th>Skill Level</th>
+                    <th>Experience</th>
+                    <th>Equipment</th>
+                    <th>Leader</th>
+                    <th>Scribe</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for participant in current_team|sort(attribute='first_name') %}
+                <tr{% if participant.participation_type == 'FEEDER' %} class="feeder-row"{% endif %}>
+                    <td>
+                        <strong>{{ participant.first_name|e }} {{ participant.last_name|e }}</strong>
+                        {% if participant.participation_type == 'FEEDER' %}
+                        <br><span class="badge badge-info">FEEDER</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ participant.email|e }}</td>
+                    <td>
+                        {{ participant.phone|e if participant.phone else 'Not provided' }}
+                        {% if participant.get('phone2') %}
+                        <br><small>{{ participant.phone2|e }}</small>
+                        {% endif %}
+                    </td>
+                    <td>{{ participant.skill_level|e if participant.skill_level else 'Not specified' }}</td>
+                    <td>{{ participant.experience|e if participant.experience else 'Not specified' }}</td>
+                    <td>
+                        {% if participant.has_binoculars %}Binoculars{% endif %}
+                        {% if participant.has_binoculars and participant.spotting_scope %}, {% endif %}
+                        {% if participant.spotting_scope %}Scope{% endif %}
+                        {% if not participant.has_binoculars and not participant.spotting_scope %}None{% endif %}
+                    </td>
+                    <td>
+                        {% if participant.interested_in_leadership %}
+                        <span class="badge badge-warning">Interested</span>
+                        {% else %}
+                        No
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if participant.get('interested_in_scribe') %}
+                        <span class="badge badge-info">Interested</span>
+                        {% else %}
+                        No
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- Team Email Addresses -->
+        <div class="email-summary">
+            <h3>📧 Team Email Addresses ({{ current_team|length }} members)</h3>
+            <p><strong>To copy:</strong> Select all text in the box below, then copy (Ctrl+C or Cmd+C)</p>
+            <div class="email-list" id="emailList">{{ current_team|map(attribute='email')|join(', ') }}</div>
         </div>
         {% endif %}
 
-        <p><strong>Reminder:</strong> With the count date approaching, now is a good time to:</p>
+        <!-- Upcoming Tasks -->
+        <p><strong>Upcoming Tasks:</strong></p>
         <ul>
-            <li>Confirm attendance with all team members</li>
-            <li>Share final meeting location and time details</li>
-            <li>Review area boundaries and target species</li>
-            <li>Ensure everyone has necessary equipment (binoculars, warm clothes, etc.)</li>
+            <li>Confirm count day logistics with your team</li>
+            <li>Share meeting location and time details</li>
+            <li>Coordinate transportation and equipment needs</li>
+            <li>Review count area boundaries and special considerations</li>
         </ul>
 
-        <p>For the most current team information and contact details:</p>
-        <a href="{{ leader_dashboard_url }}" class="btn">View Leader Dashboard</a>
-    </div>
-
-    <div class="footer">
-        <p>This is your weekly team summary from the Vancouver CBC registration system.<br>
-        You receive this email when your team has had no changes for a week.<br>
-        Generated on {{ current_date.strftime('%Y-%m-%d at %H:%M') }} Pacific Time</p>
-        {% if test_mode %}
-        <p><strong>TEST MODE:</strong> This email was generated for testing purposes.</p>
+        <!-- Team Statistics -->
+        {% if current_team %}
+        <div class="section-title">📊 Team Statistics</div>
+        <div class="stats-grid">
+            <div class="stat-box">
+                <div class="stat-number">{{ current_team|length }}</div>
+                <div class="stat-label">Total Members</div>
+            </div>
+            {% for skill, count in skill_breakdown.items() %}
+            <div class="stat-box">
+                <div class="stat-number">{{ count }}</div>
+                <div class="stat-label">{{ skill }}</div>
+            </div>
+            {% endfor %}
+            {% if leadership_interest_count > 0 %}
+            <div class="stat-box">
+                <div class="stat-number">{{ leadership_interest_count }}</div>
+                <div class="stat-label">Leadership Interest</div>
+            </div>
+            {% endif %}
+        </div>
         {% endif %}
     </div>
 </body>

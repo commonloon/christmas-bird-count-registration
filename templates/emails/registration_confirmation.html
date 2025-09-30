@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registration Confirmed - {{ count_event_name }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: {{ branding.background_color }};
+            color: {{ branding.primary_color }};
+            padding: 15px 20px;
+            border-radius: 5px 5px 0 0;
+            display: flex;
+            align-items: center;
+            gap: 30px;
+        }
+        .header-logo {
+            height: 70px;
+            width: auto;
+            flex-shrink: 0;
+        }
+        .header-text {
+            flex-grow: 1;
+        }
+        .header h1, .header h2, .header h3 {
+            margin: 0;
+            line-height: 1.2;
+        }
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 2px;
+        }
+        .header h2 {
+            font-size: 18px;
+            margin-bottom: 2px;
+        }
+        .header h3 {
+            font-size: 16px;
+        }
+        .content {
+            background-color: {{ branding.background_color }};
+            padding: 30px;
+            border: 1px solid {{ branding.accent_color }};
+        }
+        .footer {
+            background-color: {{ branding.secondary_color }};
+            color: white;
+            padding: 15px;
+            text-align: center;
+            font-size: 12px;
+            border-radius: 0 0 5px 5px;
+        }
+        .success-box {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .info-box {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+        .details-section {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+            border-left: 4px solid {{ branding.primary_color }};
+        }
+        .area-info {
+            background-color: white;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 4px solid {{ branding.primary_color }};
+        }
+        .contact-info {
+            background-color: #fff3cd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 4px solid #856404;
+        }
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: {{ branding.primary_color }};
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-top: 15px;
+        }
+        .participation-type {
+            font-weight: bold;
+            font-size: 0.9em;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        {% if branding.logo_url %}
+        <img src="{{ branding.logo_url }}" alt="{{ branding.logo_alt }}" class="header-logo">
+        {% endif %}
+        <div class="header-text">
+            <h1>{{ branding.organization_name }}</h1>
+            <h2>Vancouver Christmas Bird Count</h2>
+            <h3>Registration Confirmed!</h3>
+        </div>
+    </div>
+
+    <div class="content">
+        <p style="font-size: 14px; color: #666; margin: 0 0 20px 0; text-align: center;">
+            Registered on {{ registration_date.strftime('%B %d, %Y at %H:%M') }} Pacific Time
+        </p>
+
+        <div class="success-box">
+            <h3>✅ Welcome to the {{ count_event_name }}!</h3>
+            {% if assigned_area == 'UNASSIGNED' %}
+            <p><strong>You have been registered for assignment wherever you're needed most.</strong></p>
+            {% else %}
+            <p><strong>You have been registered for {{ area_info.name }}.</strong></p>
+            {% endif %}
+        </div>
+
+        <div class="details-section">
+            <h4>📋 Your Registration Details</h4>
+            <p><strong>Name:</strong> {{ first_name }} {{ last_name }}</p>
+            <p><strong>Email:</strong> {{ email }}</p>
+            <p><strong>Phone:</strong> {{ phone or 'Not provided' }}</p>
+            <p><strong>Participation Type:</strong>
+                {% if participation_type == 'FEEDER' %}
+                <span class="participation-type">FEEDER Participant</span> - You'll count birds at your home feeders
+                {% else %}
+                Regular Participant - You'll join a team to survey your assigned area
+                {% endif %}
+            </p>
+            <p><strong>Skill Level:</strong> {{ skill_level or 'Not specified' }}</p>
+            <p><strong>CBC Experience:</strong> {{ experience or 'Not specified' }}</p>
+            <p><strong>Equipment:</strong>
+                Binoculars: {{ '✓' if has_binoculars else '✗' }},
+                Spotting Scope: {{ '✓' if spotting_scope else '✗' }}
+            </p>
+            {% if interested_in_leadership %}
+            <p><strong>Leadership Interest:</strong> ⭐ Yes - You've indicated interest in area leadership</p>
+            {% endif %}
+            {% if interested_in_scribe %}
+            <p><strong>Scribe Interest:</strong> 📝 Yes - You're interested in the scribe role (eBird data entry)</p>
+            {% endif %}
+            {% if notes_to_organizers %}
+            <p><strong>Your Notes:</strong> {{ notes_to_organizers|e }}</p>
+            {% endif %}
+        </div>
+
+        {% if assigned_area != 'UNASSIGNED' %}
+        <div class="area-info">
+            <h4>🗺️ Your Area: {{ assigned_area }}</h4>
+            <p><strong>{{ area_info.name }}</strong></p>
+            <p><strong>Description:</strong> {{ area_info.description }}</p>
+            <p><strong>Terrain:</strong> {{ area_info.terrain }}</p>
+            {% if area_info.difficulty %}
+            <p><strong>Difficulty:</strong> {{ area_info.difficulty }}</p>
+            {% endif %}
+
+            {% if area_leaders %}
+            <div style="margin-top: 15px;">
+                <strong>Your Area Leader{{ 's' if area_leaders|length > 1 else '' }}:</strong><br>
+                {% for leader in area_leaders %}
+                📧 {{ leader.first_name }} {{ leader.last_name }} - {{ leader.leader_email }}<br>
+                📱 {{ leader.cell_phone }}<br>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        <div class="details-section">
+            <h4>📅 What's Next?</h4>
+            <ul>
+                {% if assigned_area == 'UNASSIGNED' %}
+                <li><strong>Assignment Coming Soon:</strong> You will receive an email when an administrator has assigned you to a count area, probably within the next week.</li>
+                <li><strong>Area Leader Contact:</strong> Once assigned, your area leader will be your main contact for information about count day. They will contact you to let you know where to meet, areas you'll survey, etc.</li>
+                {% else %}
+                    {% if area_leaders %}
+                    <li><strong>Area Leader Contact:</strong> Your area leader (listed above) is your main contact for information about count day. They will contact you to let you know where to meet, areas you'll survey, etc.</li>
+                    {% else %}
+                    <li><strong>Area Leader Assignment:</strong> An area leader will be assigned soon and will contact you with count day details.</li>
+                    {% endif %}
+                {% endif %}
+                <li><strong>Count Day Schedule:</strong> The count typically begins early in the morning and lasts until dusk. Please let your area leader know if you aren't available for the full day.</li>
+                <li><strong>Weather:</strong> The Christmas Bird Count happens rain or shine. Dress to stay warm and dry.</li>
+                <li><strong>Equipment:</strong> Bring binoculars and a sense of adventure!</li>
+                {% if participation_type == 'FEEDER' %}
+                <li><strong>FEEDER Instructions:</strong> You'll receive specific instructions for counting birds at your feeders closer to count day.</li>
+                {% endif %}
+            </ul>
+        </div>
+
+        <div class="info-box">
+            {% if assigned_area == 'UNASSIGNED' %}
+            <strong>📧 Important:</strong> Please check your email regularly for area assignment updates and count day details.
+            {% else %}
+            <strong>📧 Important:</strong> Please check your email regularly as your area leader will send count day details closer to the event.
+            {% endif %}
+        </div>
+
+        <div class="contact-info">
+            <h4>📞 Contact Information</h4>
+            <p><strong>Count Questions:</strong> {{ count_contact }}</p>
+            <p><strong>General {{ organization_name }} Questions:</strong> {{ organization_contact }}</p>
+            <p><strong>Need to make changes?</strong> If you need to cancel your participation or update your contact information, please email {{ count_contact }}</p>
+        </div>
+
+        {% if count_info_url %}
+        <div style="text-align: center; margin-top: 20px;">
+            <a href="{{ count_info_url }}" class="btn">Learn More About the Count</a>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="footer">
+        <p>This is an automated confirmation from the {{ count_event_name }} registration system.<br>
+        Welcome to the count! For questions, contact: {{ count_contact }}</p>
+        {% if test_mode %}
+        <p><strong>TEST MODE:</strong> This email was generated for testing purposes.</p>
+        {% endif %}
+    </div>
+</body>
+</html>
+<!-- Updated by Claude AI on 2025-09-15 -->

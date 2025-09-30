@@ -70,6 +70,17 @@ REQUIRED_INDEXES = {
             ],
             'query_scope': Index.QueryScope.COLLECTION
         }
+    ],
+    'removal_log_2025': [
+        # Email generation queries: area_code + removed_at for change detection
+        {
+            'fields': [
+                {'field_path': 'area_code', 'order': Index.IndexField.Order.ASCENDING},
+                {'field_path': 'removed_at', 'order': Index.IndexField.Order.ASCENDING},
+                {'field_path': '__name__', 'order': Index.IndexField.Order.ASCENDING}
+            ],
+            'query_scope': Index.QueryScope.COLLECTION
+        }
     ]
 }
 

@@ -175,21 +175,13 @@ def register():
             flash(
                 'Registration successful! An administrator will assign you to an area and your area leader will contact you.',
                 'success')
-            # Send confirmation email
-            email_service.send_registration_confirmation(
-                email,
-                f"{first_name} {last_name}",
-                "will be assigned by organizers"
-            )
+            # Send confirmation email with participant data
+            email_service.send_registration_confirmation(participant_data, 'UNASSIGNED')
         else:
             flash(f'Registration successful! You have been registered for Area {preferred_area}.', 'success')
-            
-            # Send confirmation email
-            email_service.send_registration_confirmation(
-                email,
-                f"{first_name} {last_name}",
-                preferred_area
-            )
+
+            # Send confirmation email with participant data
+            email_service.send_registration_confirmation(participant_data, preferred_area)
 
         return redirect(url_for('main.registration_success',
                                 area=preferred_area,

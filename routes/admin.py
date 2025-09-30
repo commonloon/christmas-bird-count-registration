@@ -13,6 +13,11 @@ from config.fields import (
 from config.admins import get_admin_emails
 from routes.auth import require_admin, get_current_user
 from services.email_service import email_service
+from test.email_generator import (
+    generate_team_update_emails,
+    generate_weekly_summary_emails,
+    generate_admin_digest_email
+)
 from services.security import (
     sanitize_name, sanitize_email, sanitize_phone, sanitize_notes,
     validate_area_code, validate_experience, is_suspicious_input, log_security_event
@@ -905,9 +910,6 @@ def register_test_email_routes():
             return jsonify({'error': 'Test triggers only available on test server'}), 403
         
         try:
-            # Import here to avoid circular imports
-            from test.email_generator import generate_team_update_emails
-            
             # Generate twice-daily team updates for all areas with leaders
             results = generate_team_update_emails(current_app)
             
@@ -937,9 +939,6 @@ def register_test_email_routes():
             return jsonify({'error': 'Test triggers only available on test server'}), 403
         
         try:
-            # Import here to avoid circular imports
-            from test.email_generator import generate_weekly_summary_emails
-            
             # Generate weekly summaries for all areas with leaders
             results = generate_weekly_summary_emails(current_app)
             
@@ -969,9 +968,6 @@ def register_test_email_routes():
             return jsonify({'error': 'Test triggers only available on test server'}), 403
         
         try:
-            # Import here to avoid circular imports
-            from test.email_generator import generate_admin_digest_email
-            
             # Generate admin digest
             results = generate_admin_digest_email(current_app)
             

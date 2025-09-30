@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Count Day Reminder - {{ count_event_name }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #dc3545;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px 5px 0 0;
+        }
+        .content {
+            background-color: #f8f9fa;
+            padding: 30px;
+            border: 1px solid #dee2e6;
+        }
+        .footer {
+            background-color: #6c757d;
+            color: white;
+            padding: 15px;
+            text-align: center;
+            font-size: 12px;
+            border-radius: 0 0 5px 5px;
+        }
+        .countdown-box {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+            text-align: center;
+            font-size: 1.3em;
+            font-weight: bold;
+        }
+        .leader-contact {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .preparation-section {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+            border-left: 4px solid #dc3545;
+        }
+        .equipment-list {
+            background-color: #d4edda;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 4px solid #28a745;
+        }
+        .weather-section {
+            background-color: #fff3cd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 4px solid #856404;
+        }
+        .contact-section {
+            background-color: #e2e3e5;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 4px solid #6c757d;
+        }
+        .feeder-section {
+            background-color: #cff4fc;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 4px solid #087990;
+        }
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #dc3545;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-top: 15px;
+        }
+        .important-note {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🦅 {{ count_event_name }}</h1>
+        <h2>Count Day Reminder</h2>
+    </div>
+
+    <div class="content">
+        <p>Dear {{ first_name }} {{ last_name }},</p>
+
+        {% if days_until_count is defined %}
+        <div class="countdown-box">
+            {% if days_until_count > 0 %}
+            <h3>⏰ {{ days_until_count }} day{{ 's' if days_until_count != 1 else '' }} until count day!</h3>
+            <p>{{ count_date }}</p>
+            {% elif days_until_count == 0 %}
+            <h3>🎯 Count day is TODAY!</h3>
+            <p>{{ count_date }}</p>
+            {% else %}
+            <h3>📅 Thank you for participating!</h3>
+            <p>The count has been completed.</p>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% if assigned_area != 'UNASSIGNED' %}
+        <div class="leader-contact">
+            <h4>📞 Your Area Leader Contact</h4>
+            <p><strong>Area {{ assigned_area }}:</strong> {{ area_info.name if area_info else assigned_area }}</p>
+
+            {% if area_leaders %}
+            <p><strong>Your Area Leader{{ 's' if area_leaders|length > 1 else '' }}:</strong></p>
+            {% for leader in area_leaders %}
+            <div style="margin: 10px 0; padding: 10px; background-color: white; border-radius: 3px;">
+                <strong>📧 {{ leader.first_name }} {{ leader.last_name }}</strong><br>
+                <strong>Email:</strong> {{ leader.leader_email }}<br>
+                <strong>Phone:</strong> {{ leader.cell_phone }}
+            </div>
+            {% endfor %}
+            {% else %}
+            <p><strong>Area Leader:</strong> Assignment in progress - contact {{ count_contact }} for updates</p>
+            {% endif %}
+
+            <div class="important-note">
+                <strong>❗ Have you received detailed instructions from your area leader?</strong><br>
+                If not, please contact them immediately using the information above. They should have sent you:
+                <ul style="margin-top: 10px;">
+                    <li>Meeting location and time</li>
+                    <li>Area boundaries and route details</li>
+                    <li>Weather contingency plans</li>
+                    <li>Equipment recommendations</li>
+                </ul>
+            </div>
+        </div>
+        {% else %}
+        <div class="leader-contact">
+            <h4>⏳ Area Assignment Pending</h4>
+            <p>You're registered as "Wherever I'm needed most" and haven't been assigned to a specific area yet.</p>
+            <p><strong>Next Steps:</strong> Contact {{ count_contact }} for your area assignment and leader contact information.</p>
+        </div>
+        {% endif %}
+
+        <div class="preparation-section">
+            <h4>🎯 General Count Day Preparation</h4>
+
+            <div class="equipment-list">
+                <h5>🔭 Equipment Checklist</h5>
+                <ul>
+                    <li><strong>Binoculars</strong> - Essential for bird identification</li>
+                    <li><strong>Warm, layered clothing</strong> - Dress for the weather</li>
+                    <li><strong>Waterproof boots</strong> - Keep feet dry and warm</li>
+                    <li><strong>Hat and gloves</strong> - Retain body heat</li>
+                    <li><strong>Notebook and pencil</strong> - For field notes</li>
+                    <li><strong>Field guide or birding app</strong> - Help with identification</li>
+                    <li><strong>Snacks and water</strong> - Stay energized</li>
+                    <li><strong>Fully charged phone</strong> - Emergency contact</li>
+                </ul>
+            </div>
+
+            <div class="weather-section">
+                <h5>🌦️ Weather Considerations</h5>
+                <p><strong>The Christmas Bird Count happens rain or shine!</strong></p>
+                <ul>
+                    <li>Check the weather forecast and dress appropriately</li>
+                    <li>Layer clothing for temperature changes</li>
+                    <li>Bring rain gear if precipitation is expected</li>
+                    <li>Consider hand warmers for very cold conditions</li>
+                    <li>Your area leader will have specific weather contingency plans</li>
+                </ul>
+            </div>
+
+            <div class="equipment-list">
+                <h5>⏰ Timing Expectations</h5>
+                <ul>
+                    <li><strong>Start Time:</strong> Count typically begins early morning</li>
+                    <li><strong>Duration:</strong> Most counts last from dawn until dusk</li>
+                    <li><strong>Flexibility:</strong> Let your area leader know if you can't participate for the full day</li>
+                    <li><strong>Safety First:</strong> Prioritize your safety and comfort</li>
+                </ul>
+            </div>
+        </div>
+
+        {% if participation_type == 'FEEDER' %}
+        <div class="feeder-section">
+            <h4>🏠 Special Instructions for FEEDER Participants</h4>
+            <p><strong>You're registered as a FEEDER participant!</strong> You'll be counting birds at your home feeders rather than in the field.</p>
+            <ul>
+                <li><strong>Count Period:</strong> Follow the same date as the main count</li>
+                <li><strong>Observation Time:</strong> Record birds seen at your feeders during designated hours</li>
+                <li><strong>Data Recording:</strong> Keep detailed notes of species and numbers</li>
+                <li><strong>Different Preparation:</strong> You don't need field gear, but ensure you have good feeder views</li>
+                <li><strong>Coordination:</strong> Your area leader will provide specific FEEDER counting instructions</li>
+            </ul>
+        </div>
+        {% endif %}
+
+        <div class="contact-section">
+            <h4>📱 Important Contacts</h4>
+            <ul>
+                {% if area_leaders %}
+                <li><strong>Your Area Leader:</strong> Contact information listed above</li>
+                {% endif %}
+                <li><strong>Count Questions:</strong> {{ count_contact }}</li>
+                <li><strong>Emergency on Count Day:</strong> Your area leader's phone number</li>
+                <li><strong>General {{ organization_name }} Questions:</strong> {{ organization_contact }}</li>
+            </ul>
+
+            {% if count_info_url %}
+            <p><strong>Additional Information:</strong> Visit {{ count_info_url }} for more details about the count.</p>
+            {% endif %}
+        </div>
+
+        <div style="background-color: #d4edda; padding: 20px; border-radius: 5px; margin: 20px 0; text-align: center;">
+            <h4>🎉 Get Ready for an Amazing Day!</h4>
+            <p>The Christmas Bird Count is one of the longest-running citizen science projects in the world. Thank you for being part of this important conservation effort!</p>
+            <p><strong>Every bird counts, and every counter matters.</strong></p>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>This reminder is from the {{ count_event_name }} registration system.<br>
+        For questions, contact: {{ count_contact }}</p>
+        {% if test_mode %}
+        <p><strong>TEST MODE:</strong> This email was generated for testing purposes.</p>
+        {% endif %}
+    </div>
+</body>
+</html>
+<!-- Updated by Claude AI on 2025-09-15 -->

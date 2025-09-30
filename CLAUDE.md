@@ -27,6 +27,48 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Suggest using environment variables, Google Secret Manager, or secure communication channels
 - NEVER write credentials in documentation even if "needed for resuming work"
 
+## ⚠️ CRITICAL CONFIGURATION MANAGEMENT ⚠️
+
+**NEVER hardcode organization-specific values that should be obtained from configuration files.** This application is designed to be portable for other Christmas Bird Count clubs.
+
+### **Configuration Sources (USE THESE)**
+- **Organization settings**: `config/organization.py` - Organization name, contact emails, URLs, event names
+- **Email settings**: `config/email_settings.py` - Email provider configuration, branding, test mode settings
+- **Area definitions**: `config/areas.py` - Count area codes and descriptions
+- **Admin configuration**: `config/admins.py` - Admin email whitelist
+
+### **Organization Variables (from `config/organization.py`)**
+```python
+from config.organization import get_organization_variables
+
+# Get all organization variables
+org_vars = get_organization_variables()
+# Returns: organization_name, organization_website, organization_contact,
+#          count_contact, count_event_name, count_info_url,
+#          registration_url, admin_url, test_recipient
+```
+
+### **Common Hardcoding Mistakes to AVOID**
+- ❌ Hardcoding "Nature Vancouver" - use `org_vars['organization_name']`
+- ❌ Hardcoding email addresses like "cbc@naturevancouver.ca" - use `org_vars['count_contact']`
+- ❌ Hardcoding "birdcount@naturevancouver.ca" - use `org_vars['test_recipient']` or `COUNT_CONTACT`
+- ❌ Hardcoding "Vancouver Christmas Bird Count" - use `org_vars['count_event_name']`
+- ❌ Hardcoding URLs like "https://cbc-registration.naturevancouver.ca" - use `org_vars['registration_url']` or `org_vars['admin_url']`
+- ❌ Hardcoding "info@naturevancouver.ca" - use `org_vars['organization_contact']`
+
+### **Where to Check for Hardcoded Values**
+When writing or modifying code that mentions organization details:
+1. **Email generation** (`services/email_service.py`, `test/email_generator.py`)
+2. **Email templates** (`templates/emails/*.html`)
+3. **Registration routes** (`routes/main.py`)
+4. **Admin interfaces** (`routes/admin.py`)
+5. **Public templates** (`templates/index.html`, etc.)
+
+### **Testing Configuration Portability**
+- All organization-specific values should be changeable by editing `config/organization.py` only
+- No code changes should be required to adapt this system for another bird count club
+- Search codebase for club-specific strings before committing: `grep -r "Nature Vancouver" --exclude-dir=.git`
+
 **ALL form inputs MUST be properly sanitized and validated.** This application has comprehensive security protections that must be maintained:
 
 ### **Input Sanitization (MANDATORY)**

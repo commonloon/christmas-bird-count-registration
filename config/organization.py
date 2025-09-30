@@ -23,6 +23,9 @@ COUNT_CONTACT = "cbc@naturevancouver.ca"
 COUNT_EVENT_NAME = "Vancouver Christmas Bird Count"
 COUNT_INFO_URL = "https://naturevancouver.ca/birding/vancouver-area-christmas-bird-count/"
 
+# Test Mode Configuration
+TEST_RECIPIENT = "birdcount@naturevancouver.ca"  # All test server emails redirect here
+
 # Registration URLs (environment-aware)
 def get_registration_url():
     """Get environment-appropriate registration URL."""
@@ -51,7 +54,8 @@ def get_organization_variables():
         'count_event_name': COUNT_EVENT_NAME,
         'count_info_url': COUNT_INFO_URL,
         'registration_url': get_registration_url(),
-        'admin_url': get_admin_url()
+        'admin_url': get_admin_url(),
+        'test_recipient': TEST_RECIPIENT
     }
 
 # Helper function for other clubs

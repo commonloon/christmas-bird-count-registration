@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome as Area Leader - {{ count_event_name }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #0d6efd;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px 5px 0 0;
+        }
+        .content {
+            background-color: #f8f9fa;
+            padding: 30px;
+            border: 1px solid #dee2e6;
+        }
+        .footer {
+            background-color: #6c757d;
+            color: white;
+            padding: 15px;
+            text-align: center;
+            font-size: 12px;
+            border-radius: 0 0 5px 5px;
+        }
+        .welcome-box {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .info-section {
+            background-color: white;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+            border-left: 4px solid #0d6efd;
+        }
+        .team-roster {
+            background-color: #e7f3ff;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+        .participant {
+            background-color: white;
+            padding: 10px;
+            margin: 5px 0;
+            border-left: 4px solid #28a745;
+            border-radius: 3px;
+        }
+        .participant.feeder {
+            background-color: #cff4fc;
+            border-left-color: #087990;
+        }
+        .participant.scribe {
+            background-color: #fff3cd;
+            border-left-color: #664d03;
+        }
+        .email-lists {
+            background-color: #fff3cd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+            border-left: 4px solid #856404;
+        }
+        .email-list {
+            background-color: white;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 12px;
+            word-wrap: break-word;
+            border: 1px solid #dee2e6;
+        }
+        .responsibilities {
+            background-color: #d4edda;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 4px solid #28a745;
+        }
+        .email-schedule {
+            background-color: #e2e3e5;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 4px solid #6c757d;
+        }
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #0d6efd;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin-top: 15px;
+        }
+        .participation-type {
+            font-weight: bold;
+            font-size: 0.9em;
+            color: #666;
+        }
+        .section-title {
+            color: #0d6efd;
+            font-weight: bold;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎉 Welcome to {{ count_event_name }}!</h1>
+        <h2>You're Now Area {{ area_code }} Leader</h2>
+    </div>
+
+    <div class="content">
+        <div class="welcome-box">
+            <h3>Congratulations on Your Leadership Role!</h3>
+            <p>Thank you for stepping up to lead <strong>Area {{ area_code }}</strong>. Your leadership makes the Christmas Bird Count possible and helps connect people with nature through citizen science.</p>
+        </div>
+
+        <div class="responsibilities">
+            <h4>🎯 Your Leadership Responsibilities</h4>
+            <ul>
+                <li><strong>Team Coordination:</strong> Contact your team members before count day with meeting location, time, and survey route details</li>
+                <li><strong>Count Day Leadership:</strong> Guide your team through the assigned area, help with bird identification, and coordinate data collection</li>
+                <li><strong>Data Management:</strong> Ensure accurate count records and submit results as instructed by organizers</li>
+                <li><strong>Team Communication:</strong> Keep your team informed of any updates or changes leading up to count day</li>
+                <li><strong>Safety:</strong> Prioritize team safety during field activities</li>
+            </ul>
+        </div>
+
+        <div class="email-schedule">
+            <h4>📧 Email Updates You'll Receive</h4>
+            <p>The registration system will keep you informed with automated emails:</p>
+            <ul>
+                <li><strong>Team Updates (Twice Daily):</strong> When your team composition changes (new members, removals, reassignments)</li>
+                <li><strong>Weekly Team Summary (Fridays 11pm):</strong> Complete team roster with contact details and equipment information</li>
+                <li><strong>Pre-Count Reminders:</strong> Prompts to send detailed instructions to your team members</li>
+            </ul>
+            <p>These emails include copy/paste email lists to make team communication easy.</p>
+        </div>
+
+        {% if current_team %}
+        <div class="info-section">
+            <h4>👥 Your Current Team ({{ current_team|length }} members)</h4>
+
+            {# Scribe-Interested Participants First #}
+            {% set scribe_participants = current_team|selectattr('interested_in_scribe', 'equalto', true)|list %}
+            {% if scribe_participants %}
+            <div class="section-title">
+                <i>📝</i> SCRIBE-INTERESTED PARTICIPANTS ({{ scribe_participants|length }})
+            </div>
+            <div class="team-roster">
+                {% for participant in scribe_participants %}
+                <div class="participant scribe">
+                    <strong>{{ participant.first_name }} {{ participant.last_name }}</strong>
+                    <span class="participation-type">(Scribe Interest)</span><br>
+                    <strong>Email:</strong> {{ participant.email }}<br>
+                    <strong>Phone:</strong> {{ participant.phone or 'Not provided' }}<br>
+                    <strong>Skill:</strong> {{ participant.skill_level or 'Not specified' }} |
+                    <strong>Experience:</strong> {{ participant.experience or 'Not specified' }}<br>
+                    <strong>Equipment:</strong>
+                    Binoculars: {{ '✓' if participant.has_binoculars else '✗' }},
+                    Spotting Scope: {{ '✓' if participant.spotting_scope else '✗' }}
+                    {% if participant.interested_in_leadership %}
+                    | <strong>Leadership Interest:</strong> Yes
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {# Regular Participants #}
+            {% set regular_participants = current_team|selectattr('participation_type', 'equalto', 'regular')|selectattr('interested_in_scribe', 'equalto', false)|list %}
+            {% if regular_participants %}
+            <div class="section-title">
+                <i>🦅</i> REGULAR PARTICIPANTS ({{ regular_participants|length }})
+            </div>
+            <div class="team-roster">
+                {% for participant in regular_participants %}
+                <div class="participant">
+                    <strong>{{ participant.first_name }} {{ participant.last_name }}</strong><br>
+                    <strong>Email:</strong> {{ participant.email }}<br>
+                    <strong>Phone:</strong> {{ participant.phone or 'Not provided' }}<br>
+                    <strong>Skill:</strong> {{ participant.skill_level or 'Not specified' }} |
+                    <strong>Experience:</strong> {{ participant.experience or 'Not specified' }}<br>
+                    <strong>Equipment:</strong>
+                    Binoculars: {{ '✓' if participant.has_binoculars else '✗' }},
+                    Spotting Scope: {{ '✓' if participant.spotting_scope else '✗' }}
+                    {% if participant.interested_in_leadership %}
+                    | <strong>Leadership Interest:</strong> Yes
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {# FEEDER Participants #}
+            {% set feeder_participants = current_team|selectattr('participation_type', 'equalto', 'FEEDER')|list %}
+            {% if feeder_participants %}
+            <div class="section-title">
+                <i>🏠</i> FEEDER PARTICIPANTS ({{ feeder_participants|length }})
+            </div>
+            <div class="team-roster">
+                {% for participant in feeder_participants %}
+                <div class="participant feeder">
+                    <strong>{{ participant.first_name }} {{ participant.last_name }}</strong>
+                    <span class="participation-type">(FEEDER)</span><br>
+                    <strong>Email:</strong> {{ participant.email }}<br>
+                    <strong>Phone:</strong> {{ participant.phone or 'Not provided' }}<br>
+                    <strong>Skill:</strong> {{ participant.skill_level or 'Not specified' }} |
+                    <strong>Experience:</strong> {{ participant.experience or 'Not specified' }}<br>
+                    <strong>Equipment:</strong>
+                    Binoculars: {{ '✓' if participant.has_binoculars else '✗' }},
+                    Spotting Scope: {{ '✓' if participant.spotting_scope else '✗' }}
+                </div>
+                {% endfor %}
+            </div>
+            <div style="background-color: #d1ecf1; padding: 10px; border-radius: 5px; margin-top: 10px; font-size: 0.9em;">
+                <strong>FEEDER Coordination:</strong> FEEDER participants count birds at their home feeders and require different coordination than regular participants.
+            </div>
+            {% endif %}
+        </div>
+
+        {# Copy/Paste Email Lists #}
+        <div class="email-lists">
+            <h4>📧 Copy/Paste Email Lists for Team Communication</h4>
+            <p>Use these lists to easily email your team members:</p>
+
+            <div style="margin-bottom: 15px;">
+                <strong>All Team Members:</strong>
+                <div class="email-list">{{ current_team|map(attribute='email')|join(', ') }}</div>
+            </div>
+
+            {% if regular_participants %}
+            <div style="margin-bottom: 15px;">
+                <strong>Regular Participants Only:</strong>
+                <div class="email-list">{{ regular_participants|map(attribute='email')|join(', ') }}</div>
+            </div>
+            {% endif %}
+
+            {% if feeder_participants %}
+            <div style="margin-bottom: 15px;">
+                <strong>FEEDER Participants Only:</strong>
+                <div class="email-list">{{ feeder_participants|map(attribute='email')|join(', ') }}</div>
+            </div>
+            {% endif %}
+        </div>
+        {% else %}
+        <div class="info-section">
+            <h4>👥 Your Team</h4>
+            <p>You don't have any team members assigned yet. You'll receive team update emails as participants are assigned to your area.</p>
+        </div>
+        {% endif %}
+
+        <div class="info-section">
+            <h4>📚 Resources and Support</h4>
+            <ul>
+                <li><strong>Count Coordination Support:</strong> Contact {{ count_contact }} for any questions about leadership or count logistics</li>
+                <li><strong>Organization Resources:</strong> Visit {{ organization_website }} for additional {{ organization_name }} information</li>
+                <li><strong>Registration System:</strong> You'll receive automated emails to keep you updated on your team</li>
+                {% if leader_dashboard_url %}
+                <li><strong>Leader Dashboard:</strong> Access your team information online (if available)</li>
+                {% endif %}
+            </ul>
+        </div>
+
+        <div style="text-align: center; margin-top: 20px;">
+            <p><strong>Thank you for your leadership!</strong></p>
+            {% if leader_dashboard_url %}
+            <a href="{{ leader_dashboard_url }}" class="btn">Access Leader Dashboard</a>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>Welcome to the {{ count_event_name }} leadership team!<br>
+        For questions or support, contact: {{ count_contact }}</p>
+        {% if test_mode %}
+        <p><strong>TEST MODE:</strong> This email was generated for testing purposes.</p>
+        {% endif %}
+    </div>
+</body>
+</html>
+<!-- Updated by Claude AI on 2025-09-15 -->

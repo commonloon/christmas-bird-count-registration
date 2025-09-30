@@ -1,3 +1,4 @@
+{# Updated by Claude AI on 2025-09-29 #}
 {% extends "base.html" %}
 
 {% block title %}Admin Dashboard - Vancouver Christmas Bird Count{% endblock %}
@@ -222,7 +223,8 @@ function triggerTestEmail(emailType) {
     fetch(endpoints[emailType], {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
         }
     })
     .then(response => response.json())

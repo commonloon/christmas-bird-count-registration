@@ -24,8 +24,8 @@ deploy() {
         --platform managed \
         --region us-west1 \
         --allow-unauthenticated \
-        --set-env-vars="$env_vars,GOOGLE_CLOUD_PROJECT=vancouver-cbc-registration" \
-        --set-secrets="GOOGLE_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_CLIENT_SECRET=google-oauth-client-secret:latest,SECRET_KEY=flask-secret-key:latest"
+        --set-env-vars="$env_vars,GOOGLE_CLOUD_PROJECT=vancouver-cbc-registration,EMAIL_PROVIDER=smtp2go,FROM_EMAIL=cbc@naturevancouver.ca" \
+        --set-secrets="GOOGLE_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_CLIENT_SECRET=google-oauth-client-secret:latest,SECRET_KEY=flask-secret-key:latest,SMTP2GO_USERNAME=smtp2go-username:latest,SMTP2GO_PASSWORD=smtp2go-password:latest"
     
     echo "$service deployment complete!"
     echo "URL: https://$service.naturevancouver.ca"

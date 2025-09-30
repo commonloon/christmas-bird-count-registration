@@ -1,6 +1,7 @@
 # Christmas Bird Count Registration System - Development Notes
+{# Updated by Claude AI on 2025-09-29 #}
 
-## Current Development Status (As of 2025-09-23)
+## Current Development Status (As of 2025-09-29)
 
 ### 🔄 Major Architecture Change (2025-09-23)
 
@@ -24,7 +25,23 @@ Many of the planned features below are now **simplified or obsolete** due to the
 
 ### ✅ Recently Completed Features
 
-#### 1. Single-Table Architecture Migration (2025-09-23)
+#### 1. Leader Dashboard Implementation (2025-09-29)
+- **Feature**: Read-only area leader dashboard at `/leader` route
+- **Purpose**: Allow area leaders to view their team roster and participant details
+- **Access Control**: Requires Google OAuth authentication and `is_leader=True` in participant records
+- **Content**: Displays leader's contact info, team summary, and complete roster matching admin/participants layout
+- **Layout**:
+  - Leader information card with contact details
+  - Team summary showing total, regular, and FEEDER participant counts
+  - Separate tables for regular and FEEDER participants
+  - Full notes visible (no truncation) for mobile readability
+  - Same columns as admin interface: Name, Email, Cell Phone, Skill Level, Experience, Equipment, Notes, Leader Interest, Scribe Interest
+- **Future Enhancement**: Historical data view (3-year lookback) deferred - see pending features below
+- **Navigation**: Leader-branded navbar ("Vancouver CBC Area Leader")
+- **Files Created**: routes/leader.py (simplified single-route implementation), templates/leader/dashboard.html
+- **Files Modified**: templates/base.html (added leader context navigation)
+
+#### 2. Single-Table Architecture Migration (2025-09-23)
 - **Major Refactoring**: Converted from dual-table design (participants + area_leaders) to clean single-table design
 - **Problem Solved**: Eliminated complex dual-table synchronization, data duplication, and consistency issues
 - **Root Issue**: Dual tables created synchronization bugs, complex deduplication logic, and maintenance overhead
@@ -143,7 +160,34 @@ Many of the planned features below are now **simplified or obsolete** due to the
 
 ### ❌ Pending Implementation
 
-#### 1. Inline Edit/Delete Functionality for Participants Table (2025-09-17)
+#### 1. Leader Dashboard Historical Data View (2025-09-29)
+- **Purpose**: Allow area leaders to view historical participant data (3-year lookback) for recruitment purposes
+- **Current Status**: Year selector exists in template but only current year available
+- **Requirements**:
+  - Add historical data query method to get participants from previous years
+  - Implement email deduplication logic (show most recent data when person appears in multiple years)
+  - Add year selector functionality to leader dashboard
+  - Consider read-only indicator for historical years
+  - Maintain same layout as current year view
+- **Technical Approach**:
+  - Use existing `ParticipantModel.get_historical_participants()` method
+  - Query collections: `participants_2025`, `participants_2024`, `participants_2023`, etc.
+  - Deduplicate by email (keep most recent participant record)
+  - Display historical data with year badges or indicators
+- **Data Utility**: Helps leaders recruit previous participants who haven't registered for current year
+- **Priority**: Medium - useful for recruitment but not critical for initial leader dashboard launch
+
+#### 2. Email Provider Configuration Flexibility (2025-09-29)
+- **Current Issue**: Email provider is hardcoded as 'smtp2go' in deploy.sh
+- **Impact**: Future installations with different email providers would require deploy script modifications
+- **Solution Needed**: Make email provider selection configurable via environment variable or configuration file
+- **Implementation Ideas**:
+  - Move EMAIL_PROVIDER to a configuration file that can be customized per installation
+  - Add deployment parameter to override email provider selection
+  - Document email provider options and setup procedures for different providers
+- **Priority**: Low - current SMTP2GO setup works for current installation needs
+
+#### 2. Inline Edit/Delete Functionality for Participants Table (2025-09-17)
 
 **Objective**: Add the same inline edit/delete functionality to the participants table that exists for the leaders table.
 
