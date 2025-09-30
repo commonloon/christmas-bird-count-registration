@@ -1,4 +1,4 @@
-{# Updated by Claude AI on 2025-09-29 #}
+{# Updated by Claude AI on 2025-09-30 #}
 {% extends "base.html" %}
 
 {% block title %}Leader Dashboard - Vancouver Christmas Bird Count{% endblock %}
@@ -7,6 +7,9 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1>Leader Dashboard - Area {{ area_code }}</h1>
     <div>
+        <button id="exportCsvBtn" class="btn btn-primary me-2" onclick="exportTeamCsv()">
+            <i class="bi bi-download"></i> Export Team CSV
+        </button>
         <span class="badge bg-info">{{ selected_year }}</span>
         {% if current_user.email %}
         <span class="text-muted">{{ current_user.email }}</span>
@@ -235,5 +238,110 @@
     <i class="bi bi-info-circle-fill"></i> No participants registered for Area {{ area_code }} yet.
 </div>
 {% endif %}
+
+<script>
+/* Updated by Claude AI on 2025-09-30 */
+function exportTeamCsv() {
+    // CSV header matching admin export format
+    const headers = [
+        'first_name', 'last_name', 'email', 'phone', 'phone2', 'skill_level',
+        'experience', 'preferred_area', 'participation_type', 'has_binoculars',
+        'spotting_scope', 'notes_to_organizers', 'interested_in_leadership',
+        'interested_in_scribe', 'is_leader', 'assigned_area_leader'
+    ];
+
+    // Build participant data array (regular first, then FEEDER)
+    const participants = [];
+
+    {% if regular_participants %}
+    {% for p in regular_participants %}
+    participants.push({
+        first_name: {{ p.first_name|tojson }},
+        last_name: {{ p.last_name|tojson }},
+        email: {{ p.email|tojson }},
+        phone: {{ p.phone|tojson }},
+        phone2: {{ p.get('phone2', '')|tojson }},
+        skill_level: {{ p.skill_level|tojson }},
+        experience: {{ p.experience|tojson }},
+        preferred_area: {{ p.preferred_area|tojson }},
+        participation_type: {{ p.get('participation_type', 'regular')|tojson }},
+        has_binoculars: {{ p.has_binoculars|tojson }},
+        spotting_scope: {{ p.spotting_scope|tojson }},
+        notes_to_organizers: {{ p.get('notes_to_organizers', '')|tojson }},
+        interested_in_leadership: {{ p.interested_in_leadership|tojson }},
+        interested_in_scribe: {{ p.get('interested_in_scribe', false)|tojson }},
+        is_leader: {{ p.is_leader|tojson }},
+        assigned_area_leader: {{ p.get('assigned_area_leader', '')|tojson }}
+    });
+    {% endfor %}
+    {% endif %}
+
+    {% if feeder_participants %}
+    {% for p in feeder_participants %}
+    participants.push({
+        first_name: {{ p.first_name|tojson }},
+        last_name: {{ p.last_name|tojson }},
+        email: {{ p.email|tojson }},
+        phone: {{ p.phone|tojson }},
+        phone2: {{ p.get('phone2', '')|tojson }},
+        skill_level: {{ p.skill_level|tojson }},
+        experience: {{ p.experience|tojson }},
+        preferred_area: {{ p.preferred_area|tojson }},
+        participation_type: {{ p.get('participation_type', 'FEEDER')|tojson }},
+        has_binoculars: {{ p.has_binoculars|tojson }},
+        spotting_scope: {{ p.spotting_scope|tojson }},
+        notes_to_organizers: {{ p.get('notes_to_organizers', '')|tojson }},
+        interested_in_leadership: {{ p.interested_in_leadership|tojson }},
+        interested_in_scribe: {{ p.get('interested_in_scribe', false)|tojson }},
+        is_leader: {{ p.is_leader|tojson }},
+        assigned_area_leader: {{ p.get('assigned_area_leader', '')|tojson }}
+    });
+    {% endfor %}
+    {% endif %}
+
+    if (participants.length === 0) {
+        alert('No participants to export.');
+        return;
+    }
+
+    // Build CSV content
+    let csv = headers.join(',') + '\n';
+
+    participants.forEach(p => {
+        const row = headers.map(header => {
+            let value = p[header];
+            // Handle boolean values
+            if (typeof value === 'boolean') {
+                value = value ? 'Yes' : 'No';
+            }
+            // Handle null/undefined
+            if (value === null || value === undefined) {
+                value = '';
+            }
+            // Escape quotes and wrap in quotes if contains comma or quote
+            value = String(value);
+            if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+                value = '"' + value.replace(/"/g, '""') + '"';
+            }
+            return value;
+        });
+        csv += row.join(',') + '\n';
+    });
+
+    // Create download
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+    const filename = `cbc_area_{{ area_code }}_participants_{{ selected_year }}_${today}.csv`;
+
+    link.setAttribute('href', url);
+    link.setAttribute('download', filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+</script>
 
 {% endblock %}

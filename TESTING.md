@@ -11,31 +11,14 @@ This document provides instructions for running the Christmas Bird Count registr
 
 Before running tests, ensure you have the proper Google Cloud authentication configured:
 
-#### 1. Basic gcloud Authentication
+#### 1. Basic gcloud Authentication and application default credentials
 ```bash
-# Check if you're authenticated
-gcloud auth list
+# These two commands should ensure sufficient gcloud auth permissions to run the test suite
+# Tests require Application Default Credentials for accessing Firestore and Secret Manager:
 
-# If not authenticated, login
 gcloud auth login
-
-# Verify project is set correctly
-gcloud config get-value project
-# Should return: vancouver-cbc-registration
-
-# Set project if not configured
-gcloud config set project vancouver-cbc-registration
-```
-
-#### 2. Application Default Credentials (Required)
-Tests require Application Default Credentials for accessing Firestore and Secret Manager:
-
-```bash
-# Set up application default credentials (opens browser)
 gcloud auth application-default login
 
-# Verify credentials are working
-gcloud auth application-default print-access-token
 ```
 
 #### 3. Verify Test Dependencies Access
