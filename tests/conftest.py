@@ -212,15 +212,36 @@ def browser(chrome_options, firefox_options):
 
     try:
         if browser_type == 'firefox':
-            from webdriver_manager.firefox import GeckoDriverManager
-            driver_service = FirefoxService(GeckoDriverManager().install())
-            driver = webdriver.Firefox(service=driver_service, options=firefox_options)
-            logger.info("Firefox browser instance created")
+            # Try system-installed geckodriver first, fall back to webdriver-manager with cache
+            try:
+                # Attempt to use system geckodriver (no download required)
+                driver_service = FirefoxService()
+                driver = webdriver.Firefox(service=driver_service, options=firefox_options)
+                logger.info("Firefox browser instance created using system geckodriver")
+            except Exception as system_error:
+                logger.info(f"System geckodriver not found, using webdriver-manager: {system_error}")
+                from webdriver_manager.firefox import GeckoDriverManager
+                from webdriver_manager.core.driver_cache import DriverCacheManager
+                # Use cache for 30 days to avoid GitHub API rate limiting
+                cache_manager = DriverCacheManager(valid_range=30)
+                driver_service = FirefoxService(GeckoDriverManager(cache_manager=cache_manager).install())
+                driver = webdriver.Firefox(service=driver_service, options=firefox_options)
+                logger.info("Firefox browser instance created using webdriver-manager")
         else:  # Default to Chrome
-            from webdriver_manager.chrome import ChromeDriverManager
-            driver_service = ChromeService(ChromeDriverManager().install())
-            driver = webdriver.Chrome(service=driver_service, options=chrome_options)
-            logger.info("Chrome browser instance created")
+            # Try system-installed chromedriver first, fall back to webdriver-manager with cache
+            try:
+                driver_service = ChromeService()
+                driver = webdriver.Chrome(service=driver_service, options=chrome_options)
+                logger.info("Chrome browser instance created using system chromedriver")
+            except Exception as system_error:
+                logger.info(f"System chromedriver not found, using webdriver-manager: {system_error}")
+                from webdriver_manager.chrome import ChromeDriverManager
+                from webdriver_manager.core.driver_cache import DriverCacheManager
+                # Use cache for 30 days to avoid GitHub API rate limiting
+                cache_manager = DriverCacheManager(valid_range=30)
+                driver_service = ChromeService(ChromeDriverManager(cache_manager=cache_manager).install())
+                driver = webdriver.Chrome(service=driver_service, options=chrome_options)
+                logger.info("Chrome browser instance created using webdriver-manager")
 
         driver.implicitly_wait(3)  # Reduced for faster element finding
         driver.set_page_load_timeout(15)  # Reduced from 30s for faster navigation
@@ -390,14 +411,29 @@ def pytest_runtest_setup(item):
         browser_type = TEST_CONFIG.get('browser', 'firefox').lower()
         try:
             if browser_type == 'firefox':
-                # Test Firefox availability
+                # Test Firefox availability - use cached version to avoid GitHub API calls
                 from webdriver_manager.firefox import GeckoDriverManager
+                from webdriver_manager.core.driver_cache import DriverCacheManager
                 from selenium.webdriver.firefox.service import Service as FirefoxService
-                GeckoDriverManager().install()  # Verify geckodriver can be installed
+                # Try system geckodriver first
+                try:
+                    FirefoxService()
+                except:
+                    # Fall back to cached webdriver-manager version (30 day cache)
+                    cache_manager = DriverCacheManager(valid_range=30)
+                    GeckoDriverManager(cache_manager=cache_manager).install()
             else:
-                # Test Chrome availability
+                # Test Chrome availability - use cached version to avoid GitHub API calls
                 from webdriver_manager.chrome import ChromeDriverManager
-                ChromeDriverManager().install()  # Verify chromedriver can be installed
+                from webdriver_manager.core.driver_cache import DriverCacheManager
+                # Try system chromedriver first
+                try:
+                    from selenium.webdriver.chrome.service import Service as ChromeService
+                    ChromeService()
+                except:
+                    # Fall back to cached webdriver-manager version (30 day cache)
+                    cache_manager = DriverCacheManager(valid_range=30)
+                    ChromeDriverManager(cache_manager=cache_manager).install()
         except Exception as e:
             pytest.skip(f"{browser_type.title()} browser not available for testing: {e}")
 

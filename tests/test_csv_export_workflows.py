@@ -539,15 +539,29 @@ class TestCSVExportPerformance:
         ]
 
         cookies = {cookie['name']: cookie['value'] for cookie in dashboard.driver.get_cookies()}
+        logger.info(f"Retrieved {len(cookies)} cookies from browser session")
 
         for csv_url in csv_urls:
             try:
+                logger.info(f"Attempting CSV export from: {csv_url}")
                 response = requests.get(csv_url, cookies=cookies, timeout=60)  # Longer timeout for large exports
+                logger.info(f"Response status: {response.status_code}, content length: {len(response.content)}")
+                logger.info(f"Response headers: {dict(response.headers)}")
+
                 if response.status_code == 200 and len(response.content) > 0:
+                    logger.info(f"Successfully retrieved CSV from {csv_url}")
                     return response.content.decode('utf-8')
+                elif response.status_code == 302:
+                    logger.warning(f"CSV route redirects to: {response.headers.get('location')}")
+                else:
+                    logger.warning(f"CSV route returned status {response.status_code}")
+                    # Log first 500 chars of response for debugging
+                    content_preview = response.content[:500].decode('utf-8', errors='ignore')
+                    logger.warning(f"Response content preview: {content_preview}")
             except Exception as e:
                 logger.warning(f"Failed to get CSV from {csv_url}: {e}")
 
+        logger.error("All CSV export URLs failed")
         return None
 
     def _parse_csv_content(self, csv_content):

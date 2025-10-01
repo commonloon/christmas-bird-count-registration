@@ -222,30 +222,163 @@ pytest tests/ -n 4 -v
 # Note: Be careful with parallel execution for database tests
 ```
 
+## Understanding Test Results
+
+### Reading Test Output
+
+When you run tests with pytest, the output follows a standard format:
+
+```bash
+# Example test run output:
+============================= test session starts =============================
+platform win32 -- Python 3.13.7, pytest-8.4.2, pluggy-1.6.0
+rootdir: C:\AndroidStudioProjects\christmas-bird-count-registration\tests
+collected 12 items
+
+tests/test_registration.py::test_basic_registration PASSED           [  8%]
+tests/test_registration.py::test_feeder_constraints FAILED           [ 16%]
+tests/test_admin_workflows.py::test_leader_management SKIPPED        [ 25%]
+tests/test_csv_export.py::test_export_format PASSED                  [ 33%]
+...
+
+================================== FAILURES ===================================
+______________________ test_feeder_constraints ________________________________
+[detailed error information here]
+
+========================= short test summary info =============================
+PASSED tests/test_registration.py::test_basic_registration
+FAILED tests/test_registration.py::test_feeder_constraints - AssertionError
+SKIPPED tests/test_admin_workflows.py::test_leader_management - No leaders found
+================== 10 passed, 1 failed, 1 skipped in 45.23s ==================
+```
+
+**Understanding the symbols:**
+- `.` = Test passed
+- `F` = Test failed
+- `s` = Test skipped
+- `x` = Expected failure (xfail)
+- `E` = Error during test execution
+
+**Understanding the summary:**
+- `PASSED` - Test completed successfully with all assertions passing
+- `FAILED` - Test failed due to assertion error or exception
+- `SKIPPED` - Test was intentionally skipped (e.g., missing prerequisites)
+- `ERROR` - Test could not complete due to setup/teardown errors
+
+### Test Result Details
+
+When a test fails, pytest shows:
+1. **Test name and location** - Which test failed and where it's defined
+2. **Failure reason** - The assertion that failed or exception that occurred
+3. **Traceback** - Full stack trace showing where the error happened
+4. **Failed assertion context** - Values that caused the assertion to fail
+
+Example failure output:
+```bash
+tests/test_registration.py:42: in test_feeder_constraints
+    assert participant.area == "A"
+E   AssertionError: assert "UNASSIGNED" == "A"
+E    +  where "UNASSIGNED" = participant.area
+```
+
+This shows:
+- Test location: `test_registration.py` line 42
+- What failed: `assert participant.area == "A"`
+- Why it failed: area was "UNASSIGNED" instead of "A"
+
+### Verbose Output Options
+
+```bash
+# Minimal output (one character per test)
+pytest tests/ -q
+
+# Standard output (one line per test)
+pytest tests/
+
+# Verbose output (shows full test names)
+pytest tests/ -v
+
+# Extra verbose (shows test details and output)
+pytest tests/ -vv
+
+# Show local variables on failure
+pytest tests/ -l
+
+# Show full tracebacks
+pytest tests/ --tb=long
+
+# Show short tracebacks (default)
+pytest tests/ --tb=short
+
+# Show only one line per failure
+pytest tests/ --tb=line
+
+# No traceback
+pytest tests/ --tb=no
+```
+
 ## Test Reports and Output
 
 ### HTML Reports
+
+**Note:** HTML reports are **not generated automatically**. You must explicitly request them using the `--html` flag.
+
 ```bash
-# Generate detailed HTML report
+# Generate detailed HTML report (requires pytest-html plugin)
 pytest tests/ -v --html=test_reports/report.html --self-contained-html
 
 # Open report in browser (Windows)
 start test_reports/report.html
+
+# Generate report in specific directory
+pytest tests/ -v --html=reports/$(date +%Y%m%d)/test_results.html --self-contained-html
 ```
+
+**HTML Report Contents:**
+- Summary statistics (passed, failed, skipped counts)
+- Test duration breakdown
+- Full failure details with tracebacks
+- Test logs and captured output
+- Browser screenshots (for browser-based tests)
+- Filterable and sortable results
+
+**Default Behavior:**
+- Without `--html` flag: Results displayed in console only
+- With `--html` flag: Results in both console and HTML file
+- `--self-contained-html`: Embeds CSS/JS in single file for easy sharing
 
 ### Console Output Formatting
 ```bash
 # Verbose output with test details
 pytest tests/ -v
 
-# Show test durations
+# Show test durations (slowest 10 tests)
 pytest tests/ --durations=10
+
+# Show all test durations
+pytest tests/ --durations=0
 
 # Show only failures
 pytest tests/ --tb=short
 
 # Quiet mode (minimal output)
 pytest tests/ -q
+```
+
+### Filtering Test Results Display
+
+```bash
+# Show only failed tests in summary
+pytest tests/ --tb=short -v | grep FAILED
+
+# Show only test names (no setup/teardown)
+pytest tests/ --no-header --no-summary -q
+
+# Show statistics summary only
+pytest tests/ -q --tb=no
+
+# Show detailed failure information only
+pytest tests/ --tb=short -v 2>&1 | grep -A 20 "FAILURES"
 ```
 
 ### Logging and Debugging

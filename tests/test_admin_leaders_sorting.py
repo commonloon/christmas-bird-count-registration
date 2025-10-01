@@ -60,7 +60,7 @@ class TestAdminLeadersSorting:
                 'email': 'zebra.a@test.com',
                 'preferred_area': 'A',
                 'participation_type': 'regular',
-                'leadership_interest': True
+                'interested_in_leadership': True
             },
             {
                 'first_name': 'Alpha',  # A name in Area C
@@ -68,7 +68,7 @@ class TestAdminLeadersSorting:
                 'email': 'alpha.c@test.com',
                 'preferred_area': 'C',
                 'participation_type': 'regular',
-                'leadership_interest': True
+                'interested_in_leadership': True
             },
             {
                 'first_name': 'Beta',  # B name in Area A (should sort after Alpha C but before Zebra A)
@@ -76,7 +76,7 @@ class TestAdminLeadersSorting:
                 'email': 'beta.a@test.com',
                 'preferred_area': 'A',
                 'participation_type': 'regular',
-                'leadership_interest': True
+                'interested_in_leadership': True
             },
             {
                 'first_name': 'Charlie',  # C name in Area B
@@ -84,7 +84,7 @@ class TestAdminLeadersSorting:
                 'email': 'charlie.b@test.com',
                 'preferred_area': 'B',
                 'participation_type': 'regular',
-                'leadership_interest': True
+                'interested_in_leadership': True
             }
         ]
 
@@ -195,7 +195,7 @@ class TestAdminLeadersSorting:
             'email': 'single.test@test.com',
             'preferred_area': 'F',
             'participation_type': 'regular',
-            'leadership_interest': True
+            'interested_in_leadership': True
         }
 
         participant_id = participant_model.add_participant(test_participant)
@@ -210,7 +210,7 @@ class TestAdminLeadersSorting:
             'email': 'potential.test@test.com',
             'preferred_area': 'G',
             'participation_type': 'regular',
-            'leadership_interest': True
+            'interested_in_leadership': True
         }
         participant_model.add_participant(potential_participant)
 
