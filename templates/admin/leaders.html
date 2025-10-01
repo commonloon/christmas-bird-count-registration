@@ -165,7 +165,7 @@
     <div class="card-body">
         <p>Manually add a leader who is not registered as a participant (primary workflow):</p>
         
-        <form method="POST" action="{{ url_for('admin.add_leader') }}">
+        <form id="add-leader-form" method="POST" action="{{ url_for('admin.add_leader') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="year" value="{{ selected_year }}">
             
@@ -344,7 +344,49 @@ window.allAreas = {{ all_areas | tojson }};
 document.addEventListener('DOMContentLoaded', function() {
     let leaderIdToDelete = null;
     let leaderRowToDelete = null;
-    
+
+    // Add validation to manual leader add form
+    const addLeaderForm = document.getElementById('add-leader-form');
+    if (addLeaderForm) {
+        addLeaderForm.addEventListener('submit', function(e) {
+            const emailInput = this.querySelector('#email');
+            if (emailInput && emailInput.value) {
+                if (!validateEmailFormat(emailInput.value.trim())) {
+                    e.preventDefault();
+                    emailInput.classList.add('is-invalid');
+
+                    // Remove existing error message
+                    const existingError = emailInput.parentNode.querySelector('.invalid-feedback');
+                    if (existingError) {
+                        existingError.remove();
+                    }
+
+                    // Add error message
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'invalid-feedback';
+                    errorDiv.textContent = 'Please enter a valid email address';
+                    emailInput.parentNode.appendChild(errorDiv);
+
+                    // Scroll to form
+                    addLeaderForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    return false;
+                }
+            }
+        });
+
+        // Clear error on input
+        const emailInput = addLeaderForm.querySelector('#email');
+        if (emailInput) {
+            emailInput.addEventListener('input', function() {
+                this.classList.remove('is-invalid');
+                const errorDiv = this.parentNode.querySelector('.invalid-feedback');
+                if (errorDiv) {
+                    errorDiv.remove();
+                }
+            });
+        }
+    }
+
     // Handle edit button clicks
     document.querySelectorAll('.btn-edit').forEach(button => {
         button.addEventListener('click', function() {
