@@ -8,7 +8,7 @@
         body {
             font-family: Arial, sans-serif;
             line-height: 1.6;
-            color: #333;
+            color: {{ branding.text_color }};
             max-width: 800px;
             margin: 0 auto;
             padding: 20px;
@@ -51,8 +51,8 @@
             border: 1px solid {{ branding.accent_color }};
         }
         .footer {
-            background-color: {{ branding.secondary_color }};
-            color: white;
+            background-color: {{ branding.background_color }};
+            color: {{ branding.text_color }};
             padding: 15px;
             text-align: center;
             font-size: 12px;
@@ -113,12 +113,12 @@
             text-transform: uppercase;
         }
         .badge-warning {
-            background-color: #ffc107;
+            background-color: {{ branding.badge_warning }};
             color: #212529;
         }
         .badge-info {
-            background-color: #17a2b8;
-            color: white;
+            background-color: {{ branding.badge_warning }};
+            color: #212529;
         }
         .badge-danger {
             background-color: #dc3545;
@@ -138,7 +138,7 @@
             border-left: 4px solid #dc3545;
         }
         .section-title {
-            color: {{ branding.primary_color }};
+            color: {{ branding.text_color }};
             font-weight: bold;
             margin-top: 25px;
             margin-bottom: 10px;
@@ -152,12 +152,11 @@
         .btn {
             display: inline-block;
             padding: 10px 20px;
-            background-color: {{ branding.accent_color }};
-            color: {{ branding.secondary_color }};
+            background-color: {{ branding.primary_color }};
+            color: white;
             font-weight: bold;
             text-decoration: none;
             border-radius: 5px;
-            margin-top: 15px;
         }
     </style>
 </head>
@@ -176,7 +175,7 @@
     <div class="content">
         <!-- Salutation with Dashboard Button -->
         <div style="display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-bottom: 20px;">
-            <div>
+            <div style="margin-right: auto;">
                 <p style="font-size: 18px; font-weight: bold; margin: 0;">Dear Area {{ area_code }} Leader{{ 's' if leader_names|length > 1 else '' }},</p>
                 {% if leader_names %}
                 <p style="margin: 5px 0 0 0;"><strong>Area Leaders:</strong> {{ leader_names|join(', ') }}</p>
@@ -189,8 +188,17 @@
 
         {% if new_participants %}
         <div class="changes-section new-members">
-            <h3>📥 NEW TEAM MEMBERS ({{ new_participants|length }})</h3>
+            <h3>📥 New Team Members ({{ new_participants|length }})</h3>
             {% for participant in new_participants %}
+            <p><strong>{{ participant.first_name }} {{ participant.last_name }}</strong> - {{ participant.email }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if updated_participants %}
+        <div class="changes-section" style="background-color: #fff3cd; border-left: 4px solid {{ branding.badge_warning }};">
+            <h3>📝 Participant Info Updates ({{ updated_participants|length }})</h3>
+            {% for participant in updated_participants %}
             <p><strong>{{ participant.first_name }} {{ participant.last_name }}</strong> - {{ participant.email }}</p>
             {% endfor %}
         </div>
@@ -198,7 +206,7 @@
 
         {% if removed_participants %}
         <div class="changes-section removed-members">
-            <h3>📤 REMOVED TEAM MEMBERS ({{ removed_participants|length }})</h3>
+            <h3>📤 Removed Team Members ({{ removed_participants|length }})</h3>
             {% for removal in removed_participants %}
             <p><strong>{{ removal.participant_name }}</strong>{% if removal.reason %} - {{ removal.reason }}{% endif %}</p>
             {% endfor %}
@@ -214,7 +222,7 @@
         </div>
 
         <div class="section-title">
-            👥 COMPLETE CURRENT TEAM ROSTER ({{ current_team|length }} members)
+            👥 Complete Team Roster ({{ current_team|length }} members)
         </div>
 
         <table class="participant-table">

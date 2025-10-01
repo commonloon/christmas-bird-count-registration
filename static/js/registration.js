@@ -1,5 +1,12 @@
-// Updated by Claude AI at 2025-01-15 14:35:12
+// Updated by Claude AI on 2025-09-30
 // Form interactions for Vancouver CBC Registration
+
+// Import shared validation utilities
+// Note: validation.js must be loaded before this script
+if (typeof validateEmailFormat === 'undefined') {
+    console.error('validation.js must be loaded before registration.js');
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     initializeFormHandlers();
     initializeValidation();
@@ -62,7 +69,7 @@ function initializeFormHandlers() {
     const emailField = document.getElementById('email');
     if (emailField) {
         emailField.addEventListener('input', function() {
-            if (this.value && !isValidEmail(this.value)) {
+            if (this.value && !validateEmailFormat(this.value)) {
                 showFieldError('email', 'Please enter a valid email address');
             } else {
                 clearFieldError('email');
@@ -134,7 +141,7 @@ function validateForm() {
 
     // Validate email format
     const emailField = document.getElementById('email');
-    if (emailField && emailField.value && !isValidEmail(emailField.value)) {
+    if (emailField && emailField.value && !validateEmailFormat(emailField.value)) {
         showFieldError('email', 'Please enter a valid email address');
         errors.push('Please enter a valid email address');
         isValid = false;
@@ -159,7 +166,7 @@ function validateField(fieldId) {
         return false;
     }
 
-    if (fieldId === 'email' && field.value && !isValidEmail(field.value)) {
+    if (fieldId === 'email' && field.value && !validateEmailFormat(field.value)) {
         showFieldError(fieldId, 'Please enter a valid email address');
         return false;
     }
@@ -168,10 +175,7 @@ function validateField(fieldId) {
     return true;
 }
 
-function isValidEmail(email) {
-    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    return emailRegex.test(email);
-}
+// Email validation moved to validation.js for centralized use across all forms
 
 function showFieldError(fieldId, message) {
     const field = document.getElementById(fieldId);

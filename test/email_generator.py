@@ -97,53 +97,60 @@ def calculate_experience_breakdown(participants: List[Dict]) -> Dict[str, int]:
     return breakdown
 
 
-def get_participants_changes_since(participant_model: ParticipantModel, area_code: str, 
-                                   since_timestamp: datetime) -> Tuple[List[Dict], List[Dict]]:
-    """Get participants added and removed since the given timestamp."""
+def get_participants_changes_since(participant_model: ParticipantModel, area_code: str,
+                                   since_timestamp: datetime) -> Tuple[List[Dict], List[Dict], List[Dict]]:
+    """Get participants added, updated, and removed since the given timestamp.
+
+    Returns:
+        Tuple of (new_participants, updated_participants, removed_participants)
+        - new_participants: created_at > since_timestamp
+        - updated_participants: updated_at > since_timestamp AND created_at <= since_timestamp
+        - removed_participants: from removal_log since timestamp
+    """
     try:
         # Ensure since_timestamp is timezone-aware for comparison
         if since_timestamp.tzinfo is None:
             since_timestamp = since_timestamp.replace(tzinfo=timezone.utc)
-        
+
         # Get current participants for the area
         current_participants = participant_model.get_participants_by_area(area_code)
-        
-        # Get recently added participants (created or updated since timestamp)
+
+        # Classify participants: new vs updated
         new_participants = []
+        updated_participants = []
+
         for participant in current_participants:
             created_at = participant.get('created_at')
             updated_at = participant.get('updated_at')
-            
-            # Handle created_at comparison
-            if created_at:
-                # Ensure created_at is timezone-aware for comparison
-                if created_at.tzinfo is None:
-                    created_at = created_at.replace(tzinfo=timezone.utc)
-                
-                if created_at > since_timestamp:
-                    new_participants.append(participant)
-                    continue
-            
-            # Handle updated_at comparison
-            if updated_at:
-                # Ensure updated_at is timezone-aware for comparison
-                if updated_at.tzinfo is None:
-                    updated_at = updated_at.replace(tzinfo=timezone.utc)
-                
-                if updated_at > since_timestamp:
-                    # Check if this was an area reassignment to this area
+
+            # Ensure timestamps are timezone-aware for comparison
+            if created_at and created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
+            if updated_at and updated_at.tzinfo is None:
+                updated_at = updated_at.replace(tzinfo=timezone.utc)
+
+            # New participant: created after last email
+            if created_at and created_at > since_timestamp:
+                new_participants.append(participant)
+            # Updated participant: updated after last email but created before
+            elif updated_at and updated_at > since_timestamp:
+                if created_at and created_at <= since_timestamp:
+                    # This is a participant info update (not a new registration)
+                    updated_participants.append(participant)
+                else:
+                    # Area reassignment or other update - treat as new to this area
                     if participant.get('preferred_area') == area_code:
                         new_participants.append(participant)
-        
+
         # Get removed participants from removal log
         removal_model = RemovalLogModel(participant_model.db, participant_model.year)
         removed_participants = removal_model.get_removals_since(area_code, since_timestamp)
-        
-        return new_participants, removed_participants
-        
+
+        return new_participants, updated_participants, removed_participants
+
     except Exception as e:
         logger.error(f"Error getting participant changes for area {area_code} since {since_timestamp}: {e}")
-        return [], []
+        return [], [], []
 
 
 def generate_team_update_emails(app=None) -> Dict[str, Any]:
@@ -177,12 +184,12 @@ def generate_team_update_emails(app=None) -> Dict[str, Any]:
                     last_email_sent = current_time - timedelta(days=1)
                 
                 # Get changes since last email
-                new_participants, removed_participants = get_participants_changes_since(
+                new_participants, updated_participants, removed_participants = get_participants_changes_since(
                     participant_model, area_code, last_email_sent
                 )
-                
+
                 # Only send email if there are changes
-                if not new_participants and not removed_participants:
+                if not new_participants and not updated_participants and not removed_participants:
                     logger.info(f"No changes for area {area_code}, skipping team update email")
                     continue
                 
@@ -205,6 +212,7 @@ def generate_team_update_emails(app=None) -> Dict[str, Any]:
                     'area_code': area_code,
                     'leader_names': leader_names,
                     'new_participants': new_participants,
+                    'updated_participants': updated_participants,
                     'removed_participants': removed_participants,
                     'current_team': current_team,
                     'current_date': current_time,

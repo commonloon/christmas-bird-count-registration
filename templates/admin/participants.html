@@ -1,4 +1,4 @@
-{# Updated by Claude AI on 2025-09-23 #}
+{# Updated by Claude AI on 2025-09-30 #}
 {% extends "base.html" %}
 
 {% block title %}All Participants - Vancouver Christmas Bird Count{% endblock %}
@@ -23,19 +23,27 @@
     </ol>
 </nav>
 
-<!-- Year selector -->
+<!-- Year Tabs Navigation -->
 {% if available_years and available_years|length > 1 %}
-<div class="card mb-4">
-    <div class="card-body">
-        <h5 class="card-title">Year Selection</h5>
-        <form method="GET" class="d-inline-block">
-            <select name="year" class="form-select d-inline-block w-auto" onchange="this.form.submit()">
-                {% for year in available_years %}
-                <option value="{{ year }}" {% if year == selected_year %}selected{% endif %}>{{ year }}</option>
-                {% endfor %}
-            </select>
-        </form>
-    </div>
+<ul class="nav nav-tabs mb-4" role="tablist">
+    {% for year in available_years %}
+    <li class="nav-item" role="presentation">
+        <a class="nav-link {% if year == selected_year %}active{% endif %} {% if year < current_year %}text-warning{% endif %}"
+           href="{{ url_for('admin.participants', year=year) }}"
+           role="tab">
+            {{ year }}
+            {% if year < current_year %}<i class="bi bi-archive ms-1" title="Historical data"></i>{% endif %}
+        </a>
+    </li>
+    {% endfor %}
+</ul>
+{% endif %}
+
+<!-- Historical Data Warning Banner -->
+{% if is_historical %}
+<div class="alert alert-warning" role="alert">
+    <i class="bi bi-info-circle-fill"></i>
+    <strong>Historical Data ({{ selected_year }})</strong> - This is read-only data from a previous year. Edit and delete actions are disabled.
 </div>
 {% endif %}
 
@@ -77,8 +85,8 @@
     {% for area_code in participants | map(attribute='preferred_area') | list | unique | sort %}
     {% set area_participants = participants | selectattr('preferred_area', 'equalto', area_code) | list %}
     {% if area_participants %}
-    <div id="area-{{ area_code }}" class="card mb-4">
-        <div class="card-header">
+    <div id="area-{{ area_code }}" class="card mb-4{% if is_historical %} bg-warning bg-opacity-10{% endif %}">
+        <div class="card-header{% if is_historical %} bg-warning bg-opacity-25{% endif %}">
             <h5 class="mb-0">
                 {% if area_code == 'UNASSIGNED' %}
                     UNASSIGNED ({{ area_participants|length }})
@@ -249,6 +257,7 @@
                                 </div>
                             </td>
                             <td>
+                                {% if not is_historical %}
                                 <div class="btn-group btn-group-sm action-buttons" role="group">
                                     <button type="button" class="btn btn-outline-primary btn-edit" title="Edit">
                                         <i class="bi bi-pencil"></i>
@@ -267,6 +276,9 @@
                                         <i class="bi bi-x"></i>
                                     </button>
                                 </div>
+                                {% else %}
+                                <span class="text-muted small">Read-only</span>
+                                {% endif %}
                             </td>
                         </tr>
                         {% endfor %}
@@ -320,6 +332,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/validation.js') }}"></script>
 <script>
 // Handle delete modal
 const deleteModal = document.getElementById('deleteModal');
@@ -425,9 +438,8 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        // Email validation
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(formData.email)) {
+        // Email validation using shared validator
+        if (!validateEmailFormat(formData.email)) {
             alert('Please enter a valid email address.');
             return;
         }

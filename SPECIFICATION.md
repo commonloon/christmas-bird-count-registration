@@ -179,11 +179,16 @@ def get_admin_emails():
 - **Email Testing Section (Test Server Only)**: Manual trigger buttons for testing all three email types with immediate feedback
 
 **Participant Management (`/admin/participants`)**
-- **Unified Data Source**: All data from `participants_2025` collection with integrated leadership information
+- **Tab Navigation**: Current year + past 3 years with available data
+  - Current year tab: Default selection, full edit capabilities
+  - Historical year tabs: Orange text with archive icon indicator, read-only
+- **Historical Data Warning**: Alert banner for historical years indicating read-only status and disabled edit/delete actions
+- **Unified Data Source**: All data from `participants_YYYY` collection with integrated leadership information
 - **Dual-Section Display**: Separate tables for FEEDER and regular participants within each area
 - **In-Page Navigation**: Jump links to quickly access areas with participant counts in headers
 - **Area-Based Organization**: Participants grouped alphabetically by area with participant counts in headers
   - **Area Leader Information**: When leaders are assigned, displays leader name, email, and phone in area headers
+  - **Orange Background**: Cards display orange tint when viewing historical data (bg-warning bg-opacity-10/25)
 - **Comprehensive Information Display**:
   - Contact info: name, email, cell phone + secondary phone with clickable mailto links
   - Experience data: skill level badges, CBC experience
@@ -192,16 +197,19 @@ def get_admin_emails():
   - Area assignment with links to area detail views
   - Leadership status and interest indicators
   - **Scribe Interest Indicators**: Blue "Interested" badges for participants interested in scribe role (regular participants only)
-- **Inline Editing Capabilities**:
+- **Inline Editing Capabilities** (Current Year Only):
   - **Editable Fields**: Name (first/last), email, cell phone (primary/secondary), skill level, experience, equipment (binoculars/scope), notes, leadership interest, scribe interest
   - **Edit Mode**: Click pencil icon to enable inline editing with form controls
   - **Selective Updates**: Backend only updates fields that are explicitly changed by the user, preserving all other participant data unchanged
   - **Data Protection**: Non-displayed fields (registration date, area assignments, etc.) remain unmodified during edits
   - **Real-time Updates**: UI updates immediately after successful save with proper validation
   - **Cell Phone Width**: Optimized width to display 10-digit phone numbers with punctuation
+  - **Historical Years**: Edit and delete buttons hidden, replaced with "Read-only" text
 - **Sorting**: Areas displayed in alphabetical order, participants within each area sorted alphabetically by first name
-- **Actions**: Delete participants with confirmation modal and reason logging, inline edit with save/cancel options
+- **Actions**: Delete participants with confirmation modal and reason logging, inline edit with save/cancel options (current year only)
 - **Visual Indicators**: FEEDER participants clearly marked with type indicator
+- **Year Selection**: Server-side tab switching via query parameter (?year=YYYY)
+- **CSV Export**: Available for both current and historical years via Quick Actions section
 
 **Unassigned Participant Management (`/admin/unassigned`)**
 - Area capacity overview with color-coded participant counts
@@ -264,10 +272,21 @@ def get_admin_emails():
 - **Email digest system** for unassigned participants
 
 ### Area Leader Interface
-- View own area's participant lists (current + historical years)
-- Export contact information for recruitment emails
-- Read-only access to historical data
-- Area-specific registration statistics
+**Dashboard Display (`/leader`):**
+- **Tab Navigation**: Current year + past 3 years with available data
+  - Current year tab: Default selection, standard styling
+  - Historical year tabs: Orange text with archive icon indicator
+- **Leader Information Card**: Displays current year assignment (name, email, phones, area)
+- **Team Summary Card**: Total participant count with breakdown (regular vs FEEDER)
+- **Historical Data Warning**: Alert banner for historical years indicating read-only status
+- **Participant Tables**:
+  - Separate sections for regular and FEEDER participants
+  - Orange background tint on cards when viewing historical data (bg-warning bg-opacity-10/25)
+  - Full participant details: name, email, phones, skill level, experience, equipment, notes, interests
+  - Sorted alphabetically by first name within each section
+- **CSV Export**: Button exports team roster for selected year
+- **Year Selection**: Server-side tab switching via query parameter (?year=YYYY)
+- **Data Scope**: Shows only participants in leader's currently assigned area across all years
 
 ### Email Notification System (Core Complete, API Pending)
 **Three Automated Email Types:**

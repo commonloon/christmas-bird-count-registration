@@ -48,7 +48,7 @@ def get_current_user_email():
 @require_leader
 @limiter.limit(RATE_LIMITS['admin_general'])
 def dashboard():
-    """Leader dashboard showing their team roster."""
+    """Leader dashboard showing their team roster with historical year support."""
     if not g.db:
         return render_template('leader/dashboard.html', error="Database unavailable")
 
@@ -57,23 +57,22 @@ def dashboard():
         flash('Authentication error. Please log in again.', 'error')
         return redirect(url_for('auth.login'))
 
+    # Get current year
+    current_year = datetime.now().year
+
     # Get selected year from query params, default to current year
-    selected_year = int(request.args.get('year', datetime.now().year))
+    selected_year = int(request.args.get('year', current_year))
 
-    # Initialize model for selected year
-    participant_model = ParticipantModel(g.db, selected_year)
-
-    # Get leader's own participant record(s) - there may be multiple family members
-    leader_records = participant_model.get_participants_by_email(user_email)
-
-    # Filter to only those with is_leader=True
+    # Get leader info from current year to determine area assignment
+    current_participant_model = ParticipantModel(g.db, current_year)
+    leader_records = current_participant_model.get_participants_by_email(user_email)
     leader_records = [r for r in leader_records if r.get('is_leader', False)]
 
     if not leader_records:
         flash('You are not assigned as an area leader.', 'error')
         return redirect(url_for('main.index'))
 
-    # Get the first leader record (primary)
+    # Get the first leader record (primary) - always from current year
     leader_info = leader_records[0]
     assigned_area = leader_info.get('assigned_area_leader')
 
@@ -84,7 +83,10 @@ def dashboard():
     # Get area information
     area_info = get_area_info(assigned_area)
 
-    # Get all participants for this area
+    # Initialize model for selected year to get participant data
+    participant_model = ParticipantModel(g.db, selected_year)
+
+    # Get all participants for this area in the selected year
     all_participants = participant_model.get_participants_by_area(assigned_area)
 
     # Separate FEEDER and regular participants
@@ -95,12 +97,21 @@ def dashboard():
     feeder_participants.sort(key=lambda x: x.get('first_name', '').lower())
     regular_participants.sort(key=lambda x: x.get('first_name', '').lower())
 
-    # Get available years (for future historical data feature)
+    # Get available years for tab navigation
     available_years = ParticipantModel.get_available_years(g.db)
+
+    # Filter to current year + past 3 years with data
+    historical_years = [y for y in available_years if y < current_year][-3:]
+    display_years = [current_year] + historical_years if current_year in available_years else historical_years[:4]
+
+    # Determine if selected year is historical (read-only)
+    is_historical = selected_year < current_year
 
     return render_template('leader/dashboard.html',
                            selected_year=selected_year,
-                           available_years=available_years,
+                           current_year=current_year,
+                           available_years=display_years,
+                           is_historical=is_historical,
                            leader_info=leader_info,
                            area_code=assigned_area,
                            area_info=area_info,

@@ -118,27 +118,114 @@ def sanitize_phone(phone: str) -> str:
 def sanitize_email(email: str) -> str:
     """
     Sanitize email address input.
-    
+
     Args:
         email: Email to sanitize
-        
+
     Returns:
         Sanitized email (lowercase, trimmed, basic validation)
+
+    Note:
+        Removes percent signs (%) and exclamation marks (!) for security.
+        These are obsolete email syntax that could be used for attacks.
     """
     if not isinstance(email, str):
         return ""
-    
+
     # Basic sanitization
     email = sanitize_text_input(email, max_length=254, allow_newlines=False)
-    
+
     # Convert to lowercase
     email = email.lower()
-    
+
     # Remove any characters that could be used for injection
-    # Keep only valid email characters
+    # Keep only valid email characters (alphanumeric, @, dot, underscore, plus, hyphen)
+    # Explicitly exclude: percent (%), exclamation (!) for security
     email = re.sub(r'[^a-z0-9@._+-]', '', email)
-    
+
     return email
+
+
+def validate_email_format(email: str) -> bool:
+    """
+    Email format validation with security restrictions.
+
+    Centralized email validation function used across all routes.
+    Validates:
+    - Proper character set (alphanumeric, dots, underscores, plus, hyphens)
+    - No consecutive dots in local part
+    - No dots at start/end of local part
+    - Proper domain format with TLD
+    - Standard length limits (64 local, 255 domain, 254 total)
+    - SECURITY: Rejects percent signs (obsolete, potential encoding attacks)
+    - SECURITY: Rejects exclamation marks (bang paths, obsolete UUCP routing)
+
+    Args:
+        email: Email address to validate
+
+    Returns:
+        True if email format is valid, False otherwise
+
+    Examples:
+        >>> validate_email_format('user@example.com')
+        True
+        >>> validate_email_format('user+tag@example.com')
+        True
+        >>> validate_email_format('user%name@example.com')
+        False  # Percent signs rejected for security
+        >>> validate_email_format('user!name@example.com')
+        False  # Bang paths rejected for security
+    """
+    if not email or not isinstance(email, str) or len(email) > 254:
+        return False
+
+    # Security check: Reject percent signs (obsolete, potential encoding attacks)
+    if '%' in email:
+        return False
+
+    # Security check: Reject exclamation marks (bang paths, obsolete UUCP routing)
+    if '!' in email:
+        return False
+
+    # Check for consecutive dots
+    if '..' in email:
+        return False
+
+    # Split on @ - must have exactly one @
+    try:
+        local, domain = email.rsplit('@', 1)
+    except ValueError:
+        return False
+
+    # Local part validation (before @)
+    if not local or len(local) > 64:
+        return False
+
+    # Local part cannot start or end with dot
+    if local.startswith('.') or local.endswith('.'):
+        return False
+
+    # Local part pattern: alphanumeric, dots, underscores, plus, hyphens
+    # Note: Percent and exclamation excluded for security (checked above)
+    # Note: This pattern matches the JavaScript version in validation.js
+    local_pattern = r'^[a-zA-Z0-9._+-]+$'
+    if not re.match(local_pattern, local):
+        return False
+
+    # Domain part validation (after @)
+    if not domain or len(domain) > 255:
+        return False
+
+    # Domain must have at least one dot and end with 2+ letter TLD
+    domain_pattern = r'^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    if not re.match(domain_pattern, domain):
+        return False
+
+    # Domain cannot start or end with dot or hyphen
+    if domain.startswith('.') or domain.endswith('.') or domain.startswith('-') or domain.endswith('-'):
+        return False
+
+    return True
 
 def sanitize_notes(notes: str) -> str:
     """

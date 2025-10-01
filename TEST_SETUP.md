@@ -1,15 +1,16 @@
 # Test Suite Setup Instructions
-{# Updated by Claude AI on 2025-09-23 #}
+{# Updated by Claude AI on 2025-09-30 #}
 
 ## Overview
 
-This document provides complete setup instructions for the Christmas Bird Count registration system test suite. The test suite runs functional tests against cloud environments using real Google OAuth and Firestore databases.
+This document provides complete setup instructions for the Christmas Bird Count registration system test suite. The test suite includes both Python (pytest) and JavaScript (Jest) tests that validate backend and frontend functionality.
 
 ## Prerequisites
 
 ### System Requirements
 - **Operating System**: Windows 11 (development environment)
 - **Python**: 3.8 or higher
+- **Node.js**: 18.x or higher (for JavaScript tests)
 - **Mozilla Firefox**: Latest version installed (primary browser for OAuth stability)
 - **Google Chrome**: Optional secondary browser (has OAuth stability issues)
 - **Git**: For version control
@@ -30,7 +31,7 @@ This document provides complete setup instructions for the Christmas Bird Count 
 cd C:\AndroidStudioProjects\christmas-bird-count-registration
 ```
 
-### 2. Install Test Dependencies
+### 2. Install Python Test Dependencies
 ```bash
 # Install test-specific requirements
 pip install -r tests/requirements.txt
@@ -39,7 +40,28 @@ pip install -r tests/requirements.txt
 pytest --version
 ```
 
-### 3. Verify Google Cloud Authentication
+### 3. Install JavaScript Test Dependencies
+```bash
+# Navigate to tests directory
+cd tests
+
+# Install Jest and dependencies
+npm install
+
+# Verify Jest installation
+npx jest --version
+
+# Navigate back to project root
+cd ..
+```
+
+**JavaScript Test Notes:**
+- Node.js 18.x or higher required
+- Dependencies installed in `tests/node_modules/` (not project root)
+- `node_modules/` excluded from git and deployment via `.gitignore` and `.gcloudignore`
+- JavaScript tests run locally without server (Node.js environment)
+
+### 4. Verify Google Cloud Authentication
 ```bash
 # Check authentication status
 gcloud auth list
@@ -53,7 +75,7 @@ gcloud secrets list --filter="name~test-"
 # Should show test account secrets
 ```
 
-### 4. Verify Firefox Browser Setup
+### 5. Verify Firefox Browser Setup
 ```bash
 # Check Firefox version (run in Command Prompt)
 firefox --version
@@ -71,7 +93,7 @@ firefox --version
 - Chrome can still be used but has OAuth stability issues with Google Identity Services
 - Chrome crashes frequently during automated OAuth flows
 
-### 5. Test Environment Verification
+### 6. Test Environment Verification
 ```bash
 # Navigate to test directory
 cd tests
@@ -84,6 +106,10 @@ python -c "from google.cloud import firestore; client = firestore.Client(); prin
 
 # Test Secret Manager access
 python -c "from google.cloud import secretmanager; client = secretmanager.SecretManagerServiceClient(); print('Secret Manager connection successful')"
+
+# Test JavaScript tests
+npm run test:email-validation
+# Should show: Tests: 81 passed, 81 total
 ```
 
 ## Test Account Configuration
@@ -421,7 +447,54 @@ print(stats)
 - **Avoid real email addresses** in test data
 - **Clean up test data** after test completion
 
-## Recent Test Framework Improvements (Updated 2025-09-26)
+## Test Suite Organization
+
+### Python Tests (pytest)
+- **Location**: `tests/test_*.py`
+- **Framework**: pytest with fixtures and markers
+- **Environment**: Runs against cloud environments (cbc-test.naturevancouver.ca)
+- **Authentication**: Uses Google OAuth with test accounts
+- **Database**: Tests against Firestore (cbc-test database)
+- **Total Tests**: 51+ Python tests for backend validation
+
+### JavaScript Tests (Jest)
+- **Location**: `tests/*.test.js`
+- **Framework**: Jest with Node.js environment
+- **Environment**: Runs locally without server
+- **Focus**: Frontend validation logic (email validation)
+- **Total Tests**: 81 JavaScript tests for frontend validation
+- **Execution Time**: ~0.5 seconds
+
+### Test Directory Structure
+```
+tests/
+├── config.py                     # Python test configuration
+├── conftest.py                   # Pytest fixtures
+├── pytest.ini                    # Pytest settings
+├── requirements.txt              # Python test dependencies
+├── package.json                  # Jest configuration
+├── node_modules/                 # Jest dependencies (excluded from git/deploy)
+├── utils/                        # Test utilities (auth, database, identity)
+├── test_*.py                     # Python test modules (pytest)
+└── *.test.js                     # JavaScript test modules (Jest)
+```
+
+### Deployment Safety
+- **JavaScript dependencies**: Installed in `tests/node_modules/` only (not project root)
+- **Git exclusions**: `.gitignore` excludes `node_modules/`, `package-lock.json`, `*.log`
+- **Deployment exclusions**: `.gcloudignore` excludes entire `tests/` directory
+- **No accidental deployment**: Test code and dependencies never deployed to Cloud Run
+
+## Recent Test Framework Improvements (Updated 2025-09-30)
+
+### ✅ **Email Validation Testing Complete**
+
+**✅ Frontend and Backend Validation Consistency (132 tests)**:
+- **Python Tests**: 51 pytest tests for backend email validation (`test_email_validation.py`)
+- **JavaScript Tests**: 81 Jest tests for frontend email validation (`email_validation.test.js`)
+- **Consistency**: Both test suites use identical test cases to ensure validation parity
+- **Security**: Both validate RFC 5322 compliance with security restrictions (reject % and !)
+- **Coverage**: Valid emails, invalid emails, length limits, plus signs, TLDs, subdomains, edge cases
 
 ### ✅ **Functional Test Framework Established**
 

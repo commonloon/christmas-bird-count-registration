@@ -18,19 +18,27 @@
     </div>
 </div>
 
-<!-- Year selector (currently only shows current year, historical deferred) -->
+<!-- Year Tabs Navigation -->
 {% if available_years and available_years|length > 1 %}
-<div class="card mb-4">
-    <div class="card-body">
-        <h5 class="card-title">Year Selection</h5>
-        <form method="GET" class="d-inline-block">
-            <select name="year" class="form-select d-inline-block w-auto" onchange="this.form.submit()">
-                {% for year in available_years %}
-                <option value="{{ year }}" {% if year == selected_year %}selected{% endif %}>{{ year }}</option>
-                {% endfor %}
-            </select>
-        </form>
-    </div>
+<ul class="nav nav-tabs mb-4" role="tablist">
+    {% for year in available_years %}
+    <li class="nav-item" role="presentation">
+        <a class="nav-link {% if year == selected_year %}active{% endif %} {% if year < current_year %}text-warning{% endif %}"
+           href="{{ url_for('leader.dashboard', year=year) }}"
+           role="tab">
+            {{ year }}
+            {% if year < current_year %}<i class="bi bi-archive ms-1" title="Historical data"></i>{% endif %}
+        </a>
+    </li>
+    {% endfor %}
+</ul>
+{% endif %}
+
+<!-- Historical Data Warning Banner -->
+{% if is_historical %}
+<div class="alert alert-warning" role="alert">
+    <i class="bi bi-info-circle-fill"></i>
+    <strong>Historical Data ({{ selected_year }})</strong> - This is read-only data from a previous year.
 </div>
 {% endif %}
 
@@ -78,8 +86,8 @@
 
 <!-- Regular Participants -->
 {% if regular_participants %}
-<div class="card mb-4">
-    <div class="card-header">
+<div class="card mb-4{% if is_historical %} bg-warning bg-opacity-10{% endif %}">
+    <div class="card-header{% if is_historical %} bg-warning bg-opacity-25{% endif %}">
         <h5 class="mb-0">Regular Participants ({{ regular_participants|length }})</h5>
     </div>
     <div class="card-body">
@@ -157,8 +165,8 @@
 
 <!-- FEEDER Participants -->
 {% if feeder_participants %}
-<div class="card mb-4">
-    <div class="card-header">
+<div class="card mb-4{% if is_historical %} bg-warning bg-opacity-10{% endif %}">
+    <div class="card-header{% if is_historical %} bg-warning bg-opacity-25{% endif %}">
         <h5 class="mb-0">FEEDER Participants ({{ feeder_participants|length }})</h5>
     </div>
     <div class="card-body">

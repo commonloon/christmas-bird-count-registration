@@ -1,5 +1,5 @@
 # Test Execution Guide
-{# Updated by Claude AI on 2025-09-24 #}
+{# Updated by Claude AI on 2025-09-30 #}
 
 ## Overview
 
@@ -51,11 +51,13 @@ chrome --version
 ## Quick Start
 
 ### Basic Test Execution
+
+#### Python Tests (pytest)
 ```bash
 # Navigate to project root
 cd C:\AndroidStudioProjects\christmas-bird-count-registration
 
-# Run all tests with verbose output
+# Run all Python tests with verbose output
 pytest tests/ -v
 
 # Run critical tests only
@@ -63,6 +65,21 @@ pytest tests/ -m critical -v
 
 # Run with HTML report
 pytest tests/ -v --html=test_reports/report.html --self-contained-html
+```
+
+#### JavaScript Tests (Jest)
+```bash
+# Navigate to tests directory
+cd C:\AndroidStudioProjects\christmas-bird-count-registration\tests
+
+# Run JavaScript email validation tests
+npm run test:email-validation
+
+# Run with verbose output
+npm run test:email-validation:verbose
+
+# Or run Jest directly
+npx jest email_validation.test.js
 ```
 
 ### Test Categories

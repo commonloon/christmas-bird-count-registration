@@ -1,5 +1,5 @@
 # Email System Specification for Single-Table Architecture
-{# Updated by Claude AI on 2025-09-29 #}
+{# Updated by Claude AI on 2025-09-30 #}
 
 This document specifies the automated email notification system for the Christmas Bird Count registration application, adapted for the single-table architecture where all participant and leadership data is unified in `participants_YYYY` collections.
 
@@ -24,17 +24,18 @@ The email system provides automated notifications to area leaders and administra
 
 **Trigger Conditions**:
 - New participant registrations in the area
+- Participant information updates (contact info, equipment, skill level, experience)
 - Participants reassigned to/from the area
 - Participant deletions from the area
-- Email address changes for existing team members
 
 **Content**:
 - **Subject**: "{date} Vancouver CBC Area {area_code} Update" (date prefix format: YYYY-MM-DD)
 - **New team members**: Added or reassigned to area since last update (simplified list format)
+- **Participant info updates**: Contact info, equipment, or other field changes (simplified list format)
 - **Removed team members**: Deleted or reassigned from area since last update (simplified list format)
-- **Email Summary Section**: Dedicated section with all team email addresses in copy-friendly format with copy button
+- **Email Summary Section**: Dedicated section with all team email addresses in copy-friendly format
 - **Complete current roster**: Professional table format matching admin interface (Name, Email, Cell Phone, Skill Level, Experience, Equipment, Leader Interest, Scribe Interest)
-- **Leader dashboard link**: Environment-appropriate URL
+- **Leader dashboard link**: Environment-appropriate URL with CSV export capability
 
 **Frequency**: Automated checks twice daily (production scheduling pending)
 
@@ -54,9 +55,9 @@ The email system provides automated notifications to area leaders and administra
 - **Subject**: "{date} Vancouver CBC Area {area_code} Weekly Summary" (date prefix format: YYYY-MM-DD)
 - **Team status**: Visual badge indicating "Changes this week" or "No changes this week"
 - **Team statistics**: Interactive grid showing total members, skill level breakdown, experience distribution, leadership interest count
-- **Email Summary Section**: Dedicated section with all team email addresses in copy-friendly format with copy button
+- **Email Summary Section**: Dedicated section with all team email addresses in copy-friendly format
 - **Complete team roster**: Professional table format matching admin interface (Name, Email, Cell Phone, Skill Level, Experience, Equipment, Leader Interest, Scribe Interest)
-- **Leader dashboard link**: Environment-appropriate URL
+- **Leader dashboard link**: Environment-appropriate URL with CSV export capability
 
 ### 3. Daily Admin Digest
 
@@ -169,13 +170,13 @@ def get_area_leaders_emails(participant_model, area_code):
   - Equipment shown with emoji icons (🔭 binoculars, 🏁 spotting scope)
   - Interest badges for leadership and scribe roles
 - **Email Summary Section**: Dedicated section for easy email copying
-  - Copy button with JavaScript functionality and visual feedback
-  - Fallback text selection for email clients without JavaScript support
+  - Text selection interface for copying team email addresses
   - All team emails in comma-separated format for easy copying
 - **Enhanced Statistics** (Weekly Summary): Grid layout showing team composition breakdown
 - **Date-Prefixed Subjects**: All emails include YYYY-MM-DD date prefix to prevent Gmail threading issues
 - **Responsive HTML**: Bootstrap-based styling for mobile compatibility (800px max width)
 - **Environment-aware links**: Test vs production URL generation
+- **Leader Dashboard Features**: CSV export button for team contact information
 - **Secondary phone display**: Includes both primary and secondary phone numbers
 - **Test mode indicators**: Visual indicators for test email mode
 - **Timezone display**: Pacific Time formatting for user convenience
@@ -185,19 +186,20 @@ def get_area_leaders_emails(participant_model, area_code):
 ```python
 {
     'area_code': str,
-    'leader_names': List[str],         # Full names of area leaders
-    'new_participants': List[Dict],    # Recently added participants (team updates only)
+    'leader_names': List[str],          # Full names of area leaders
+    'new_participants': List[Dict],     # Recently added participants (team updates only)
+    'updated_participants': List[Dict], # Recently updated participants (team updates only)
     'removed_participants': List[Dict], # Recently removed participants (team updates only)
-    'current_team': List[Dict],        # Complete current team roster
-    'has_changes': bool,               # Whether team had changes this week (weekly summary)
-    'skill_breakdown': Dict[str, int], # Skill level statistics
+    'current_team': List[Dict],         # Complete current team roster
+    'has_changes': bool,                # Whether team had changes this week (weekly summary)
+    'skill_breakdown': Dict[str, int],  # Skill level statistics
     'experience_breakdown': Dict[str, int], # CBC experience statistics
-    'leadership_interest_count': int,  # Count interested in leadership
-    'current_date': datetime,          # Email generation timestamp
-    'leader_dashboard_url': str,       # Environment-appropriate URL
-    'admin_unassigned_url': str,       # Admin interface URL
-    'test_mode': bool,                 # Test mode indicator
-    'branding': Dict[str, str]         # Organizational branding configuration
+    'leadership_interest_count': int,   # Count interested in leadership
+    'current_date': datetime,           # Email generation timestamp
+    'leader_dashboard_url': str,        # Environment-appropriate URL
+    'admin_unassigned_url': str,        # Admin interface URL
+    'test_mode': bool,                  # Test mode indicator
+    'branding': Dict[str, str]          # Organizational branding configuration
 }
 ```
 
@@ -212,6 +214,8 @@ EMAIL_BRANDING = {
     'secondary_color': '#1e5c3a',    # Darker green
     'accent_color': '#90ee90',       # Light green
     'background_color': '#f0fff0',   # Honeydew (very light green)
+    'text_color': '#333',            # Body text color
+    'badge_warning': '#ffc107',      # Yellow badge color
 }
 
 def get_email_branding() -> dict:
@@ -232,7 +236,12 @@ def get_email_branding() -> dict:
 **Production Security**:
 - **Route Isolation**: Test routes completely absent from production servers
 - **Admin Protection**: All email routes require `@require_admin` decorator
-- **Input Validation**: All email addresses validated before sending
+- **Email Validation**: Centralized validation in `services/security.py::validate_email_format()`
+  - RFC 5322 compliance with plus sign (+) support
+  - Security restrictions rejecting percent signs (%) and exclamation marks (!)
+  - Consistent validation across Python backend and JavaScript frontend
+- **Input Sanitization**: All user input sanitized with dedicated functions in `services/security.py`
+- **Template Security**: All user input escaped with `|e` filter in Jinja2 templates
 - **Error Handling**: Graceful failure without breaking main application
 
 **Organization Configuration Management**:
@@ -286,19 +295,28 @@ class ParticipantModel:
 **Participant Change Detection**:
 ```python
 def get_participants_changes_since(participant_model, area_code, since_timestamp):
-    """Get participants added/removed since timestamp."""
+    """Get participants added/updated/removed since timestamp."""
     current_participants = participant_model.get_participants_by_area(area_code)
 
-    # New participants: created_at or updated_at > since_timestamp
-    new_participants = [p for p in current_participants
-                       if (p.get('created_at', datetime.min) > since_timestamp or
-                           p.get('updated_at', datetime.min) > since_timestamp)]
+    new_participants = []
+    updated_participants = []
+
+    for participant in current_participants:
+        created_at = participant.get('created_at', datetime.min)
+        updated_at = participant.get('updated_at', datetime.min)
+
+        if created_at > since_timestamp:
+            # New participant
+            new_participants.append(participant)
+        elif updated_at > since_timestamp and created_at <= since_timestamp:
+            # Existing participant with updates
+            updated_participants.append(participant)
 
     # Removed participants: from removal_log since timestamp
     removal_model = RemovalLogModel(participant_model.db, participant_model.year)
     removed_participants = removal_model.get_removals_since(area_code, since_timestamp)
 
-    return new_participants, removed_participants
+    return new_participants, updated_participants, removed_participants
 ```
 
 ## Migration from Two-Table Architecture
@@ -397,16 +415,23 @@ DISPLAY_TIMEZONE=America/Vancouver
 
 ## Implementation Status
 
-### ✅ Completed Components (Updated 2025-09-29)
+### ✅ Completed Components (Updated 2025-09-30)
 ✅ **Single-Table Migration**: Successfully migrated from dual-table email branch to single-table main branch architecture
 ✅ **Email Generation Logic**: Complete with timezone support and change detection using participant-based leadership
+✅ **Participant Info Update Detection**: Team update emails triggered by participant information changes (contact info, equipment, skill level, experience)
 ✅ **Enhanced HTML Email Templates**: Professional table format matching admin interface with simplified email copying
 ✅ **Leadership Query Integration**: Updated to use `ParticipantModel.get_leaders()` and identity-based operations
 ✅ **Weekly Summary Logic**: Updated to send to ALL area leaders (not just unchanged areas)
 ✅ **Date-Prefixed Subjects**: All emails include YYYY-MM-DD prefix to prevent Gmail threading issues
 ✅ **Registration Confirmation**: Updated to include year prefix in subject line
-✅ **Email Summary Section**: Dedicated copy-friendly email list with text selection (JavaScript copy button removed for Gmail compatibility)
+✅ **Email Summary Section**: Dedicated copy-friendly email list with text selection
 ✅ **Security Architecture**: Test-only routes with production isolation and proper input escaping
+✅ **Email Validation System**: Centralized validation with security restrictions
+  - RFC 5322 compliance with plus sign (+) support (e.g., `harvey.dueck+rabbit@gmail.com`)
+  - Security restrictions rejecting percent signs (%) and exclamation marks (!)
+  - Matching validation in Python (`services/security.py`) and JavaScript (`static/js/validation.js`)
+  - Comprehensive test suite with 51 backend unit tests
+  - Validation integrated across all forms (registration, admin participant edit, admin leader edit)
 ✅ **Test Interface**: Admin dashboard integration with manual triggers and CSRF protection
 ✅ **Timezone Support**: Configurable display timezone (America/Vancouver)
 ✅ **Provider-Agnostic Email Service**: Support for multiple SMTP providers (SMTP2GO, Gmail, SendGrid, Mailgun)
@@ -423,11 +448,12 @@ DISPLAY_TIMEZONE=America/Vancouver
   - FEEDER participant visual distinction
   - Mobile-responsive design (800px max width)
   - Nature Vancouver logo with transparent PNG format for email client compatibility
-  - Green color scheme matching organizational branding (#2e8b57 primary, #f0fff0 background)
+  - Green color scheme matching organizational branding (#2e8b57 primary, #f0fff0 background, #ffc107 warning)
   - Horizontal header layout with logo and organization name
-  - Optimized content flow: header → dashboard button → salutation → status → roster → emails → tasks → statistics
-  - Simplified email copying via text selection (removed JavaScript for better Gmail compatibility)
+  - Optimized content flow with participant info updates section
+  - Simplified email copying via text selection
   - Enhanced typography with larger, bold salutation text
+✅ **Leader Dashboard Features**: CSV export button for downloading team contact information
 
 ### Pending Production Features
 ❌ **Cloud Scheduler Setup**: Automated email triggers
@@ -441,9 +467,10 @@ DISPLAY_TIMEZONE=America/Vancouver
 1. **Email Redirection**: Verify all emails redirect to `TEST_RECIPIENT` from `config/organization.py`
 2. **Subject Preservation**: Confirm test emails maintain original date-prefixed format
 3. **Template Rendering**: Test HTML templates with realistic data including table format and email copy functionality
-4. **Change Detection**: Verify change detection logic with test data
+4. **Change Detection**: Verify change detection logic with test data including participant info updates
 5. **Configuration Loading**: Verify all organization values loaded from `config/organization.py` (no hardcoded values)
 6. **Email Copy Functionality**: Test text selection-based email copying in various email clients
+7. **Email Validation**: Verify plus sign support and security restrictions (percent/exclamation rejection)
 
 ### Integration Testing
 1. **Single-Table Queries**: Test leadership resolution from participant records

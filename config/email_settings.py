@@ -171,4 +171,6 @@ EMAIL_BRANDING = {
     'secondary_color': '#1e5c3a',    # Darker green
     'accent_color': '#90ee90',       # Light green
     'background_color': '#f0fff0',   # Honeydew (very light green)
+    'text_color': '#333',            # Dark gray for body text
+    'badge_warning': '#ffc107',      # Yellow for "Interested" badges
 }

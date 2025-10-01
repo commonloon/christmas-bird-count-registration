@@ -20,7 +20,7 @@ from test.email_generator import (
 )
 from services.security import (
     sanitize_name, sanitize_email, sanitize_phone, sanitize_notes,
-    validate_area_code, validate_experience, is_suspicious_input, log_security_event
+    validate_area_code, validate_experience, validate_email_format, is_suspicious_input, log_security_event
 )
 from services.limiter import limiter
 from config.rate_limits import RATE_LIMITS, get_rate_limit_message
@@ -93,16 +93,31 @@ def dashboard():
 @admin_bp.route('/participants')
 @require_admin
 def participants():
-    """View and manage all participants."""
+    """View and manage all participants with historical year support."""
     if not g.db:
         return render_template('admin/participants.html',
                              participants=[],
                              area_leaders={},
                              error="Database unavailable")
 
-    selected_year = int(request.args.get('year', datetime.now().year))
+    # Get current year
+    current_year = datetime.now().year
+
+    # Get selected year from query params, default to current year
+    selected_year = int(request.args.get('year', current_year))
+
+    # Initialize model for selected year
     participant_model = ParticipantModel(g.db, selected_year)
+
+    # Get available years for tab navigation
     available_years = ParticipantModel.get_available_years(g.db)
+
+    # Filter to current year + past 3 years with data
+    historical_years = [y for y in available_years if y < current_year][-3:]
+    display_years = [current_year] + historical_years if current_year in available_years else historical_years[:4]
+
+    # Determine if selected year is historical (read-only)
+    is_historical = selected_year < current_year
 
     all_participants = participant_model.get_all_participants()
     all_leaders = participant_model.get_leaders()
@@ -175,7 +190,9 @@ def participants():
                            display_fields=display_fields,
                            get_display_name=get_participant_display_name,
                            selected_year=selected_year,
-                           available_years=available_years,
+                           current_year=current_year,
+                           available_years=display_years,
+                           is_historical=is_historical,
                            current_user=get_current_user())
 
 
@@ -388,6 +405,11 @@ def add_leader():
 
     if len(email) > 254:
         flash('Email address is too long.', 'error')
+        return redirect(url_for('admin.leaders', year=selected_year))
+
+    # Validate email format
+    if not validate_email_format(email):
+        flash('Please enter a valid email address.', 'error')
         return redirect(url_for('admin.leaders', year=selected_year))
 
     if len(phone) > 20:
@@ -687,7 +709,11 @@ def edit_leader():
             
         if len(email) > 254:
             return jsonify({'success': False, 'message': 'Email address is too long'})
-            
+
+        # Validate email format
+        if not validate_email_format(email):
+            return jsonify({'success': False, 'message': 'Please enter a valid email address'})
+
         if len(phone) > 20:
             return jsonify({'success': False, 'message': 'Phone number must be 20 characters or less'})
 
@@ -836,6 +862,10 @@ def edit_participant():
 
         if len(email) > 254:
             return jsonify({'success': False, 'message': 'Email address is too long'})
+
+        # Validate email format
+        if not validate_email_format(email):
+            return jsonify({'success': False, 'message': 'Please enter a valid email address'})
 
         if len(phone) > 20:
             return jsonify({'success': False, 'message': 'Phone number must be 20 characters or less'})

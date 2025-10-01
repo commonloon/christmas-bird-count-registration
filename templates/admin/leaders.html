@@ -324,6 +324,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/validation.js') }}"></script>
 <script>
 // Make leader data available to the map JavaScript
 window.leaderData = {};
@@ -438,9 +439,8 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        // Email validation
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(formData.email)) {
+        // Email validation using shared validator
+        if (!validateEmailFormat(formData.email)) {
             alert('Please enter a valid email address.');
             return;
         }

@@ -1,5 +1,5 @@
 # Christmas Bird Count Registration Test Suite Specification
-{# Updated by Claude AI on 2025-09-27 #}
+{# Updated by Claude AI on 2025-09-30 #}
 
 ## Overview
 
@@ -19,13 +19,16 @@ This document defines the requirements and scope for a comprehensive functional 
 #### Configuration Management
 ```
 tests/
-├── config.py                 # Non-sensitive test configuration
-├── conftest.py              # Pytest fixtures and setup
-├── utils/                   # Test utilities and helpers
-│   ├── database_utils.py    # Database state management
-│   ├── auth_utils.py        # OAuth automation helpers
-│   └── dataset_generator.py # Test data creation utilities
-└── test_*.py               # Individual test modules
+├── config.py                     # Non-sensitive test configuration
+├── conftest.py                   # Pytest fixtures and setup
+├── package.json                  # Jest configuration for JavaScript tests
+├── utils/                        # Test utilities and helpers
+│   ├── database_utils.py         # Database state management
+│   ├── auth_utils.py             # OAuth automation helpers
+│   └── dataset_generator.py     # Test data creation utilities
+├── test_*.py                     # Python test modules (pytest)
+├── *.test.js                     # JavaScript test modules (Jest)
+└── node_modules/                 # Jest dependencies (excluded from git/deploy)
 ```
 
 **Configuration Structure:**
@@ -193,9 +196,17 @@ family_members = [
 #### Security Testing
 **Requirements:**
 - Input sanitization validation with malicious patterns
+- Email validation security (percent sign and exclamation mark rejection)
 - CSRF protection on admin forms
 - Rate limiting behavior (ensure doesn't interfere with test execution)
 - XSS prevention in template rendering
+
+**Email Validation Security Testing:**
+- Plus sign support validation (`user+tag@example.com`)
+- Percent sign rejection (`user%name@example.com`)
+- Exclamation mark rejection (`user!name@example.com`)
+- RFC 5322 compliance verification
+- Python/JavaScript validation consistency
 
 **Malicious Input Patterns:**
 - Script injection attempts (`<script>`, `javascript:`)
@@ -313,7 +324,8 @@ family_members = [
 4. **Iterative Refinement**: Expand test coverage based on discovered requirements
 
 ### Technical Stack
-- **Testing Framework**: pytest with fixtures and parametrization
+- **Testing Framework (Python)**: pytest with fixtures and parametrization
+- **Testing Framework (JavaScript)**: Jest for frontend unit tests
 - **Browser Automation**: Selenium WebDriver with Firefox (Chrome has OAuth stability issues)
 - **HTTP Requests**: requests library for API testing
 - **Database**: google-cloud-firestore client for direct database operations
@@ -376,7 +388,7 @@ dashboard_selectors = [
 - **Data Integrity Assurance**: Comprehensive validation of single-table operations
 - **User Experience Protection**: Ensure UI workflows remain functional
 
-## Critical Bug Fixes and Lessons Learned (2025-09-27)
+## Critical Bug Fixes and Lessons Learned (2025-09-27, Updated 2025-09-30)
 
 ### ✅ **Resolved Critical Issues**
 **Test Framework Timeout Resolution:**
@@ -385,12 +397,20 @@ dashboard_selectors = [
 - **Solution**: Use `timeout=600000` (10 minutes) parameter in Bash tool calls
 - **Lesson**: Distinguish between tool limitations and application timeouts
 
-**Email Validation Security Fix:**
-- **Issue**: Invalid emails with consecutive dots (`test..test@example.com`) accepted
-- **Root Cause**: Regex pattern allowed consecutive dots in email validation
-- **Solution**: Rewrote `is_valid_email()` function with RFC 5322 compliance
-- **Location**: `routes/main.py:254-303`
-- **Lesson**: Email validation requires explicit consecutive dot checking
+**Email Validation Centralization and Security (2025-09-30):**
+- **Issue**: Email validation inconsistent across forms, plus signs rejected, security gaps
+- **Root Cause**: 6 different validation implementations, plus sign missing from regex
+- **Solution**:
+  - Created centralized `services/security.py::validate_email_format()`
+  - Created matching `static/js/validation.js::validateEmailFormat()`
+  - Added security restrictions rejecting percent (%) and exclamation (!) characters
+  - Comprehensive test suite with 51 Python tests and 81 JavaScript tests
+- **Locations**:
+  - Backend: `services/security.py:149-228`
+  - Frontend: `static/js/validation.js:33-97`
+  - Python tests: `tests/test_email_validation.py`
+  - JavaScript tests: `tests/email_validation.test.js`
+- **Lesson**: Centralize validation logic, ensure Python/JavaScript consistency, comprehensive test coverage prevents regression
 
 **Browser Compatibility - CSS Selector Issues:**
 - **Issue**: Firefox doesn't support `:contains()` pseudo-class in CSS selectors
@@ -433,9 +453,22 @@ dashboard_selectors = [
 3. Generate unique identities that survive input sanitization
 4. Test identity-based operations with proper tuples
 
-## Test Implementation Status (Updated 2025-09-27)
+## Test Implementation Status (Updated 2025-09-30)
 
 ### ✅ **Completed and Verified**
+**Email Validation Test Suite (132 tests passing)**:
+- **Python Backend Tests (51 tests)**: `tests/test_email_validation.py`
+  - Valid email acceptance (17 tests including plus sign support)
+  - Invalid email rejection (22 tests including security restrictions)
+  - Length limits, TLD requirements, subdomain support
+  - Security restrictions (percent/exclamation rejection)
+  - Real-world email patterns
+- **JavaScript Frontend Tests (81 tests)**: `tests/email_validation.test.js`
+  - Mirrors Python test suite for consistency validation
+  - Runs locally with Jest (no server required)
+  - Validates `static/js/validation.js::validateEmailFormat()`
+  - Confirms Python/JavaScript validation consistency
+
 **Core Registration Tests (4/4 passing)**:
 - Single-table participant registration for all types (regular, FEEDER, leadership candidates, scribes)
 - Form validation and success page verification

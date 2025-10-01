@@ -1,5 +1,12 @@
 .idea/
 __pycache__/
-client_secret.jsonutils/*.csv
+client_secret.json
+utils/*.csv
 foo
 debug/
+
+# Node.js / npm
+node_modules/
+package-lock.json
+*.log
+npm-debug.log*
