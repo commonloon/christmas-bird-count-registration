@@ -166,8 +166,9 @@ class RemovalLogModel:
 
     def get_recent_removals(self, days_back: int = 7) -> List[Dict]:
         """Get removals from the last N days."""
+        from datetime import timedelta
         cutoff_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-        cutoff_date = cutoff_date.replace(day=cutoff_date.day - days_back)
+        cutoff_date = cutoff_date - timedelta(days=days_back)
 
         removals = []
         query = (self.db.collection(self.collection)
