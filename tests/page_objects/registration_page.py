@@ -23,7 +23,11 @@ class RegistrationPage(BasePage):
 
     def is_registration_form_loaded(self):
         """Check if registration form is loaded."""
-        return self.is_element_visible("first_name") or self.is_element_visible("first-name")
+        # Use direct tuples with short timeout to avoid multi-strategy delays
+        element = self.find_element_safely((By.ID, "first_name"), timeout=0.5)
+        if not element:
+            element = self.find_element_safely((By.ID, "first-name"), timeout=0.5)
+        return element is not None and element.is_displayed()
 
     def fill_personal_information(self, participant_data):
         """Fill in personal information fields."""

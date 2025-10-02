@@ -126,6 +126,19 @@ def chrome_options():
     """Configure Chrome options for testing."""
     options = ChromeOptions()
 
+    # Set download directory to temporary path under tests/
+    test_dir = os.path.dirname(os.path.abspath(__file__))
+    download_dir = os.path.join(test_dir, 'tmp', 'downloads')
+    os.makedirs(download_dir, exist_ok=True)
+
+    prefs = {
+        "download.default_directory": download_dir,
+        "download.prompt_for_download": False,
+        "download.directory_upgrade": True,
+        "safebrowsing.enabled": False
+    }
+    options.add_experimental_option("prefs", prefs)
+
     if TEST_CONFIG['headless']:
         options.add_argument('--headless')
 
@@ -160,13 +173,24 @@ def chrome_options():
     options.add_argument('--use-mock-keychain')
     options.add_argument('--remote-debugging-port=9222')
 
-    logger.info(f"Chrome configured with headless={TEST_CONFIG['headless']}")
+    logger.info(f"Chrome configured with headless={TEST_CONFIG['headless']}, download_dir={download_dir}")
     return options
 
 @pytest.fixture(scope="session")
 def firefox_options():
     """Configure Firefox options for testing."""
     options = FirefoxOptions()
+
+    # Set download directory to temporary path under tests/
+    test_dir = os.path.dirname(os.path.abspath(__file__))
+    download_dir = os.path.join(test_dir, 'tmp', 'downloads')
+    os.makedirs(download_dir, exist_ok=True)
+
+    options.set_preference("browser.download.folderList", 2)
+    options.set_preference("browser.download.dir", download_dir)
+    options.set_preference("browser.download.useDownloadDir", True)
+    options.set_preference("browser.download.manager.showWhenStarting", False)
+    options.set_preference("browser.helperApps.neverAsk.saveToDisk", "text/csv,application/csv,text/plain")
 
     if TEST_CONFIG['headless']:
         options.add_argument('--headless')
@@ -201,7 +225,7 @@ def firefox_options():
     options.set_preference('security.csp.enable', False)
     options.set_preference('security.notification_enable_delay', 0)
 
-    logger.info(f"Firefox configured with headless={TEST_CONFIG['headless']}")
+    logger.info(f"Firefox configured with headless={TEST_CONFIG['headless']}, download_dir={download_dir}")
     return options
 
 @pytest.fixture

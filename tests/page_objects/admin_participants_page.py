@@ -23,15 +23,18 @@ class AdminParticipantsPage(BasePage):
 
     def is_participants_page_loaded(self):
         """Check if participants management page is loaded."""
+        # Use tuples to avoid multi-strategy timeouts from string identifiers
         indicators = [
-            'participants-table',
+            (By.ID, 'participants-table'),
             (By.CSS_SELECTOR, '.participants-table'),
             (By.XPATH, '//h1[contains(text(), "Participants")]'),
             (By.CSS_SELECTOR, 'table.table')
         ]
 
+        # Use short timeout since we're trying multiple selectors
         for indicator in indicators:
-            if self.is_element_visible(indicator):
+            element = self.find_element_safely(indicator, timeout=0.5)
+            if element and element.is_displayed():
                 return True
 
         return False

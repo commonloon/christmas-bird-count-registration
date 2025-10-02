@@ -171,13 +171,29 @@ family_members = [
 **Requirements:**
 - Schema validation (headers, field types, required fields)
 - Sorting order verification (area → participation type → first name)
-- Content validation against known datasets
+- Content validation against known datasets from `tests/fixtures/test_participants_2025.csv`
 - Large dataset export performance (350+ participants)
 - Field completeness (all defined fields present with proper defaults)
 - Data accuracy (exported data matches database state)
+- Route accessibility testing (`/admin/export_csv`)
+
+**Test Data Source:**
+- **Fixture File**: `tests/fixtures/test_participants_2025.csv` (347 participants)
+- **Loading**: Automated via `tests/utils/load_test_data.py`
+- **Database Cleanup**: Test environment cleared before loading fixture data
+- **Validation**: All 347 fixture participants verified present in CSV export with correct data
+
+**Performance Optimization:**
+- **Shared CSV Download**: Single OAuth login and CSV download shared across multiple validation tests
+- **Session Caching**: Downloaded CSV cached in pytest session to eliminate redundant downloads
+- **Browser Download Handling**: Firefox configured with dedicated download directory (`tests/tmp/downloads/`)
+- **Download Detection**: File comparison before/after navigation to detect new downloads
+- **Timeout Handling**: Short page load timeout (3s) for file downloads with expected timeout exceptions
 
 **Validation Approach:**
 - Hybrid validation combining schema checks with content verification
+- Complete record matching by email with name validation
+- Missing participant detection and reporting
 - Field-level validation for data types and business rules
 - Cross-reference with database state for accuracy
 - Performance testing with realistic data volumes
@@ -527,7 +543,9 @@ dashboard_selectors = [
 **Test Framework Infrastructure Completed (2025-09-26)**:
 - **OAuth Integration**: Google OAuth automation with error handling operational
 - **Database Operations**: Firestore integration with proper cleanup working
-- **Page Object Model**: Element interaction framework with fallback strategies
+- **Page Object Model**: Element interaction framework with optimized selector strategies
+- **Selector Optimization**: Direct tuple selectors `(By.ID, 'element')` with 0.5s timeouts to eliminate multi-strategy delays
+- **Page Load Detection**: Optimized `is_*_loaded()` methods in page objects to prevent 30+ second timeout delays
 - **Bug Fixes Applied**: Timeout, method name, and element interaction issues resolved
 - **Execution Pipeline**: Reliable test execution environment established
 

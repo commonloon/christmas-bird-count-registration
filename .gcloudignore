@@ -10,3 +10,5 @@ utils/
 client_secret.json
 foo
 debug/
+tests/tmp/
+tests/reports/

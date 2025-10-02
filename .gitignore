@@ -4,6 +4,8 @@ client_secret.json
 utils/*.csv
 foo
 debug/
+tests/tmp/
+tests/reports/
 
 # Node.js / npm
 node_modules/

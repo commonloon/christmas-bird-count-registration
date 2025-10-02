@@ -28,17 +28,20 @@ class AdminDashboardPage(BasePage):
     def is_dashboard_loaded(self):
         """Check if admin dashboard is loaded."""
         # Look for dashboard-specific elements
+        # Use tuples to avoid multi-strategy timeouts from string identifiers
         dashboard_indicators = [
-            'dashboard-title',
-            'admin-dashboard',
+            (By.ID, 'dashboard-title'),
+            (By.ID, 'admin-dashboard'),
             (By.XPATH, '//h1[contains(text(), "Dashboard")]'),
             (By.CSS_SELECTOR, '.admin-dashboard'),
             (By.PARTIAL_LINK_TEXT, 'Participants'),
             (By.PARTIAL_LINK_TEXT, 'Leaders')
         ]
 
+        # Use short timeout since we're trying multiple selectors
         for indicator in dashboard_indicators:
-            if self.is_element_visible(indicator):
+            element = self.find_element_safely(indicator, timeout=0.5)
+            if element and element.is_displayed():
                 return True
 
         return False
