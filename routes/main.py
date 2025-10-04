@@ -213,18 +213,6 @@ def registration_success():
                            participant_id=participant_id)
 
 
-@main_bp.route('/about')
-def about():
-    """About the Christmas Bird Count."""
-    return render_template('about.html')
-
-
-@main_bp.route('/areas')
-def areas():
-    """Information about count areas."""
-    return render_template('areas.html', areas=get_public_areas())
-
-
 @main_bp.route('/area-leader-info')
 def area_leader_info():
     """Information about area leader responsibilities."""

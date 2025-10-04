@@ -1,6 +1,6 @@
-# Updated by Claude AI on 2025-09-16
+# Updated by Claude AI on 2025-10-03
 """
-Field definitions for participants and area leaders with ordered display and default values.
+Field definitions for participants with ordered display and default values.
 This centralizes field management to prevent data loss during schema evolution.
 """
 
@@ -53,22 +53,6 @@ PARTICIPANT_FIELDS = OrderedDict([
     ('id', {'default': None, 'display_name': 'ID', 'csv_order': 27}),
 ])
 
-# Area leader field definitions
-AREA_LEADER_FIELDS = OrderedDict([
-    ('area_code', {'default': '', 'display_name': 'Area Code', 'csv_order': 1}),
-    ('first_name', {'default': '', 'display_name': 'First Name', 'csv_order': 2}),
-    ('last_name', {'default': '', 'display_name': 'Last Name', 'csv_order': 3}),
-    ('leader_email', {'default': '', 'display_name': 'Email', 'csv_order': 4}),
-    ('cell_phone', {'default': '', 'display_name': 'Cell Phone', 'csv_order': 5}),
-    ('assigned_by', {'default': '', 'display_name': 'Assigned By', 'csv_order': 6}),
-    ('assigned_at', {'default': None, 'display_name': 'Assigned At', 'csv_order': 7}),
-    ('active', {'default': True, 'display_name': 'Active', 'csv_order': 8}),
-    ('year', {'default': datetime.now().year, 'display_name': 'Year', 'csv_order': 9}),
-    ('created_from_participant', {'default': False, 'display_name': 'Promoted from Participant', 'csv_order': 10}),
-    ('notes', {'default': '', 'display_name': 'Notes', 'csv_order': 11}),
-    ('id', {'default': None, 'display_name': 'ID', 'csv_order': 12}),
-])
-
 
 def get_participant_fields():
     """Get ordered list of participant field names."""
@@ -91,27 +75,6 @@ def get_participant_display_name(field_name):
     return PARTICIPANT_FIELDS.get(field_name, {}).get('display_name', field_name.replace('_', ' ').title())
 
 
-def get_area_leader_fields():
-    """Get ordered list of area leader field names."""
-    return list(AREA_LEADER_FIELDS.keys())
-
-
-def get_area_leader_csv_fields():
-    """Get area leader fields in CSV export order."""
-    fields_with_order = [(field, config['csv_order']) for field, config in AREA_LEADER_FIELDS.items()]
-    return [field for field, _ in sorted(fields_with_order, key=lambda x: x[1])]
-
-
-def get_area_leader_field_default(field_name):
-    """Get default value for an area leader field."""
-    return AREA_LEADER_FIELDS.get(field_name, {}).get('default', '')
-
-
-def get_area_leader_display_name(field_name):
-    """Get display name for an area leader field."""
-    return AREA_LEADER_FIELDS.get(field_name, {}).get('display_name', field_name.replace('_', ' ').title())
-
-
 def normalize_participant_record(record):
     """
     Normalize a participant record to include all expected fields with defaults.
@@ -125,20 +88,4 @@ def normalize_participant_record(record):
     normalized = {}
     for field_name in get_participant_fields():
         normalized[field_name] = record.get(field_name, get_participant_field_default(field_name))
-    return normalized
-
-
-def normalize_area_leader_record(record):
-    """
-    Normalize an area leader record to include all expected fields with defaults.
-
-    Args:
-        record: Area leader record dictionary
-
-    Returns:
-        Normalized record with all fields present
-    """
-    normalized = {}
-    for field_name in get_area_leader_fields():
-        normalized[field_name] = record.get(field_name, get_area_leader_field_default(field_name))
     return normalized

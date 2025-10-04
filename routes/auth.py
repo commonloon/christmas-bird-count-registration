@@ -174,17 +174,6 @@ def logout():
     return redirect(url_for('main.index'))
 
 
-@auth_bp.route('/profile')
-@require_auth
-def profile():
-    """Show user profile information."""
-    from flask import render_template
-    return render_template('auth/profile.html',
-                           user_email=session.get('user_email'),
-                           user_name=session.get('user_name'),
-                           user_role=session.get('user_role'))
-
-
 def init_auth(app):
     """Initialize authentication for the Flask app."""
     # Set up session configuration

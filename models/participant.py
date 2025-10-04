@@ -387,19 +387,6 @@ class ParticipantModel:
 
         return self.add_participant(participant_data)
 
-    def assign_leader(self, area_code: str, leader_email: str, first_name: str,
-                      last_name: str, phone: str, assigned_by: str) -> str:
-        """Assign a leader to an area (wrapper for add_leader with compatible interface)."""
-        leader_data = {
-            'area_code': area_code,
-            'leader_email': leader_email,
-            'first_name': first_name,
-            'last_name': last_name,
-            'phone': phone,
-            'assigned_by': assigned_by
-        }
-        return self.add_leader(leader_data)
-
     def remove_leader(self, participant_id: str, removed_by: str) -> bool:
         """Remove leadership from a participant (wrapper for remove_area_leadership)."""
         return self.remove_area_leadership(participant_id, removed_by)
