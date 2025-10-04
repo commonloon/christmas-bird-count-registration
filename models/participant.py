@@ -382,13 +382,13 @@ class ParticipantModel:
             'leadership_assigned_at': datetime.now(),
             'preferred_area': leader_data.get('area_code'),  # Leader's preferred area matches their leadership area
             'experience_level': 'Expert',  # Assume leaders are experienced
-            'participation_type': 'leader'
+            'participation_type': 'regular'
         }
 
         return self.add_participant(participant_data)
 
     def assign_leader(self, area_code: str, leader_email: str, first_name: str,
-                      last_name: str, cell_phone: str, assigned_by: str) -> str:
+                      last_name: str, phone: str, assigned_by: str) -> str:
         """Assign a leader to an area (wrapper for add_leader with compatible interface)."""
         leader_data = {
             'area_code': area_code,

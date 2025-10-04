@@ -248,7 +248,6 @@ def assign_participant():
         return redirect(url_for('admin.unassigned', year=selected_year))
 
     participant_model = ParticipantModel(g.db, selected_year)
-    user = get_current_user()
 
     if participant_model.assign_participant_to_area(participant_id, area_code, user['email']):
         flash(f'Participant assigned to Area {area_code} successfully.', 'success')
@@ -420,8 +419,6 @@ def add_leader():
     if not validate_area_code(area_code):
         flash(f'Invalid area code: {area_code}', 'error')
         return redirect(url_for('admin.leaders', year=selected_year))
-
-    user = get_current_user()
 
     try:
         # Check if this exact person (identity) is already assigned to this area
@@ -726,7 +723,6 @@ def edit_leader():
 
         # Initialize models
         participant_model = ParticipantModel(g.db, selected_year)
-        user = get_current_user()
 
         # Get current leader data
         current_leader = participant_model.get_participant(leader_id)
@@ -792,7 +788,7 @@ def delete_leader():
             return jsonify({'success': False, 'message': 'Leader ID is required'})
 
         # Initialize models
-            participant_model = ParticipantModel(g.db, selected_year)
+        participant_model = ParticipantModel(g.db, selected_year)
         user = get_current_user()
 
         # Get leader data before deletion
