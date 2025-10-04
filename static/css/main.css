@@ -56,6 +56,13 @@
     box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
 }
 
+/* Notes field placeholder styling - make example text more distinct */
+#notes_to_organizers::placeholder {
+    font-style: italic;
+    color: #9ca3af;
+    opacity: 1;
+}
+
 /* Map legend */
 .map-legend {
     margin-top: 0.5rem;
