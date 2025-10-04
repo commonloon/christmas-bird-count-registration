@@ -607,14 +607,12 @@ def export_csv():
 
     if sorted_participants:
         # Use centralized field definition to ensure consistent ordering and complete fields
-        from config.fields import get_participant_csv_fields
         fieldnames = get_participant_csv_fields()
 
         # Write CSV header
         writer.writerow(fieldnames)
 
         # Write participant data
-        from config.fields import get_participant_field_default
         for p in sorted_participants:
             row = []
             for field in fieldnames:

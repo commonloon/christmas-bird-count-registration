@@ -1,6 +1,5 @@
-# Updated by Claude AI on 2025-09-29
+# Updated by Claude AI on 2025-10-03
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g, session
-from google.cloud import firestore
 from config.database import get_firestore_client
 from models.participant import ParticipantModel
 from routes.auth import require_leader, get_current_user

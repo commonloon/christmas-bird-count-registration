@@ -1,4 +1,4 @@
-from flask import Blueprint, session, request, redirect, url_for, flash, current_app
+from flask import Blueprint, session, request, redirect, url_for, flash
 from google.oauth2 import id_token
 from google.auth.transport import requests
 from functools import wraps

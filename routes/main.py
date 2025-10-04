@@ -1,6 +1,5 @@
-# Updated by Claude AI on 2025-09-17
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, g
-from google.cloud import firestore
+# Updated by Claude AI on 2025-10-03
+from flask import Blueprint, render_template, request, redirect, url_for, flash, g
 from config.database import get_firestore_client
 from models.participant import ParticipantModel
 from config.areas import get_area_info, get_all_areas, get_public_areas
@@ -13,7 +12,6 @@ from services.security import (
 )
 from services.limiter import limiter
 from config.rate_limits import RATE_LIMITS, get_rate_limit_message
-import re
 from datetime import datetime
 
 main_bp = Blueprint('main', __name__)
