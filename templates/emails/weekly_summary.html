@@ -157,6 +157,19 @@
             color: #666;
             margin-top: 5px;
         }
+        .changes-section {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .new-members {
+            background-color: #d4edda;
+            border-left: 4px solid #28a745;
+        }
+        .removed-members {
+            background-color: #f8d7da;
+            border-left: 4px solid #dc3545;
+        }
         .content h4 {
             font-size: 18px;
             font-weight: bold;
@@ -209,6 +222,45 @@
             <p><strong>Status:</strong> <span class="badge badge-success">No changes this week</span> - Your team roster remains stable.</p>
             {% endif %}
         </div>
+
+        <!-- Changes This Week -->
+        {% if has_changes %}
+        {% if new_participants %}
+        <div class="changes-section new-members">
+            <h4>➕ New Team Members ({{ new_participants|length }})</h4>
+            <ul>
+            {% for participant in new_participants %}
+                <li><strong>{{ participant.first_name|e }} {{ participant.last_name|e }}</strong> ({{ participant.email|e }})
+                    {% if participant.participation_type == 'FEEDER' %} - <span class="badge badge-info">FEEDER</span>{% endif %}
+                    - {{ participant.skill_level|e if participant.skill_level else 'Skill level not specified' }}
+                </li>
+            {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% if updated_participants %}
+        <div class="changes-section" style="background-color: #fff3cd; border-left: 4px solid #ffc107;">
+            <h4>📝 Participant Info Updates ({{ updated_participants|length }})</h4>
+            <ul>
+            {% for participant in updated_participants %}
+                <li><strong>{{ participant.first_name|e }} {{ participant.last_name|e }}</strong> - Contact info or preferences updated</li>
+            {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        {% if removed_participants %}
+        <div class="changes-section removed-members">
+            <h4>➖ Removed Team Members ({{ removed_participants|length }})</h4>
+            <ul>
+            {% for removal in removed_participants %}
+                <li><strong>{{ removal.participant_name|e }}</strong>{% if removal.reason %} - {{ removal.reason|e }}{% endif %}</li>
+            {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        {% endif %}
 
         {% if current_team %}
         <!-- Complete Team Roster -->

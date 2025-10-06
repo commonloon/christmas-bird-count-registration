@@ -227,7 +227,26 @@ function triggerTestEmail(emailType) {
             'X-CSRFToken': '{{ csrf_token() }}'
         }
     })
-    .then(response => response.json())
+    .then(response => {
+        // Check response status before trying to parse
+        if (!response.ok) {
+            // Common HTTP error codes with helpful messages
+            if (response.status === 400) {
+                throw new Error('CSRF token validation failed. Please refresh the page and try again.');
+            } else if (response.status === 403) {
+                throw new Error('Access forbidden. This feature is only available on the test server.');
+            } else if (response.status === 500) {
+                throw new Error(`Server error (${response.status}). Check server logs for details.`);
+            } else {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+        }
+
+        // Try to parse JSON, handle non-JSON responses
+        return response.json().catch(() => {
+            throw new Error('Server returned invalid JSON response. The page may need to be refreshed.');
+        });
+    })
     .then(data => {
         if (data.success) {
             resultsDiv.innerHTML = `<div class="alert alert-success"><i class="bi bi-check-circle"></i> ${data.message}</div>`;
@@ -236,7 +255,7 @@ function triggerTestEmail(emailType) {
         }
     })
     .catch(error => {
-        resultsDiv.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> Network error: ${error.message}</div>`;
+        resultsDiv.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> ${error.message}</div>`;
     });
 }
 </script>

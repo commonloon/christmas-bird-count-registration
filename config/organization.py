@@ -1,5 +1,5 @@
 # Club-specific settings for email customization
-# Updated by Claude AI on 2025-09-15
+# Updated by Claude AI on 2025-10-06
 
 """
 Organization configuration for Christmas Bird Count registration system.
@@ -22,6 +22,11 @@ ORGANIZATION_CONTACT = "info@naturevancouver.ca"
 COUNT_CONTACT = "cbc@naturevancouver.ca"
 COUNT_EVENT_NAME = "Vancouver Christmas Bird Count"
 COUNT_INFO_URL = "https://naturevancouver.ca/birding/vancouver-area-christmas-bird-count/"
+
+# Timezone Configuration
+# For list of valid timezone values, see: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
+# Common North American examples: America/Vancouver, America/Toronto, America/New_York, America/Chicago
+DISPLAY_TIMEZONE = "America/Vancouver"  # Used for email timestamps and scheduled tasks
 
 # Test Mode Configuration
 TEST_RECIPIENT = "birdcount@naturevancouver.ca"  # All test server emails redirect here
@@ -55,7 +60,8 @@ def get_organization_variables():
         'count_info_url': COUNT_INFO_URL,
         'registration_url': get_registration_url(),
         'admin_url': get_admin_url(),
-        'test_recipient': TEST_RECIPIENT
+        'test_recipient': TEST_RECIPIENT,
+        'display_timezone': DISPLAY_TIMEZONE
     }
 
 # Helper function for other clubs

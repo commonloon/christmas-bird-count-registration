@@ -1,5 +1,5 @@
 # Email System Specification
-<!-- Updated by Claude AI on 2025-10-05 -->
+<!-- Updated by Claude AI on 2025-10-06 -->
 
 This document specifies the automated email notification system for the Christmas Bird Count registration application using the single-table architecture where participant and leadership data is unified in `participants_YYYY` collections.
 
@@ -35,10 +35,10 @@ The email system provides automated notifications to area leaders and administra
 - **Participant info updates**: Contact info, equipment, or other field changes
 - **Removed team members**: Deleted or reassigned from area since last update
 - **Email Summary Section**: Team email addresses in copy-friendly format
-- **Complete current roster**: Table format (Name, Email, Cell Phone, Skill Level, Experience, Equipment, Leader Interest, Scribe Interest)
-- **Leader dashboard link**: Environment-appropriate URL with CSV export capability
+- **Complete current roster**: Table format should match what's displayed for the area in the admin/participants UI (Name, Email, Cell Phone, Skill Level, Experience, Equipment, Leader Interest, Scribe Interest).  Table should be sorted by participant type, then by first name.
+- **Leader dashboard link**: Environment-appropriate URL
 
-**Frequency**: Manual triggers available on test server via admin dashboard (automated scheduling pending)
+**Frequency**: Intent is to automatically run the check for changes twice daily (5am and 5pm) and email all leaders for areas whose team membership has changed since the last update.  Manual triggers available on test server via admin dashboard.
 
 ### 2. Weekly Team Summary
 
@@ -49,16 +49,19 @@ The email system provides automated notifications to area leaders and administra
 - Sent to every area leader regardless of whether team changes occurred
 
 **Trigger Conditions**:
-- Intended schedule: Every Friday at 11pm Pacific Time
-- No change detection - sent to all leaders for consistent communication
+- Intended schedule: Every Friday at 11pm Pacific Time.  Time zone should be configurable in config.py to support use by other clubs.
+- sent to all leaders for consistent communication
+- Includes a summary of all team changes (additions/removals/contact info changed) since the previous weekly update
 
 **Content**:
 - **Subject**: "{date} Vancouver CBC Area {area_code} Weekly Summary" (date prefix format: YYYY-MM-DD)
-- **Team status**: Visual badge indicating "Changes this week" or "No changes this week"
-- **Team statistics**: Grid layout showing total members, skill level breakdown, experience distribution, leadership interest count
-- **Email Summary Section**: Team email addresses in copy-friendly format
+- **Team status**: Visual badge indicating "Changes this week" or "No changes this week". 
+- **New team members**: Added or reassigned to area since last weekly update
+- **Participant info updates**: Contact info, equipment, or other field changes since last weekly update
+- **Removed team members**: Deleted or reassigned from area since last weekly update- **Email Summary Section**: Team email addresses in copy-friendly format
 - **Complete team roster**: Table format (Name, Email, Cell Phone, Skill Level, Experience, Equipment, Leader Interest, Scribe Interest)
-- **Leader dashboard link**: Environment-appropriate URL with CSV export capability
+- **Leader dashboard link**: Environment-appropriate URL
+- **Team statistics**: Grid layout showing total members, skill level breakdown, experience distribution
 
 **Frequency**: Manual triggers available on test server via admin dashboard (automated scheduling pending)
 
@@ -70,6 +73,7 @@ The email system provides automated notifications to area leaders and administra
 - All admin emails from `config/admins.py`
 
 **Trigger Conditions**:
+- Intended schedule daily at 5pm local time (use timezone from config.py)
 - Participants exist with `preferred_area="UNASSIGNED"`
 - Only sent when unassigned participants are present
 
@@ -285,7 +289,7 @@ EMAIL_PROVIDERS = {
 - **Test Mode Support**: Automatic email redirection
 - **Error Handling**: Graceful fallback when credentials missing
 
-### Integration with Single-Table Architecture
+### Methods
 
 **Leadership Query Methods**:
 ```python
@@ -331,42 +335,6 @@ def get_participants_changes_since(participant_model, area_code, since_timestamp
     return new_participants, updated_participants, removed_participants
 ```
 
-## Migration from Two-Table Architecture
-
-### Key Changes Required
-
-**1. Leadership Data Source**:
-- **Before**: `area_leaders_YYYY` collection with separate schema
-- **After**: Integrated leadership fields in `participants_YYYY` collection
-
-**2. Leader Email Resolution**:
-- **Before**: `AreaLeaderModel.get_leaders_by_area(area_code)`
-- **After**: `ParticipantModel.get_leaders_by_area(area_code)` with `is_leader=True` filter
-
-**3. Field Mapping**:
-- **Email**: `leader_email` → `email`
-- **Phone**: `cell_phone` → `phone`
-- **Area**: `area_code` → `assigned_area_leader`
-- **Names**: `first_name`, `last_name` (unchanged)
-
-**4. Authentication**:
-- **Before**: Check `area_leaders_YYYY` collection for leadership
-- **After**: Check `is_leader=True` and `assigned_area_leader` in participant records
-
-### Compatibility Considerations
-
-**Template Updates Needed**:
-- Email templates already support unified participant schema
-- No template changes required for single-table migration
-
-**Email Generation Logic**:
-- Core email generation logic is architecture-agnostic
-- Only leader query methods need updating for single-table
-
-**Test Mode Functionality**:
-- Test mode email redirection unchanged
-- Admin dashboard integration remains the same
-
 ## Production Deployment Requirements
 
 ### Email Service Configuration
@@ -384,6 +352,7 @@ def get_participants_changes_since(participant_model, area_code, since_timestamp
 ### Automation Infrastructure
 
 **Cloud Scheduler Jobs** (pending implementation):
+- Times are examples.  Timezone should be specified in config.py
 - **Twice-daily updates**: `0 8,20 * * *` (8am, 8pm Pacific)
 - **Weekly summaries**: `0 6 * * 5` (Friday 11pm Pacific = Saturday 6am UTC)
 - **Daily admin digest**: `0 17 * * *` (10am Pacific)
@@ -431,7 +400,10 @@ DISPLAY_TIMEZONE=America/Vancouver
 - Single-table migration from dual-table email branch architecture
 - Email generation logic with timezone support and change detection using participant-based leadership
 - Participant info update detection for team update emails
-- Weekly summary logic sends to ALL area leaders (not just unchanged areas)
+- Weekly summary logic:
+  - Sends to ALL area leaders (not just unchanged areas)
+  - Tracks changes since last weekly summary (separate from team update timestamps)
+  - Includes new/updated/removed participant sections in email template
 - Date-prefixed subjects (YYYY-MM-DD) to prevent Gmail threading issues
 - Registration confirmation with year prefix in subject line
 
@@ -455,13 +427,16 @@ DISPLAY_TIMEZONE=America/Vancouver
 - Email validation with RFC 5322 compliance and plus sign (+) support
 - Security restrictions rejecting percent (%) and exclamation (!) in emails
 - Matching validation in Python and JavaScript
-- Organization-specific values from `config/organization.py`
-- Test mode email redirection to `TEST_RECIPIENT`
-- CSRF protection for admin triggers
+- Organization-specific values from `config/organization.py` including:
+  - `DISPLAY_TIMEZONE` for email timestamps and scheduled tasks
+  - `TEST_RECIPIENT` for test mode email redirection
+  - All organization names, contact emails, and URLs
+- CSRF protection for admin triggers with informative error messages
 
 ### Testing & Deployment
 - Admin dashboard integration with manual triggers (test server only)
-- Timezone support (configurable via `DISPLAY_TIMEZONE`)
+- Informative error handling for trigger failures (CSRF, permissions, server errors)
+- Timezone support (configurable via `DISPLAY_TIMEZONE` in `config/organization.py`)
 - Provider-agnostic email service (SMTP2GO, Gmail, SendGrid, Mailgun)
 - Firestore composite index for removal_log queries (area_code + removed_at)
 - Email branding configuration with environment-specific logo URLs
@@ -485,6 +460,8 @@ DISPLAY_TIMEZONE=America/Vancouver
 8. **Table Sorting**: Verify participant tables sort regular participants alphabetically, then FEEDER participants alphabetically
 9. **Button Styling**: Verify inline button styles render with white text on green background in Gmail and other email clients
 10. **Header Spacing**: Verify logo spacer div (25px) renders correctly across email clients
+11. **Error Handling**: Test trigger button error messages for CSRF failures (expired tokens), permission errors, and server failures
+12. **Weekly Summary Changes**: Verify weekly summaries include change sections (new/updated/removed participants) and track timestamps separately from team updates
 
 ### Integration Testing
 1. **Single-Table Queries**: Test leadership resolution from participant records

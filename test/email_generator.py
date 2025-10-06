@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2025-09-29
+# Updated by Claude AI on 2025-10-06
 #!/usr/bin/env python3
 """
 Email Generation System for Vancouver CBC Registration
@@ -269,28 +269,33 @@ def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
         db, _ = get_firestore_client()
         current_year = datetime.now().year
         current_time = datetime.utcnow()
-        one_week_ago = current_time - timedelta(days=7)
-        
+
         participant_model = ParticipantModel(db, current_year)
         timestamp_model = EmailTimestampModel(db, current_year)
-        
+
         results = {
             'emails_sent': 0,
             'areas_processed': 0,
             'errors': []
         }
-        
+
         # Get all areas that have leaders
         all_leaders = participant_model.get_leaders()
         areas_with_leaders = set(leader['assigned_area_leader'] for leader in all_leaders if leader.get('is_leader', False))
-        
+
         for area_code in areas_with_leaders:
             try:
                 results['areas_processed'] += 1
-                
-                # Check for changes in the past week for context
+
+                # Get last weekly summary timestamp (not team update timestamp)
+                last_weekly_summary = timestamp_model.get_last_email_sent(area_code, 'weekly_summary')
+                if last_weekly_summary is None:
+                    # Default to one week ago if no previous weekly summary
+                    last_weekly_summary = current_time - timedelta(days=7)
+
+                # Check for changes since last weekly summary
                 new_participants, updated_participants, removed_participants = get_participants_changes_since(
-                    participant_model, area_code, one_week_ago
+                    participant_model, area_code, last_weekly_summary
                 )
                 has_changes = bool(new_participants or updated_participants or removed_participants)
 
@@ -315,6 +320,9 @@ def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
                 email_context = {
                     'area_code': area_code,
                     'leader_names': leader_names,
+                    'new_participants': new_participants,
+                    'updated_participants': updated_participants,
+                    'removed_participants': removed_participants,
                     'current_team': current_team,
                     'has_changes': has_changes,
                     'skill_breakdown': skill_breakdown,
