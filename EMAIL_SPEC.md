@@ -1,16 +1,17 @@
-# Email System Specification for Single-Table Architecture
-{# Updated by Claude AI on 2025-09-30 #}
+# Email System Specification
+<!-- Updated by Claude AI on 2025-10-05 -->
 
-This document specifies the automated email notification system for the Christmas Bird Count registration application, adapted for the single-table architecture where all participant and leadership data is unified in `participants_YYYY` collections.
+This document specifies the automated email notification system for the Christmas Bird Count registration application using the single-table architecture where participant and leadership data is unified in `participants_YYYY` collections.
 
 ## Overview
 
-The email system provides automated notifications to area leaders and administrators about registration activity, team changes, and administrative tasks. The system is designed for:
+The email system provides automated notifications to area leaders and administrators about registration activity, team changes, and administrative tasks.
 
+**System Characteristics**:
 - **Seasonal usage patterns**: Active September-December, dormant January-August
 - **Single-table architecture**: Leadership data integrated into participant records with `is_leader` flag
 - **Test mode safety**: All emails redirect to admin in test environments
-- **Change detection**: Only sends emails when actual changes occur
+- **Change detection**: Sends emails when changes occur
 
 ## Email Types
 
@@ -30,14 +31,14 @@ The email system provides automated notifications to area leaders and administra
 
 **Content**:
 - **Subject**: "{date} Vancouver CBC Area {area_code} Update" (date prefix format: YYYY-MM-DD)
-- **New team members**: Added or reassigned to area since last update (simplified list format)
-- **Participant info updates**: Contact info, equipment, or other field changes (simplified list format)
-- **Removed team members**: Deleted or reassigned from area since last update (simplified list format)
-- **Email Summary Section**: Dedicated section with all team email addresses in copy-friendly format
-- **Complete current roster**: Professional table format matching admin interface (Name, Email, Cell Phone, Skill Level, Experience, Equipment, Leader Interest, Scribe Interest)
+- **New team members**: Added or reassigned to area since last update
+- **Participant info updates**: Contact info, equipment, or other field changes
+- **Removed team members**: Deleted or reassigned from area since last update
+- **Email Summary Section**: Team email addresses in copy-friendly format
+- **Complete current roster**: Table format (Name, Email, Cell Phone, Skill Level, Experience, Equipment, Leader Interest, Scribe Interest)
 - **Leader dashboard link**: Environment-appropriate URL with CSV export capability
 
-**Frequency**: Automated checks twice daily (production scheduling pending)
+**Frequency**: Manual triggers available on test server via admin dashboard (automated scheduling pending)
 
 ### 2. Weekly Team Summary
 
@@ -48,16 +49,18 @@ The email system provides automated notifications to area leaders and administra
 - Sent to every area leader regardless of whether team changes occurred
 
 **Trigger Conditions**:
-- Sent every Friday at 11pm Pacific Time
+- Intended schedule: Every Friday at 11pm Pacific Time
 - No change detection - sent to all leaders for consistent communication
 
 **Content**:
 - **Subject**: "{date} Vancouver CBC Area {area_code} Weekly Summary" (date prefix format: YYYY-MM-DD)
 - **Team status**: Visual badge indicating "Changes this week" or "No changes this week"
-- **Team statistics**: Interactive grid showing total members, skill level breakdown, experience distribution, leadership interest count
-- **Email Summary Section**: Dedicated section with all team email addresses in copy-friendly format
-- **Complete team roster**: Professional table format matching admin interface (Name, Email, Cell Phone, Skill Level, Experience, Equipment, Leader Interest, Scribe Interest)
+- **Team statistics**: Grid layout showing total members, skill level breakdown, experience distribution, leadership interest count
+- **Email Summary Section**: Team email addresses in copy-friendly format
+- **Complete team roster**: Table format (Name, Email, Cell Phone, Skill Level, Experience, Equipment, Leader Interest, Scribe Interest)
 - **Leader dashboard link**: Environment-appropriate URL with CSV export capability
+
+**Frequency**: Manual triggers available on test server via admin dashboard (automated scheduling pending)
 
 ### 3. Daily Admin Digest
 
@@ -76,7 +79,7 @@ The email system provides automated notifications to area leaders and administra
 - **Statistics**: Count, leadership interest, average days waiting
 - **Admin interface link**: Direct link to unassigned management page
 
-**Frequency**: Daily checks (production scheduling pending)
+**Frequency**: Manual triggers available on test server via admin dashboard (automated scheduling pending)
 
 ## Technical Architecture
 
@@ -137,7 +140,7 @@ The email system provides automated notifications to area leaders and administra
 ### Email Generation System
 
 **Core Components**:
-- **Email Generator**: `test/email_generator.py` - Core logic for all email types
+- **Email Generator**: `test/email_generator.py` - Logic for all email types
 - **Email Service**: `services/email_service.py` - SMTP delivery with test mode support
 - **Email Templates**: `templates/emails/` - HTML templates for each email type
 - **Configuration**: `config/email_settings.py` - Provider-agnostic email settings
@@ -162,25 +165,34 @@ def get_area_leaders_emails(participant_model, area_code):
 - `templates/emails/team_update.html` - Twice-daily team updates
 - `templates/emails/weekly_summary.html` - Weekly summaries for all leaders
 - `templates/emails/admin_digest.html` - Daily admin digest
+- `templates/emails/registration_confirmation.html` - Registration confirmation
 
 **Template Features**:
-- **Professional Table Format**: Participant roster displayed in table matching admin interface exactly
+- **Table Format**: Participant roster in table format
   - Columns: Name, Email, Cell Phone, Skill Level, Experience, Equipment, Leader Interest, Scribe Interest
-  - FEEDER participants distinguished with light blue row background
-  - Equipment shown with emoji icons (🔭 binoculars, 🏁 spotting scope)
+  - FEEDER participants: light blue row background
+  - Equipment: text display (Binoculars, Scope)
   - Interest badges for leadership and scribe roles
-- **Email Summary Section**: Dedicated section for easy email copying
+  - Sorted: Regular participants alphabetically, then FEEDER participants alphabetically
+- **Email Summary Section**: Copy-friendly email list
   - Text selection interface for copying team email addresses
-  - All team emails in comma-separated format for easy copying
-- **Enhanced Statistics** (Weekly Summary): Grid layout showing team composition breakdown
-- **Date-Prefixed Subjects**: All emails include YYYY-MM-DD date prefix to prevent Gmail threading issues
-- **Responsive HTML**: Bootstrap-based styling for mobile compatibility (800px max width)
+  - Comma-separated format
+- **Statistics Display** (Weekly Summary): Grid layout with team composition breakdown
+- **Date-Prefixed Subjects**: YYYY-MM-DD prefix to prevent Gmail threading issues
+- **Responsive HTML**: 800px max width for mobile compatibility
 - **Environment-aware links**: Test vs production URL generation
-- **Leader Dashboard Features**: CSV export button for team contact information
-- **Secondary phone display**: Includes both primary and secondary phone numbers
+- **Leader Dashboard Button**: Inline styled button with white text on green background
+- **Secondary phone display**: Both primary and secondary phone numbers
 - **Test mode indicators**: Visual indicators for test email mode
-- **Timezone display**: Pacific Time formatting for user convenience
-- **Security**: All user input properly escaped with `|e` filter
+- **Timezone display**: Pacific Time formatting
+- **Security**: All user input escaped with `|e` filter
+
+**Template Styling**:
+- **Header**: Logo with 25px spacer div, organization name, event title
+- **Headings**: Black text (h4 elements, 18px, bold)
+- **Footer**: Light background matching content
+- **Buttons**: Inline styles to override email client defaults (`color: #ffffff !important`)
+- **Salutation spacing**: `margin-right: auto` for proper button positioning
 
 **Template Context Variables**:
 ```python
@@ -219,7 +231,7 @@ EMAIL_BRANDING = {
 }
 
 def get_email_branding() -> dict:
-    """Get complete email branding with environment-specific logo URL."""
+    """Get email branding with environment-specific logo URL."""
     branding = EMAIL_BRANDING.copy()
     branding['logo_url'] = get_logo_url()  # Environment-specific URL
     return branding
@@ -413,53 +425,52 @@ DISPLAY_TIMEZONE=America/Vancouver
 # Same secret references (test mode redirects emails)
 ```
 
-## Implementation Status
+## Current Implementation
 
-### ✅ Completed Components (Updated 2025-09-30)
-✅ **Single-Table Migration**: Successfully migrated from dual-table email branch to single-table main branch architecture
-✅ **Email Generation Logic**: Complete with timezone support and change detection using participant-based leadership
-✅ **Participant Info Update Detection**: Team update emails triggered by participant information changes (contact info, equipment, skill level, experience)
-✅ **Enhanced HTML Email Templates**: Professional table format matching admin interface with simplified email copying
-✅ **Leadership Query Integration**: Updated to use `ParticipantModel.get_leaders()` and identity-based operations
-✅ **Weekly Summary Logic**: Updated to send to ALL area leaders (not just unchanged areas)
-✅ **Date-Prefixed Subjects**: All emails include YYYY-MM-DD prefix to prevent Gmail threading issues
-✅ **Registration Confirmation**: Updated to include year prefix in subject line
-✅ **Email Summary Section**: Dedicated copy-friendly email list with text selection
-✅ **Security Architecture**: Test-only routes with production isolation and proper input escaping
-✅ **Email Validation System**: Centralized validation with security restrictions
-  - RFC 5322 compliance with plus sign (+) support (e.g., `harvey.dueck+rabbit@gmail.com`)
-  - Security restrictions rejecting percent signs (%) and exclamation marks (!)
-  - Matching validation in Python (`services/security.py`) and JavaScript (`static/js/validation.js`)
-  - Comprehensive test suite with 51 backend unit tests
-  - Validation integrated across all forms (registration, admin participant edit, admin leader edit)
-✅ **Test Interface**: Admin dashboard integration with manual triggers and CSRF protection
-✅ **Timezone Support**: Configurable display timezone (America/Vancouver)
-✅ **Provider-Agnostic Email Service**: Support for multiple SMTP providers (SMTP2GO, Gmail, SendGrid, Mailgun)
-✅ **Firestore Index Management**: Added required composite index for removal_log queries (area_code + removed_at)
-✅ **Organizational Branding**: Configurable email branding system with Nature Vancouver logo and green color scheme
-✅ **Configuration-Based Organization Values**: All organization-specific values (names, emails, URLs) loaded from `config/organization.py`
-  - Added `TEST_RECIPIENT` configuration for test mode email redirection
-  - Eliminated hardcoded organization names, contact emails, and URLs from `services/email_service.py`
-  - All email methods use `get_organization_variables()` for consistent configuration access
-  - Improved portability for other Christmas Bird Count clubs
-✅ **Template Features**:
-  - Professional table layout identical to admin/participants interface
-  - Equipment icons and role interest badges
-  - FEEDER participant visual distinction
-  - Mobile-responsive design (800px max width)
-  - Nature Vancouver logo with transparent PNG format for email client compatibility
-  - Green color scheme matching organizational branding (#2e8b57 primary, #f0fff0 background, #ffc107 warning)
-  - Horizontal header layout with logo and organization name
-  - Optimized content flow with participant info updates section
-  - Simplified email copying via text selection
-  - Enhanced typography with larger, bold salutation text
-✅ **Leader Dashboard Features**: CSV export button for downloading team contact information
+### Email Generation
+- Single-table migration from dual-table email branch architecture
+- Email generation logic with timezone support and change detection using participant-based leadership
+- Participant info update detection for team update emails
+- Weekly summary logic sends to ALL area leaders (not just unchanged areas)
+- Date-prefixed subjects (YYYY-MM-DD) to prevent Gmail threading issues
+- Registration confirmation with year prefix in subject line
 
-### Pending Production Features
-❌ **Cloud Scheduler Setup**: Automated email triggers
-❌ **Gmail API Integration**: Alternative to SMTP for better reliability
-❌ **Monitoring & Alerting**: Email delivery failure detection
-❌ **Performance Optimization**: Email generation efficiency for large datasets
+### Email Templates
+- HTML templates for all email types
+- Table format matching admin interface
+- Equipment and interest badge displays
+- FEEDER participant visual distinction
+- Mobile-responsive design (800px max width)
+- Nature Vancouver logo (transparent PNG format)
+- Green color scheme (#2e8b57 primary, #f0fff0 background, #ffc107 warning)
+- Horizontal header with logo spacer div (25px)
+- Email summary section with copy-friendly format
+- Inline button styling for email client compatibility
+- Black heading text (h4 elements)
+- Participant sorting: regular participants alphabetically, then FEEDER participants alphabetically
+
+### Security & Configuration
+- Test-only routes with production isolation
+- Input escaping with `|e` filter in templates
+- Email validation with RFC 5322 compliance and plus sign (+) support
+- Security restrictions rejecting percent (%) and exclamation (!) in emails
+- Matching validation in Python and JavaScript
+- Organization-specific values from `config/organization.py`
+- Test mode email redirection to `TEST_RECIPIENT`
+- CSRF protection for admin triggers
+
+### Testing & Deployment
+- Admin dashboard integration with manual triggers (test server only)
+- Timezone support (configurable via `DISPLAY_TIMEZONE`)
+- Provider-agnostic email service (SMTP2GO, Gmail, SendGrid, Mailgun)
+- Firestore composite index for removal_log queries (area_code + removed_at)
+- Email branding configuration with environment-specific logo URLs
+
+### Pending Features
+- Cloud Scheduler setup for automated email triggers
+- Gmail API integration as alternative to SMTP
+- Monitoring and alerting for email delivery failures
+- Performance optimization for large datasets
 
 ## Testing Strategy
 
@@ -471,6 +482,9 @@ DISPLAY_TIMEZONE=America/Vancouver
 5. **Configuration Loading**: Verify all organization values loaded from `config/organization.py` (no hardcoded values)
 6. **Email Copy Functionality**: Test text selection-based email copying in various email clients
 7. **Email Validation**: Verify plus sign support and security restrictions (percent/exclamation rejection)
+8. **Table Sorting**: Verify participant tables sort regular participants alphabetically, then FEEDER participants alphabetically
+9. **Button Styling**: Verify inline button styles render with white text on green background in Gmail and other email clients
+10. **Header Spacing**: Verify logo spacer div (25px) renders correctly across email clients
 
 ### Integration Testing
 1. **Single-Table Queries**: Test leadership resolution from participant records
@@ -481,9 +495,10 @@ DISPLAY_TIMEZONE=America/Vancouver
 ### Production Readiness
 1. **SMTP Credentials**: Verify email service configuration
 2. **Template Links**: Test environment-specific URL generation
-3. **Admin Dashboard**: Test manual email triggers
+3. **Admin Dashboard**: Test manual email triggers (test server only - not available in production)
 4. **Monitoring**: Verify logging and error reporting
+5. **Route Isolation**: Verify test email routes absent from production deployment
 
 ---
 
-This email system specification provides a comprehensive foundation for migrating email functionality from the dual-table email branch to the single-table main branch architecture.
+This specification documents the email notification system for the Christmas Bird Count registration application using single-table architecture.

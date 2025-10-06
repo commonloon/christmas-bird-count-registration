@@ -20,11 +20,14 @@
             border-radius: 5px 5px 0 0;
             display: flex;
             align-items: center;
-            gap: 30px;
         }
         .header-logo {
             height: 70px;
             width: auto;
+            flex-shrink: 0;
+        }
+        .header-spacer {
+            width: 25px;
             flex-shrink: 0;
         }
         .header-text {
@@ -116,6 +119,7 @@
     <div class="header">
         {% if branding.logo_url %}
         <img src="{{ branding.logo_url }}" alt="{{ branding.logo_alt }}" class="header-logo">
+        <div class="header-spacer"></div>
         {% endif %}
         <div class="header-text">
             <h1>{{ branding.organization_name }}</h1>

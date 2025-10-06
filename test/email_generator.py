@@ -286,10 +286,10 @@ def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
                 results['areas_processed'] += 1
                 
                 # Check for changes in the past week for context
-                new_participants, removed_participants = get_participants_changes_since(
+                new_participants, updated_participants, removed_participants = get_participants_changes_since(
                     participant_model, area_code, one_week_ago
                 )
-                has_changes = bool(new_participants or removed_participants)
+                has_changes = bool(new_participants or updated_participants or removed_participants)
 
                 # Send weekly summary to ALL leaders regardless of changes
                 # Get leader emails and names

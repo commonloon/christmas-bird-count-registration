@@ -20,11 +20,14 @@
             border-radius: 5px 5px 0 0;
             display: flex;
             align-items: center;
-            gap: 30px;
         }
         .header-logo {
             height: 70px;
             width: auto;
+            flex-shrink: 0;
+        }
+        .header-spacer {
+            width: 25px;
             flex-shrink: 0;
         }
         .header-text {
@@ -137,9 +140,10 @@
             background-color: #f8d7da;
             border-left: 4px solid #dc3545;
         }
-        .section-title {
-            color: {{ branding.text_color }};
+        .content h4 {
+            font-size: 18px;
             font-weight: bold;
+            color: {{ branding.text_color }};
             margin-top: 25px;
             margin-bottom: 10px;
         }
@@ -164,6 +168,7 @@
     <div class="header">
         {% if branding.logo_url %}
         <img src="{{ branding.logo_url }}" alt="{{ branding.logo_alt }}" class="header-logo">
+        <div class="header-spacer"></div>
         {% endif %}
         <div class="header-text">
             <h1>{{ branding.organization_name }}</h1>
@@ -181,14 +186,14 @@
                 <p style="margin: 5px 0 0 0;"><strong>Area Leaders:</strong> {{ leader_names|join(', ') }}</p>
                 {% endif %}
             </div>
-            <a href="{{ leader_dashboard_url }}" class="btn">View Leader Dashboard</a>
+            <a href="{{ leader_dashboard_url }}" class="btn" style="display: inline-block; padding: 10px 20px; background-color: {{ branding.primary_color }}; color: #ffffff !important; font-weight: bold; text-decoration: none; border-radius: 5px;">View Leader Dashboard</a>
         </div>
 
         <p>Your Christmas Bird Count team has been updated. Here are the recent changes:</p>
 
         {% if new_participants %}
         <div class="changes-section new-members">
-            <h3>📥 New Team Members ({{ new_participants|length }})</h3>
+            <h4>📥 New Team Members ({{ new_participants|length }})</h4>
             {% for participant in new_participants %}
             <p><strong>{{ participant.first_name }} {{ participant.last_name }}</strong> - {{ participant.email }}</p>
             {% endfor %}
@@ -197,7 +202,7 @@
 
         {% if updated_participants %}
         <div class="changes-section" style="background-color: #fff3cd; border-left: 4px solid {{ branding.badge_warning }};">
-            <h3>📝 Participant Info Updates ({{ updated_participants|length }})</h3>
+            <h4>📝 Participant Info Updates ({{ updated_participants|length }})</h4>
             {% for participant in updated_participants %}
             <p><strong>{{ participant.first_name }} {{ participant.last_name }}</strong> - {{ participant.email }}</p>
             {% endfor %}
@@ -206,7 +211,7 @@
 
         {% if removed_participants %}
         <div class="changes-section removed-members">
-            <h3>📤 Removed Team Members ({{ removed_participants|length }})</h3>
+            <h4>📤 Removed Team Members ({{ removed_participants|length }})</h4>
             {% for removal in removed_participants %}
             <p><strong>{{ removal.participant_name }}</strong>{% if removal.reason %} - {{ removal.reason }}{% endif %}</p>
             {% endfor %}
@@ -216,14 +221,12 @@
         {% if current_team %}
         <!-- Email Summary Section -->
         <div class="email-summary">
-            <h3>📧 Team Email Addresses ({{ current_team|length }} members)</h3>
+            <h4>📧 Team Email Addresses ({{ current_team|length }} members)</h4>
             <p><strong>To copy:</strong> Select all text in the box below, then copy (Ctrl+C or Cmd+C)</p>
             <div class="email-list" id="emailList">{{ current_team|map(attribute='email')|join(', ') }}</div>
         </div>
 
-        <div class="section-title">
-            👥 Complete Team Roster ({{ current_team|length }} members)
-        </div>
+        <h4>👥 Complete Team Roster ({{ current_team|length }} members)</h4>
 
         <table class="participant-table">
             <thead>
@@ -239,7 +242,10 @@
                 </tr>
             </thead>
             <tbody>
-                {% for participant in current_team|sort(attribute='first_name') %}
+                {# Sort: regular participants first (alphabetically), then FEEDER participants (alphabetically) #}
+                {% set regular_participants = current_team|selectattr('participation_type', 'ne', 'FEEDER')|sort(attribute='first_name')|list %}
+                {% set feeder_participants = current_team|selectattr('participation_type', 'equalto', 'FEEDER')|sort(attribute='first_name')|list %}
+                {% for participant in regular_participants + feeder_participants %}
                 <tr{% if participant.participation_type == 'FEEDER' %} class="feeder-row"{% endif %}>
                     <td>
                         <strong>{{ participant.first_name|e }} {{ participant.last_name|e }}</strong>
@@ -282,7 +288,7 @@
         </table>
         {% endif %}
 
-        <p><strong>Next Steps:</strong></p>
+        <h4>📋 Next Steps</h4>
         <ul>
             <li>Welcome new team members and provide them with count day details</li>
             <li>Share meeting location and time information</li>

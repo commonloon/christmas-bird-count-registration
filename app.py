@@ -43,6 +43,7 @@ from routes.admin import admin_bp
 from routes.leader import leader_bp
 from routes.api import api_bp
 from routes.auth import auth_bp, init_auth
+from routes.scheduler import scheduler_bp
 
 # Initialize authentication
 init_auth(app)
@@ -53,6 +54,7 @@ app.register_blueprint(admin_bp, url_prefix='/admin')
 app.register_blueprint(leader_bp, url_prefix='/leader')
 app.register_blueprint(api_bp, url_prefix='/api')
 app.register_blueprint(auth_bp, url_prefix='/auth')
+app.register_blueprint(scheduler_bp, url_prefix='/scheduler')
 
 # Load area boundaries data
 def load_area_boundaries():

@@ -20,11 +20,14 @@
             border-radius: 5px 5px 0 0;
             display: flex;
             align-items: center;
-            gap: 30px;
         }
         .header-logo {
             height: 70px;
             width: auto;
+            flex-shrink: 0;
+        }
+        .header-spacer {
+            width: 25px;
             flex-shrink: 0;
         }
         .header-text {
@@ -51,8 +54,8 @@
             border: 1px solid {{ branding.accent_color }};
         }
         .footer {
-            background-color: {{ branding.secondary_color }};
-            color: white;
+            background-color: {{ branding.background_color }};
+            color: {{ branding.text_color }};
             padding: 15px;
             text-align: center;
             font-size: 12px;
@@ -154,21 +157,21 @@
             color: #666;
             margin-top: 5px;
         }
-        .section-title {
-            color: {{ branding.primary_color }};
+        .content h4 {
+            font-size: 18px;
             font-weight: bold;
+            color: {{ branding.text_color }};
             margin-top: 25px;
             margin-bottom: 10px;
         }
         .btn {
             display: inline-block;
             padding: 10px 20px;
-            background-color: {{ branding.accent_color }};
-            color: {{ branding.secondary_color }};
+            background-color: {{ branding.primary_color }};
+            color: white;
             font-weight: bold;
             text-decoration: none;
             border-radius: 5px;
-            margin-top: 15px;
         }
     </style>
 </head>
@@ -176,6 +179,7 @@
     <div class="header">
         {% if branding.logo_url %}
         <img src="{{ branding.logo_url }}" alt="{{ branding.logo_alt }}" class="header-logo">
+        <div class="header-spacer"></div>
         {% endif %}
         <div class="header-text">
             <h1>{{ branding.organization_name }}</h1>
@@ -187,13 +191,13 @@
     <div class="content">
         <!-- Salutation with Dashboard Button -->
         <div style="display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-bottom: 20px;">
-            <div>
+            <div style="margin-right: auto;">
                 <p style="font-size: 18px; font-weight: bold; margin: 0;">Dear Area {{ area_code }} Leader{{ 's' if leader_names|length > 1 else '' }},</p>
                 {% if leader_names %}
                 <p style="margin: 5px 0 0 0;"><strong>Area Leaders:</strong> {{ leader_names|join(', ') }}</p>
                 {% endif %}
             </div>
-            <a href="{{ leader_dashboard_url }}" class="btn">View Leader Dashboard</a>
+            <a href="{{ leader_dashboard_url }}" class="btn" style="display: inline-block; padding: 10px 20px; background-color: {{ branding.primary_color }}; color: #ffffff !important; font-weight: bold; text-decoration: none; border-radius: 5px;">View Leader Dashboard</a>
         </div>
 
         <!-- Status -->
@@ -226,7 +230,10 @@
                 </tr>
             </thead>
             <tbody>
-                {% for participant in current_team|sort(attribute='first_name') %}
+                {# Sort: regular participants first (alphabetically), then FEEDER participants (alphabetically) #}
+                {% set regular_participants = current_team|selectattr('participation_type', 'ne', 'FEEDER')|sort(attribute='first_name')|list %}
+                {% set feeder_participants = current_team|selectattr('participation_type', 'equalto', 'FEEDER')|sort(attribute='first_name')|list %}
+                {% for participant in regular_participants + feeder_participants %}
                 <tr{% if participant.participation_type == 'FEEDER' %} class="feeder-row"{% endif %}>
                     <td>
                         <strong>{{ participant.first_name|e }} {{ participant.last_name|e }}</strong>
