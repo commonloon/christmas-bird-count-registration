@@ -73,7 +73,10 @@ def get_area_leaders_emails(participant_model: ParticipantModel, area_code: str)
     """Get all email addresses for leaders of a specific area."""
     try:
         leaders = participant_model.get_leaders_by_area(area_code)
-        return [leader['email'] for leader in leaders if leader.get('is_leader', False)]
+        emails = [leader['email'] for leader in leaders if leader.get('is_leader', False)]
+        if is_test_server():
+            logger.info(f"get_area_leaders_emails for area {area_code}: found {len(leaders)} leaders, returning {len(emails)} emails: {emails}")
+        return emails
     except Exception as e:
         logger.error(f"Error getting leader emails for area {area_code}: {e}")
         return []
