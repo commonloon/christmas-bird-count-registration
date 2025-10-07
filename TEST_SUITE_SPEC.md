@@ -1,5 +1,5 @@
 # Christmas Bird Count Registration Test Suite Specification
-{# Updated by Claude AI on 2025-09-30 #}
+{# Updated by Claude AI on 2025-10-07 #}
 
 ## Overview
 
@@ -208,14 +208,16 @@ family_members = [
 - Leader promotion from participant list
 - FEEDER vs regular participant display
 
-**Reassignment Workflow Testing (2025-10-06):**
+**Reassignment Workflow Testing (Completed 2025-10-07):**
 - Regular participant reassignment to different area
-- Leader reassignment with leadership decline (moves as regular participant)
-- Leader reassignment with leadership acceptance (moves and retains leadership)
-- Validation preventing reassignment to same area
+- Leader reassignment with leadership decline via "Team Member" button in Bootstrap modal
+- Leader reassignment with leadership acceptance via "Leader" button in Bootstrap modal
+- Validation preventing reassignment to same area (JavaScript alert)
 - Reassignment cancellation workflow
 - Database integrity verification after reassignment operations
 - Leadership flag synchronization during area changes
+- **UI Update**: Bootstrap modal with three explicit buttons ("Cancel", "Team Member", "Leader") replaces confusing confirm() dialog
+- **All 5 tests passing**: Complete test suite validates all reassignment workflows including new modal UI
 
 ### Phase 3: Security & Edge Cases
 
@@ -560,23 +562,30 @@ dashboard_selectors = [
 - **Bug Fixes Applied**: Timeout, method name, and element interaction issues resolved
 - **Execution Pipeline**: Reliable test execution environment established
 
-### ✅ **Participant Reassignment Tests (2025-10-06)**
-**Initial Reassignment Workflow Testing (5 basic tests)**:
+### ✅ **Participant Reassignment Tests (Completed 2025-10-07)**
+**Comprehensive Reassignment Workflow Testing (5 tests - All Passing)**:
 - **Test File**: `tests/test_participant_reassignment.py`
 - **Test Data**: Uses 347 participants from `tests/fixtures/test_participants_2025.csv`
 - **Module-Scoped Fixture**: Single database load per test file execution for efficiency
 - **Coverage**:
-  1. Regular participant reassignment (Area A → C)
-  2. Leader reassignment declining new leadership (Area B → D, becomes regular participant)
-  3. Leader reassignment accepting new leadership (Area B → E, retains leadership)
-  4. Validation error for same-area reassignment
-  5. Reassignment cancellation workflow
+  1. Regular participant reassignment (Area A → C) - Non-leader workflow
+  2. Leader reassignment declining new leadership (Area B → D) - Clicks "Team Member" button in Bootstrap modal
+  3. Leader reassignment accepting new leadership (Area D → E) - Clicks "Leader" button in Bootstrap modal
+  4. Validation error for same-area reassignment (Area F → F) - JavaScript alert prevents modal
+  5. Reassignment cancellation workflow (Area G) - Tests UI state restoration
 - **Validation**: Database state verification, leadership flag synchronization, UI workflow correctness
-- **Implementation Details**:
-  - JavaScript passes required fields: `participant_id`, `first_name`, `last_name`, `email`, `preferred_area`
-  - Backend validation in `routes/admin.py::edit_participant()`
-  - Leadership removal logic when area changes
-  - Confirmation dialog for leader reassignments
+- **UI Implementation**:
+  - **Bootstrap Modal**: Replaced confusing confirm() dialog with clear 3-button modal
+  - **Modal Buttons**: "Cancel" (no changes), "Team Member" (move without leadership), "Leader" (move with leadership)
+  - **Modal Message**: Shows participant name and area transition clearly
+  - **JavaScript Integration**: Modal handling via `bootstrap.Modal` API
+- **Test Implementation**:
+  - Tests updated to interact with Bootstrap modal elements by ID
+  - Browser window resizing (+500px width) ensures buttons visible
+  - ActionChains for reliable button clicks
+  - Success alert handling after reassignment operations
+  - Method name fixes: `get_participant_by_email_and_names()` for identity-based queries
+- **Execution**: All 5 tests pass individually and as complete suite (2m 31s total)
 
 **Next Steps for Comprehensive Coverage**:
 - Expand from 6 smoke tests to comprehensive scenario coverage

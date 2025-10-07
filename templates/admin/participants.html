@@ -314,6 +314,27 @@
     {% endif %}
     {% endfor %}
 
+<!-- Leader Reassignment Modal -->
+<div class="modal fade" id="leaderReassignModal" tabindex="-1" aria-labelledby="leaderReassignModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="leaderReassignModalLabel">Reassign Leader</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p id="leaderReassignMessage"></p>
+                <p class="fw-bold">Move as:</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-outline-primary" id="moveAsTeamMember">Team Member</button>
+                <button type="button" class="btn btn-primary" id="moveAsLeader">Leader</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Delete Confirmation Modal -->
 <div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
     <div class="modal-dialog">
@@ -617,25 +638,36 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
 
-            // If participant is a leader, ask about leadership in new area
-            let makeLeader = false;
+            // If participant is a leader, show modal to ask about leadership
             if (isLeader) {
-                makeLeader = confirm(
-                    `You are moving ${participantName} from Area ${currentArea} to Area ${newArea}.\n\n` +
-                    `Make them a leader for Area ${newArea}?`
-                );
-            }
+                const modal = new bootstrap.Modal(document.getElementById('leaderReassignModal'));
+                document.getElementById('leaderReassignMessage').textContent =
+                    `Moving ${participantName} from Area ${currentArea} to Area ${newArea}.`;
 
-            // Disable button during operation
-            this.disabled = true;
-            this.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+                // Store context for button handlers
+                const reassignButton = this;
 
-            // Determine which route to call
-            if (isLeader && makeLeader) {
-                // Call assign_leader to move them and give leadership
-                reassignLeader(participantId, newArea, this);
+                // Handler for "Move as Leader" button
+                document.getElementById('moveAsLeader').onclick = function() {
+                    modal.hide();
+                    reassignButton.disabled = true;
+                    reassignButton.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+                    reassignLeader(participantId, newArea, reassignButton);
+                };
+
+                // Handler for "Move as Team Member" button
+                document.getElementById('moveAsTeamMember').onclick = function() {
+                    modal.hide();
+                    reassignButton.disabled = true;
+                    reassignButton.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+                    reassignParticipant(participantId, firstName, lastName, email, newArea, reassignButton);
+                };
+
+                modal.show();
             } else {
-                // Call edit_participant to just move them (removes leadership if they had it)
+                // Non-leader: just move them
+                this.disabled = true;
+                this.innerHTML = '<i class="bi bi-hourglass-split"></i>';
                 reassignParticipant(participantId, firstName, lastName, email, newArea, this);
             }
         });

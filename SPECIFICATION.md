@@ -1,5 +1,5 @@
 # Vancouver Christmas Bird Count Registration App - Complete Specification
-{# Updated by Claude AI on 2025-10-06 #}
+{# Updated by Claude AI on 2025-10-07 #}
 
 ## Overview
 Web application for Nature Vancouver's annual Christmas Bird Count registration with interactive map-based area selection. Users can register by clicking count areas on a map or using a dropdown menu, with automatic assignment to areas needing volunteers.
@@ -208,10 +208,12 @@ def get_admin_emails():
 - **Participant Reassignment** (Current Year Only):
   - **Reassign Button**: Dedicated button in Actions column for moving participants between areas
   - **Workflow**: Click Reassign → Select new area from dropdown → Confirm or Cancel
-  - **Leader Handling**: When reassigning a leader, system prompts whether to retain leadership in new area
-    - Accept leadership: Participant becomes leader of new area (previous leadership removed)
-    - Decline leadership: Participant moves as regular participant (leadership removed)
-  - **Validation**: Prevents reassignment to same area with informative error message
+  - **Leader Handling**: When reassigning a leader, Bootstrap modal appears with three explicit choices
+    - **"Leader" button**: Moves participant and makes them leader of new area (previous leadership removed)
+    - **"Team Member" button**: Moves participant without leadership (leadership removed)
+    - **"Cancel" button**: Closes modal without any changes
+  - **Modal UI**: Clear message showing participant name and area transition (e.g., "Moving [Name] from Area A to Area B")
+  - **Validation**: Prevents reassignment to same area with JavaScript alert before modal appears
   - **Data Preservation**: All participant fields (phone, skill level, experience, etc.) remain unchanged during reassignment
   - **Page Reload**: Automatic page refresh after successful reassignment to show updated area assignment
 - **Sorting**: Areas displayed in alphabetical order, participants within each area sorted alphabetically by first name
