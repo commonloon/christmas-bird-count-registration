@@ -1,5 +1,5 @@
 # Test Execution Guide
-{# Updated by Claude AI on 2025-09-30 #}
+{# Updated by Claude AI on 2025-10-06 #}
 
 ## Overview
 
@@ -551,6 +551,16 @@ pytest tests/test_admin_workflows.py::test_leader_promotion_deletion -v
 
 # Participant management operations
 pytest tests/test_admin_workflows.py::test_participant_assignment -v
+
+# Participant reassignment workflows (5 basic tests)
+pytest tests/test_participant_reassignment.py -v
+
+# Individual reassignment tests
+pytest tests/test_participant_reassignment.py::TestParticipantReassignment::test_01_regular_participant_reassignment -v
+pytest tests/test_participant_reassignment.py::TestParticipantReassignment::test_02_leader_reassignment_decline_leadership -v
+pytest tests/test_participant_reassignment.py::TestParticipantReassignment::test_03_leader_reassignment_accept_leadership -v
+pytest tests/test_participant_reassignment.py::TestParticipantReassignment::test_04_reassignment_validation_same_area -v
+pytest tests/test_participant_reassignment.py::TestParticipantReassignment::test_05_reassignment_cancel -v
 
 # CSV export validation
 pytest tests/test_csv_export.py -v

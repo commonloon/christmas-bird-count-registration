@@ -1,5 +1,5 @@
 # Vancouver Christmas Bird Count Registration App - Complete Specification
-{# Updated by Claude AI on 2025-09-26 #}
+{# Updated by Claude AI on 2025-10-06 #}
 
 ## Overview
 Web application for Nature Vancouver's annual Christmas Bird Count registration with interactive map-based area selection. Users can register by clicking count areas on a map or using a dropdown menu, with automatic assignment to areas needing volunteers.
@@ -205,8 +205,17 @@ def get_admin_emails():
   - **Real-time Updates**: UI updates immediately after successful save with proper validation
   - **Cell Phone Width**: Optimized width to display 10-digit phone numbers with punctuation
   - **Historical Years**: Edit and delete buttons hidden, replaced with "Read-only" text
+- **Participant Reassignment** (Current Year Only):
+  - **Reassign Button**: Dedicated button in Actions column for moving participants between areas
+  - **Workflow**: Click Reassign → Select new area from dropdown → Confirm or Cancel
+  - **Leader Handling**: When reassigning a leader, system prompts whether to retain leadership in new area
+    - Accept leadership: Participant becomes leader of new area (previous leadership removed)
+    - Decline leadership: Participant moves as regular participant (leadership removed)
+  - **Validation**: Prevents reassignment to same area with informative error message
+  - **Data Preservation**: All participant fields (phone, skill level, experience, etc.) remain unchanged during reassignment
+  - **Page Reload**: Automatic page refresh after successful reassignment to show updated area assignment
 - **Sorting**: Areas displayed in alphabetical order, participants within each area sorted alphabetically by first name
-- **Actions**: Delete participants with confirmation modal and reason logging, inline edit with save/cancel options (current year only)
+- **Actions**: Delete participants with confirmation modal and reason logging, inline edit with save/cancel options, area reassignment (current year only)
 - **Visual Indicators**: FEEDER participants clearly marked with type indicator
 - **Year Selection**: Server-side tab switching via query parameter (?year=YYYY)
 - **CSV Export**: Available for both current and historical years via Quick Actions section

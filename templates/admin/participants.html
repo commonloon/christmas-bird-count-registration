@@ -262,6 +262,16 @@
                                     <button type="button" class="btn btn-outline-primary btn-edit" title="Edit">
                                         <i class="bi bi-pencil"></i>
                                     </button>
+                                    <button type="button" class="btn btn-outline-warning btn-reassign" title="Reassign to different area"
+                                            data-participant-id="{{ participant.id }}"
+                                            data-participant-name="{{ participant.first_name|e }} {{ participant.last_name|e }}"
+                                            data-first-name="{{ participant.first_name|e }}"
+                                            data-last-name="{{ participant.last_name|e }}"
+                                            data-email="{{ participant.email|e }}"
+                                            data-current-area="{{ area_code }}"
+                                            data-is-leader="{{ participant.is_leader|lower }}">
+                                        <i class="bi bi-arrow-left-right"></i>
+                                    </button>
                                     <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal"
                                             data-participant-id="{{ participant.id }}"
                                             data-participant-name="{{ participant.first_name|e }} {{ participant.last_name|e }}">
@@ -273,6 +283,20 @@
                                         <i class="bi bi-check"></i>
                                     </button>
                                     <button type="button" class="btn btn-secondary btn-cancel" title="Cancel">
+                                        <i class="bi bi-x"></i>
+                                    </button>
+                                </div>
+                                <div class="reassign-controls" style="display: none;">
+                                    <select class="form-select form-select-sm d-inline-block reassign-area-select" style="width: auto;">
+                                        <option value="">Select Area</option>
+                                        {% for area in all_areas %}
+                                        <option value="{{ area }}">Area {{ area }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <button type="button" class="btn btn-success btn-sm btn-confirm-reassign" title="Confirm reassignment">
+                                        <i class="bi bi-check"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-secondary btn-sm btn-cancel-reassign" title="Cancel">
                                         <i class="bi bi-x"></i>
                                     </button>
                                 </div>
@@ -543,6 +567,146 @@ document.addEventListener('DOMContentLoaded', function() {
             // Reset button state
             saveButton.innerHTML = originalText;
             saveButton.disabled = false;
+        });
+    }
+
+    // Reassignment functionality
+    document.querySelectorAll('.btn-reassign').forEach(button => {
+        button.addEventListener('click', function() {
+            const row = this.closest('tr');
+
+            // Hide action buttons, show reassign controls
+            row.querySelector('.action-buttons').style.display = 'none';
+            row.querySelector('.reassign-controls').style.display = 'block';
+        });
+    });
+
+    document.querySelectorAll('.btn-cancel-reassign').forEach(button => {
+        button.addEventListener('click', function() {
+            const row = this.closest('tr');
+
+            // Show action buttons, hide reassign controls
+            row.querySelector('.action-buttons').style.display = 'block';
+            row.querySelector('.reassign-controls').style.display = 'none';
+
+            // Reset dropdown
+            row.querySelector('.reassign-area-select').value = '';
+        });
+    });
+
+    document.querySelectorAll('.btn-confirm-reassign').forEach(button => {
+        button.addEventListener('click', function() {
+            const row = this.closest('tr');
+            const reassignButton = row.querySelector('.btn-reassign');
+            const participantId = reassignButton.dataset.participantId;
+            const participantName = reassignButton.dataset.participantName;
+            const firstName = reassignButton.dataset.firstName;
+            const lastName = reassignButton.dataset.lastName;
+            const email = reassignButton.dataset.email;
+            const currentArea = reassignButton.dataset.currentArea;
+            const isLeader = reassignButton.dataset.isLeader === 'true';
+            const newArea = row.querySelector('.reassign-area-select').value;
+
+            if (!newArea) {
+                alert('Please select an area.');
+                return;
+            }
+
+            if (newArea === currentArea) {
+                alert('Participant is already in Area ' + currentArea + '.');
+                return;
+            }
+
+            // If participant is a leader, ask about leadership in new area
+            let makeLeader = false;
+            if (isLeader) {
+                makeLeader = confirm(
+                    `You are moving ${participantName} from Area ${currentArea} to Area ${newArea}.\n\n` +
+                    `Make them a leader for Area ${newArea}?`
+                );
+            }
+
+            // Disable button during operation
+            this.disabled = true;
+            this.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+
+            // Determine which route to call
+            if (isLeader && makeLeader) {
+                // Call assign_leader to move them and give leadership
+                reassignLeader(participantId, newArea, this);
+            } else {
+                // Call edit_participant to just move them (removes leadership if they had it)
+                reassignParticipant(participantId, firstName, lastName, email, newArea, this);
+            }
+        });
+    });
+
+    function reassignLeader(participantId, newArea, button) {
+        const formData = new FormData();
+        formData.append('participant_id', participantId);
+        formData.append('area_code', newArea);
+        formData.append('year', {{ selected_year }});
+        formData.append('csrf_token', '{{ csrf_token() }}');
+
+        fetch('{{ url_for("admin.assign_leader") }}', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            if (response.redirected) {
+                // Flask redirected - means success with flash message
+                window.location.reload();
+            } else {
+                // Check if it's an error
+                return response.text().then(text => {
+                    alert('Error reassigning leader. Please check the error message on the page after reload.');
+                    window.location.reload();
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error reassigning participant. Please try again.');
+            button.disabled = false;
+            button.innerHTML = '<i class="bi bi-check"></i>';
+        });
+    }
+
+    function reassignParticipant(participantId, firstName, lastName, email, newArea, button) {
+        const formData = {
+            participant_id: participantId,
+            first_name: firstName,
+            last_name: lastName,
+            email: email,
+            preferred_area: newArea,
+            year: {{ selected_year }},
+            csrf_token: '{{ csrf_token() }}'
+        };
+
+        fetch('{{ url_for("admin.edit_participant") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': formData.csrf_token
+            },
+            body: JSON.stringify(formData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Participant reassigned successfully. Reloading page...');
+                window.location.reload();
+            } else {
+                alert('Error reassigning participant: ' + (data.message || 'Unknown error'));
+                button.disabled = false;
+                button.innerHTML = '<i class="bi bi-check"></i>';
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error reassigning participant. Please try again.');
+            button.disabled = false;
+            button.innerHTML = '<i class="bi bi-check"></i>';
         });
     }
 });

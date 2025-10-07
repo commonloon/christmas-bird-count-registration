@@ -1,0 +1,614 @@
+# Test suite for participant and leader area reassignment functionality
+# Updated by Claude AI on 2025-10-06
+
+import pytest
+import logging
+from datetime import datetime
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException
+from models.participant import ParticipantModel
+from tests.config import get_base_url, get_database_name
+from tests.utils.auth_utils import admin_login_for_test
+from tests.page_objects.admin_participants_page import AdminParticipantsPage
+
+logger = logging.getLogger(__name__)
+
+
+@pytest.fixture
+def participant_model(firestore_client):
+    """Create participant model for current year."""
+    current_year = datetime.now().year
+    return ParticipantModel(firestore_client, current_year)
+
+
+@pytest.fixture
+def admin_participants_page(browser):
+    """Create admin participants page object."""
+    base_url = get_base_url()
+    return AdminParticipantsPage(browser, base_url)
+
+
+@pytest.fixture(scope="module")
+def populated_test_data(firestore_client):
+    """Load test participants from CSV fixture once for all tests in this module."""
+    import os
+    import sys
+
+    # Add project root to path for imports
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if project_root not in sys.path:
+        sys.path.insert(0, project_root)
+
+    from tests.utils.load_test_data import load_csv_participants, load_participants_to_firestore
+
+    current_year = datetime.now().year
+    participant_model = ParticipantModel(firestore_client, current_year)
+
+    # Clear existing participants for current year to start fresh
+    logger.info("Clearing existing participants for clean test")
+    try:
+        participants_ref = firestore_client.collection(f'participants_{current_year}')
+        batch_size = 100
+        deleted = 0
+
+        while True:
+            docs = participants_ref.limit(batch_size).stream()
+            batch = firestore_client.batch()
+            count = 0
+
+            for doc in docs:
+                batch.delete(doc.reference)
+                count += 1
+                deleted += 1
+
+            if count == 0:
+                break
+
+            batch.commit()
+
+        logger.info(f"Cleared {deleted} existing participants")
+    except Exception as e:
+        logger.warning(f"Could not clear participants: {e}")
+
+    # Load participants from CSV fixture
+    csv_path = os.path.join(os.path.dirname(__file__), 'fixtures', 'test_participants_2025.csv')
+    logger.info(f"Loading test participants from {csv_path}")
+
+    participants = load_csv_participants(csv_path)
+    logger.info(f"Loaded {len(participants)} participants from CSV")
+
+    # Upload to Firestore
+    load_participants_to_firestore(firestore_client, current_year, participants)
+    logger.info(f"Successfully loaded {len(participants)} test participants to Firestore")
+
+    yield participants
+
+    # Clean up test participants (runs once after all tests in module complete)
+    logger.info(f"Cleaning up {len(participants)} CSV test participants")
+    try:
+        participants_ref = firestore_client.collection(f'participants_{current_year}')
+        batch_size = 100
+        deleted = 0
+
+        while True:
+            docs = participants_ref.limit(batch_size).stream()
+            batch = firestore_client.batch()
+            count = 0
+
+            for doc in docs:
+                batch.delete(doc.reference)
+                count += 1
+                deleted += 1
+
+            if count == 0:
+                break
+
+            batch.commit()
+
+        logger.info(f"Cleanup complete: deleted {deleted} participants")
+    except Exception as e:
+        logger.warning(f"Cleanup error: {e}")
+
+
+@pytest.mark.browser
+@pytest.mark.admin
+@pytest.mark.critical
+class TestParticipantReassignment:
+    """Test participant and leader area reassignment workflows."""
+
+    @pytest.fixture(autouse=True)
+    def setup_test_data(self, firestore_client, populated_test_data):
+        """Use populated test data fixture (347 participants with leaders) - select unique participants for each test."""
+        self.db_client = firestore_client
+        self.test_participants = populated_test_data
+
+        # Select DIFFERENT participants for each test to avoid conflicts
+        # Test 1: Regular participant from Area A
+        # Test 2: Leader from Area B (will decline leadership when moved)
+        # Test 3: Different leader from Area B (will accept leadership when moved)
+        # Test 4: Regular participant from Area D (for validation test)
+        # Test 5: Regular participant from Area E (for cancel test)
+
+        self.test1_participant = None  # Regular in Area A
+        self.test2_leader = None       # Leader in Area B
+        self.test3_leader = None       # Different leader in Area B
+        self.test4_participant = None  # Regular in Area D
+        self.test5_participant = None  # Regular in Area E
+
+        leaders_in_b = []
+        for p in self.test_participants:
+            # Test 1: First regular participant in Area A
+            if not self.test1_participant and not p.get('is_leader') and p.get('preferred_area') == 'A':
+                self.test1_participant = p
+
+            # Test 2 & 3: Collect leaders in Area B
+            if p.get('is_leader') and p.get('assigned_area_leader') == 'B':
+                leaders_in_b.append(p)
+
+            # Test 4: First regular participant in Area D
+            if not self.test4_participant and not p.get('is_leader') and p.get('preferred_area') == 'D':
+                self.test4_participant = p
+
+            # Test 5: First regular participant in Area E
+            if not self.test5_participant and not p.get('is_leader') and p.get('preferred_area') == 'E':
+                self.test5_participant = p
+
+        # Assign different leaders from Area B to tests 2 and 3
+        if len(leaders_in_b) >= 2:
+            self.test2_leader = leaders_in_b[0]
+            self.test3_leader = leaders_in_b[1]
+        elif len(leaders_in_b) == 1:
+            self.test2_leader = leaders_in_b[0]
+            self.test3_leader = leaders_in_b[0]  # Fallback to same leader if only one
+
+        logger.info(f"Test 1 participant: {self.test1_participant.get('first_name')} {self.test1_participant.get('last_name')} in Area {self.test1_participant.get('preferred_area')}")
+        logger.info(f"Test 2 leader: {self.test2_leader.get('first_name')} {self.test2_leader.get('last_name')} in Area {self.test2_leader.get('assigned_area_leader')}")
+        logger.info(f"Test 3 leader: {self.test3_leader.get('first_name')} {self.test3_leader.get('last_name')} in Area {self.test3_leader.get('assigned_area_leader')}")
+        logger.info(f"Test 4 participant: {self.test4_participant.get('first_name')} {self.test4_participant.get('last_name')} in Area {self.test4_participant.get('preferred_area')}")
+        logger.info(f"Test 5 participant: {self.test5_participant.get('first_name')} {self.test5_participant.get('last_name')} in Area {self.test5_participant.get('preferred_area')}")
+
+    def test_01_regular_participant_reassignment(self, browser, test_credentials, participant_model, admin_participants_page):
+        """Test reassigning a regular participant from Area A to Area C."""
+        logger.info("=" * 80)
+        logger.info("TEST: Regular Participant Reassignment (Area A → Area C)")
+        logger.info("=" * 80)
+
+        # Use unique participant for this test
+        participant = self.test1_participant
+        participant_name = f"{participant['first_name']} {participant['last_name']}"
+
+        # Login as admin
+        admin_login_for_test(browser, get_base_url(), test_credentials['admin_primary'])
+
+        # Navigate to participants page
+        browser.get(f"{get_base_url()}/admin/participants")
+
+        # Wait for page load
+        WebDriverWait(browser, 10).until(
+            EC.presence_of_element_located((By.TAG_NAME, "table"))
+        )
+
+        # Find the participant's row
+        logger.info(f"Looking for participant: {participant_name}")
+
+        # Find the participant row
+        rows = browser.find_elements(By.CSS_SELECTOR, "tbody tr")
+        target_row = None
+        for row in rows:
+            if participant_name in row.text:
+                target_row = row
+                break
+
+        assert target_row is not None, f"Could not find participant {participant_name} in table"
+        logger.info(f"Found participant row")
+
+        # Click Reassign button (scroll into view first)
+        reassign_button = target_row.find_element(By.CSS_SELECTOR, ".btn-reassign")
+        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", reassign_button)
+        WebDriverWait(browser, 2).until(EC.element_to_be_clickable((By.CSS_SELECTOR, ".btn-reassign")))
+        reassign_button.click()
+        logger.info("Clicked Reassign button")
+
+        # Wait for reassignment controls to appear
+        WebDriverWait(browser, 5).until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, ".reassign-controls"))
+        )
+
+        # Select new area (Area C)
+        area_select = target_row.find_element(By.CSS_SELECTOR, ".reassign-area-select")
+        area_select.click()
+        area_option = target_row.find_element(By.CSS_SELECTOR, "option[value='C']")
+        area_option.click()
+        logger.info("Selected Area C from dropdown")
+
+        # Click confirm button
+        confirm_button = target_row.find_element(By.CSS_SELECTOR, ".btn-confirm-reassign")
+        confirm_button.click()
+        logger.info("Clicked Confirm button")
+
+        # Handle success alert
+        try:
+            WebDriverWait(browser, 5).until(EC.alert_is_present())
+            alert = browser.switch_to.alert
+            alert_text = alert.text
+            logger.info(f"Success alert appeared: {alert_text}")
+            alert.accept()
+            logger.info("Accepted success alert")
+        except:
+            logger.warning("No alert appeared (page may have reloaded already)")
+
+        # Wait for page reload
+        WebDriverWait(browser, 10).until(
+            EC.presence_of_element_located((By.TAG_NAME, "table"))
+        )
+        WebDriverWait(browser, 10).until(
+            EC.presence_of_element_located((By.TAG_NAME, "table"))
+        )
+        logger.info("Page reloaded after reassignment")
+
+        # Verify participant moved to Area C in database
+        # Query by identity since CSV data doesn't have Firestore document IDs
+        first_name = participant['first_name']
+        last_name = participant['last_name']
+        email = participant['email']
+
+        updated_participant = participant_model.get_participant_by_identity(first_name, last_name, email)
+
+        assert updated_participant is not None, f"Participant {participant_name} not found after reassignment"
+        assert updated_participant['preferred_area'] == 'C', f"Expected area C, got {updated_participant.get('preferred_area')}"
+        assert not updated_participant.get('is_leader', False), "Regular participant should not be leader"
+
+        logger.info(f"✓ Successfully reassigned {participant_name} to Area C")
+        logger.info(f"✓ Database verified: preferred_area=C, is_leader=False")
+
+    def test_02_leader_reassignment_decline_leadership(self, browser, test_credentials, participant_model, admin_participants_page):
+        """Test reassigning a leader from Area B to Area D, declining new leadership."""
+        logger.info("=" * 80)
+        logger.info("TEST: Leader Reassignment - Decline Leadership (Area B → Area D)")
+        logger.info("=" * 80)
+
+        # Login as admin
+        admin_login_for_test(browser, get_base_url(), test_credentials['admin_primary'])
+
+        # Navigate to participants page
+        browser.get(f"{get_base_url()}/admin/participants")
+
+        # Wait for page load
+        WebDriverWait(browser, 10).until(
+            EC.presence_of_element_located((By.TAG_NAME, "table"))
+        )
+
+        # Use unique leader for test 2
+        participant = self.test2_leader
+        participant_name = f"{participant['first_name']} {participant['last_name']}"
+        logger.info(f"Looking for leader: {participant_name}")
+
+        # Find the participant row
+        rows = browser.find_elements(By.CSS_SELECTOR, "tbody tr")
+        target_row = None
+        for row in rows:
+            if participant_name in row.text and "Leader" in row.text:
+                target_row = row
+                break
+
+        assert target_row is not None, f"Could not find leader {participant_name} in table"
+        logger.info(f"Found leader row with Leader badge")
+
+        # Click Reassign button (scroll into view first)
+        reassign_button = target_row.find_element(By.CSS_SELECTOR, ".btn-reassign")
+        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", reassign_button)
+        WebDriverWait(browser, 2).until(EC.element_to_be_clickable((By.CSS_SELECTOR, ".btn-reassign")))
+        reassign_button.click()
+        logger.info("Clicked Reassign button")
+
+        # Wait for reassignment controls to appear
+        WebDriverWait(browser, 5).until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, ".reassign-controls"))
+        )
+
+        # Select new area (Area D)
+        area_select = target_row.find_element(By.CSS_SELECTOR, ".reassign-area-select")
+        area_select.click()
+        area_option = target_row.find_element(By.CSS_SELECTOR, "option[value='D']")
+        area_option.click()
+        logger.info("Selected Area D from dropdown")
+
+        # Click confirm button - this will trigger confirmation dialog for leader
+        confirm_button = target_row.find_element(By.CSS_SELECTOR, ".btn-confirm-reassign")
+        confirm_button.click()
+        logger.info("Clicked Confirm button")
+
+        # Handle confirmation dialog - click Cancel/No to decline leadership
+        try:
+            WebDriverWait(browser, 5).until(EC.alert_is_present())
+            alert = browser.switch_to.alert
+            alert_text = alert.text
+            logger.info(f"Confirmation dialog appeared: {alert_text}")
+
+            # Verify dialog asks about leadership
+            assert "Make them a leader for Area D" in alert_text, f"Unexpected dialog text: {alert_text}"
+
+            # Dismiss alert (clicking Cancel = No to leadership)
+            alert.dismiss()
+            logger.info("Dismissed confirmation dialog (declined leadership)")
+        except TimeoutException:
+            pytest.fail("Expected confirmation dialog for leader reassignment did not appear")
+
+        # Wait for page reload
+        WebDriverWait(browser, 10).until(EC.staleness_of(target_row))
+        WebDriverWait(browser, 10).until(
+            EC.presence_of_element_located((By.TAG_NAME, "table"))
+        )
+        logger.info("Page reloaded after reassignment")
+
+        # Verify leader moved to Area D without leadership in database
+        # Query by identity since CSV data doesn't have Firestore document IDs
+        first_name = participant['first_name']
+        last_name = participant['last_name']
+        email = participant['email']
+
+        updated_participant = participant_model.get_participant_by_identity(first_name, last_name, email)
+
+        assert updated_participant is not None, f"Participant {participant_name} not found after reassignment"
+        assert updated_participant['preferred_area'] == 'D', f"Expected area D, got {updated_participant.get('preferred_area')}"
+        assert not updated_participant.get('is_leader', False), "Participant should not be leader after declining"
+        assert updated_participant.get('assigned_area_leader') is None, "assigned_area_leader should be None"
+
+        logger.info(f"✓ Successfully reassigned {participant_name} to Area D as regular participant")
+        logger.info(f"✓ Database verified: preferred_area=D, is_leader=False, assigned_area_leader=None")
+
+    def test_03_leader_reassignment_accept_leadership(self, browser, test_credentials, participant_model, admin_participants_page):
+        """Test reassigning a leader from Area B to Area E, accepting new leadership."""
+        logger.info("=" * 80)
+        logger.info("TEST: Leader Reassignment - Accept Leadership (Area B → Area E)")
+        logger.info("=" * 80)
+
+        # Use unique leader for test 3
+        participant = self.test3_leader
+        participant_name = f"{participant['first_name']} {participant['last_name']}"
+
+        # Login as admin
+        admin_login_for_test(browser, get_base_url(), test_credentials['admin_primary'])
+
+        # Navigate to participants page
+        browser.get(f"{get_base_url()}/admin/participants")
+
+        # Wait for page load
+        WebDriverWait(browser, 10).until(
+            EC.presence_of_element_located((By.TAG_NAME, "table"))
+        )
+
+        # Find the leader's row
+        logger.info(f"Looking for leader: {participant_name}")
+
+        # Find the participant row
+        rows = browser.find_elements(By.CSS_SELECTOR, "tbody tr")
+        target_row = None
+        for row in rows:
+            if participant_name in row.text and "Leader" in row.text:
+                target_row = row
+                break
+
+        assert target_row is not None, f"Could not find leader {participant_name} in table"
+        logger.info(f"Found leader row with Leader badge")
+
+        # Click Reassign button (scroll into view first)
+        reassign_button = target_row.find_element(By.CSS_SELECTOR, ".btn-reassign")
+        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", reassign_button)
+        WebDriverWait(browser, 2).until(EC.element_to_be_clickable((By.CSS_SELECTOR, ".btn-reassign")))
+        reassign_button.click()
+        logger.info("Clicked Reassign button")
+
+        # Wait for reassignment controls to appear
+        WebDriverWait(browser, 5).until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, ".reassign-controls"))
+        )
+
+        # Select new area (Area E)
+        area_select = target_row.find_element(By.CSS_SELECTOR, ".reassign-area-select")
+        area_select.click()
+        area_option = target_row.find_element(By.CSS_SELECTOR, "option[value='E']")
+        area_option.click()
+        logger.info("Selected Area E from dropdown")
+
+        # Click confirm button - this will trigger confirmation dialog for leader
+        confirm_button = target_row.find_element(By.CSS_SELECTOR, ".btn-confirm-reassign")
+        confirm_button.click()
+        logger.info("Clicked Confirm button")
+
+        # Handle confirmation dialog - click OK/Yes to accept leadership
+        try:
+            WebDriverWait(browser, 5).until(EC.alert_is_present())
+            alert = browser.switch_to.alert
+            alert_text = alert.text
+            logger.info(f"Confirmation dialog appeared: {alert_text}")
+
+            # Verify dialog asks about leadership
+            assert "Make them a leader for Area E" in alert_text, f"Unexpected dialog text: {alert_text}"
+
+            # Accept alert (clicking OK = Yes to leadership)
+            alert.accept()
+            logger.info("Accepted confirmation dialog (accepted leadership)")
+        except TimeoutException:
+            pytest.fail("Expected confirmation dialog for leader reassignment did not appear")
+
+        # Wait for page reload
+        WebDriverWait(browser, 10).until(EC.staleness_of(target_row))
+        WebDriverWait(browser, 10).until(
+            EC.presence_of_element_located((By.TAG_NAME, "table"))
+        )
+        logger.info("Page reloaded after reassignment")
+
+        # Verify leader moved to Area E with leadership in database
+        # Query by identity since CSV data doesn't have Firestore document IDs
+        first_name = participant['first_name']
+        last_name = participant['last_name']
+        email = participant['email']
+
+        updated_participant = participant_model.get_participant_by_identity(first_name, last_name, email)
+
+        assert updated_participant is not None, f"Participant {participant_name} not found after reassignment"
+        assert updated_participant['preferred_area'] == 'E', f"Expected area E, got {updated_participant.get('preferred_area')}"
+        assert updated_participant.get('is_leader', False), "Participant should be leader after accepting"
+        assert updated_participant.get('assigned_area_leader') == 'E', f"Expected assigned_area_leader=E, got {updated_participant.get('assigned_area_leader')}"
+
+        logger.info(f"✓ Successfully reassigned {participant_name} to Area E as leader")
+        logger.info(f"✓ Database verified: preferred_area=E, is_leader=True, assigned_area_leader=E")
+
+    def test_04_reassignment_validation_same_area(self, browser, test_credentials, admin_participants_page):
+        """Test validation when trying to reassign participant to same area."""
+        logger.info("=" * 80)
+        logger.info("TEST: Reassignment Validation - Same Area")
+        logger.info("=" * 80)
+
+        # Use unique participant for test 4
+        participant = self.test4_participant
+        participant_name = f"{participant['first_name']} {participant['last_name']}"
+        current_area = participant['preferred_area']
+
+        # Login as admin
+        admin_login_for_test(browser, get_base_url(), test_credentials['admin_primary'])
+
+        # Navigate to participants page
+        browser.get(f"{get_base_url()}/admin/participants")
+
+        # Wait for page load
+        WebDriverWait(browser, 10).until(
+            EC.presence_of_element_located((By.TAG_NAME, "table"))
+        )
+
+        # Find the participant
+        logger.info(f"Looking for participant: {participant_name} in Area {current_area}")
+
+        # Find the participant row
+        rows = browser.find_elements(By.CSS_SELECTOR, "tbody tr")
+        target_row = None
+        for row in rows:
+            if participant_name in row.text:
+                target_row = row
+                break
+
+        assert target_row is not None, f"Could not find participant {participant_name}"
+
+        # Click Reassign button (scroll into view first)
+        reassign_button = target_row.find_element(By.CSS_SELECTOR, ".btn-reassign")
+        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", reassign_button)
+        WebDriverWait(browser, 2).until(EC.element_to_be_clickable((By.CSS_SELECTOR, ".btn-reassign")))
+        reassign_button.click()
+
+        # Wait for reassignment controls
+        WebDriverWait(browser, 5).until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, ".reassign-controls"))
+        )
+
+        # Select same area
+        area_select = target_row.find_element(By.CSS_SELECTOR, ".reassign-area-select")
+        area_select.click()
+        area_option = target_row.find_element(By.CSS_SELECTOR, f"option[value='{current_area}']")
+        area_option.click()
+        logger.info(f"Selected same area ({current_area}) from dropdown")
+
+        # Click confirm button
+        confirm_button = target_row.find_element(By.CSS_SELECTOR, ".btn-confirm-reassign")
+        confirm_button.click()
+
+        # Expect validation alert
+        try:
+            WebDriverWait(browser, 5).until(EC.alert_is_present())
+            alert = browser.switch_to.alert
+            alert_text = alert.text
+            logger.info(f"Validation alert appeared: {alert_text}")
+
+            # Verify alert message
+            assert "already in Area" in alert_text, f"Expected validation message, got: {alert_text}"
+
+            alert.accept()
+            logger.info("✓ Validation correctly prevented reassignment to same area")
+        except TimeoutException:
+            pytest.fail("Expected validation alert for same-area reassignment did not appear")
+
+    def test_05_reassignment_cancel(self, browser, test_credentials, participant_model, admin_participants_page):
+        """Test canceling a reassignment operation."""
+        logger.info("=" * 80)
+        logger.info("TEST: Reassignment Cancel")
+        logger.info("=" * 80)
+
+        # Use unique participant for test 5
+        participant = self.test5_participant
+        participant_name = f"{participant['first_name']} {participant['last_name']}"
+        original_area = participant['preferred_area']
+
+        # Login as admin
+        admin_login_for_test(browser, get_base_url(), test_credentials['admin_primary'])
+
+        # Navigate to participants page
+        browser.get(f"{get_base_url()}/admin/participants")
+
+        # Wait for page load
+        WebDriverWait(browser, 10).until(
+            EC.presence_of_element_located((By.TAG_NAME, "table"))
+        )
+
+        # Find the participant
+        logger.info(f"Looking for participant: {participant_name} in Area {original_area}")
+
+        # Find the participant row
+        rows = browser.find_elements(By.CSS_SELECTOR, "tbody tr")
+        target_row = None
+        for row in rows:
+            if participant_name in row.text:
+                target_row = row
+                break
+
+        assert target_row is not None, f"Could not find participant {participant_name}"
+
+        # Click Reassign button (scroll into view first)
+        reassign_button = target_row.find_element(By.CSS_SELECTOR, ".btn-reassign")
+        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", reassign_button)
+        WebDriverWait(browser, 2).until(EC.element_to_be_clickable((By.CSS_SELECTOR, ".btn-reassign")))
+        reassign_button.click()
+        logger.info("Clicked Reassign button")
+
+        # Wait for reassignment controls
+        WebDriverWait(browser, 5).until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, ".reassign-controls"))
+        )
+
+        # Verify action buttons are hidden and reassign controls are shown
+        action_buttons = target_row.find_element(By.CSS_SELECTOR, ".action-buttons")
+        reassign_controls = target_row.find_element(By.CSS_SELECTOR, ".reassign-controls")
+
+        assert not action_buttons.is_displayed(), "Action buttons should be hidden during reassignment"
+        assert reassign_controls.is_displayed(), "Reassign controls should be visible"
+        logger.info("✓ UI correctly shows reassignment controls")
+
+        # Click cancel button
+        cancel_button = target_row.find_element(By.CSS_SELECTOR, ".btn-cancel-reassign")
+        cancel_button.click()
+        logger.info("Clicked Cancel button")
+
+        # Verify UI returns to normal
+        WebDriverWait(browser, 3).until(
+            lambda d: action_buttons.is_displayed()
+        )
+
+        assert action_buttons.is_displayed(), "Action buttons should be visible after cancel"
+        assert not reassign_controls.is_displayed(), "Reassign controls should be hidden after cancel"
+        logger.info("✓ UI correctly restored action buttons")
+
+        # Verify participant area unchanged in database
+        # Query by identity since CSV data doesn't have Firestore document IDs
+        first_name = participant['first_name']
+        last_name = participant['last_name']
+        email = participant['email']
+
+        updated_participant = participant_model.get_participant_by_identity(first_name, last_name, email)
+
+        assert updated_participant['preferred_area'] == original_area, f"Area should not have changed, expected {original_area}, got {updated_participant.get('preferred_area')}"
+        logger.info(f"✓ Participant area unchanged in database: {original_area}")
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v", "-s"])

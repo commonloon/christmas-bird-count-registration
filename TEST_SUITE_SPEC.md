@@ -201,11 +201,21 @@ family_members = [
 #### Participant Management Testing
 **Requirements:**
 - View all participants by area
-- Participant assignment and reassignment
+- Participant area reassignment workflows (regular participants and leaders)
+- Leader reassignment with leadership retention options
 - Delete operations with confirmation
 - Search and filtering functionality
 - Leader promotion from participant list
 - FEEDER vs regular participant display
+
+**Reassignment Workflow Testing (2025-10-06):**
+- Regular participant reassignment to different area
+- Leader reassignment with leadership decline (moves as regular participant)
+- Leader reassignment with leadership acceptance (moves and retains leadership)
+- Validation preventing reassignment to same area
+- Reassignment cancellation workflow
+- Database integrity verification after reassignment operations
+- Leadership flag synchronization during area changes
 
 ### Phase 3: Security & Edge Cases
 
@@ -469,7 +479,7 @@ dashboard_selectors = [
 3. Generate unique identities that survive input sanitization
 4. Test identity-based operations with proper tuples
 
-## Test Implementation Status (Updated 2025-09-30)
+## Test Implementation Status (Updated 2025-10-06)
 
 ### ✅ **Completed and Verified**
 **Email Validation Test Suite (132 tests passing)**:
@@ -523,6 +533,7 @@ dashboard_selectors = [
 - `test_admin_participant_management.py` - 9 tests passing with shared OAuth
 - `test_single_table_regression.py` - Updated to use consolidated authentication
 - `test_csv_export_workflows.py` - Updated authentication flow
+- `test_participant_reassignment.py` - 5 comprehensive reassignment workflow tests
 - All admin workflow tests now use `admin_login_for_test()` from auth_utils
 
 ### ✅ **Minimal Functional Test Suite (Foundation Established)**
@@ -548,6 +559,24 @@ dashboard_selectors = [
 - **Page Load Detection**: Optimized `is_*_loaded()` methods in page objects to prevent 30+ second timeout delays
 - **Bug Fixes Applied**: Timeout, method name, and element interaction issues resolved
 - **Execution Pipeline**: Reliable test execution environment established
+
+### ✅ **Participant Reassignment Tests (2025-10-06)**
+**Initial Reassignment Workflow Testing (5 basic tests)**:
+- **Test File**: `tests/test_participant_reassignment.py`
+- **Test Data**: Uses 347 participants from `tests/fixtures/test_participants_2025.csv`
+- **Module-Scoped Fixture**: Single database load per test file execution for efficiency
+- **Coverage**:
+  1. Regular participant reassignment (Area A → C)
+  2. Leader reassignment declining new leadership (Area B → D, becomes regular participant)
+  3. Leader reassignment accepting new leadership (Area B → E, retains leadership)
+  4. Validation error for same-area reassignment
+  5. Reassignment cancellation workflow
+- **Validation**: Database state verification, leadership flag synchronization, UI workflow correctness
+- **Implementation Details**:
+  - JavaScript passes required fields: `participant_id`, `first_name`, `last_name`, `email`, `preferred_area`
+  - Backend validation in `routes/admin.py::edit_participant()`
+  - Leadership removal logic when area changes
+  - Confirmation dialog for leader reassignments
 
 **Next Steps for Comprehensive Coverage**:
 - Expand from 6 smoke tests to comprehensive scenario coverage

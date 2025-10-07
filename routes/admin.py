@@ -193,6 +193,7 @@ def participants():
                            current_year=current_year,
                            available_years=display_years,
                            is_historical=is_historical,
+                           all_areas=get_all_areas(),
                            current_user=get_current_user())
 
 
@@ -496,17 +497,19 @@ def assign_leader():
         return redirect(url_for('admin.leaders', year=selected_year))
 
     try:
-        # Check if this person (identity) is already leading another area (one area per leader rule)
+        # Check if this person (identity) is already leading the SAME area
         first_name = participant['first_name']
         last_name = participant['last_name']
         participant_email = participant['email']
         leader_areas = participant_model.get_leaders_by_identity(first_name, last_name, participant_email)
-        if leader_areas:
-            existing_area = leader_areas[0]['assigned_area_leader']
-            flash(f'{first_name} {last_name} is already leading Area {existing_area}. Leaders can only lead one area.', 'error')
-            return redirect(url_for('admin.leaders', year=selected_year))
+        for leader in leader_areas:
+            if leader.get('assigned_area_leader') == area_code:
+                flash(f'{first_name} {last_name} is already assigned as leader for Area {area_code}.', 'warning')
+                return redirect(url_for('admin.leaders', year=selected_year))
 
         # Update participant record with leadership
+        # This will update their area to the new area and give them leadership
+        # If they were leading another area, this automatically changes it (one area per person)
         participant_model.assign_area_leadership(participant_id, area_code, user['email'])
 
         flash(f"Assigned {participant['first_name']} {participant['last_name']} as leader for Area {area_code}.",
@@ -836,6 +839,7 @@ def edit_participant():
         spotting_scope = bool(data.get('spotting_scope', False))
         interested_in_leadership = bool(data.get('interested_in_leadership', False))
         interested_in_scribe = bool(data.get('interested_in_scribe', False))
+        preferred_area = data.get('preferred_area', '').strip().upper() if data.get('preferred_area') else None
         selected_year = int(data.get('year', datetime.now().year))
 
         # Security checks
@@ -876,6 +880,10 @@ def edit_participant():
         if experience and not validate_experience(experience):
             return jsonify({'success': False, 'message': f'Invalid experience level: {experience}'})
 
+        # Validate area code if provided
+        if preferred_area and not validate_area_code(preferred_area):
+            return jsonify({'success': False, 'message': f'Invalid area code: {preferred_area}'})
+
         # Initialize models
         participant_model = ParticipantModel(g.db, selected_year)
 
@@ -889,14 +897,18 @@ def edit_participant():
             'first_name': first_name,
             'last_name': last_name,
             'email': email.lower(),
-            'phone': phone,
-            'phone2': phone2,
-            'skill_level': skill_level,
-            'experience': experience,
             'updated_at': datetime.now()
         }
 
         # Only update these fields if they are explicitly provided in the request
+        if 'phone' in data:
+            updates['phone'] = phone
+        if 'phone2' in data:
+            updates['phone2'] = phone2
+        if 'skill_level' in data:
+            updates['skill_level'] = skill_level
+        if 'experience' in data:
+            updates['experience'] = experience
         if 'notes_to_organizers' in data:
             updates['notes_to_organizers'] = notes_to_organizers
         if 'has_binoculars' in data:
@@ -907,6 +919,14 @@ def edit_participant():
             updates['interested_in_leadership'] = interested_in_leadership
         if 'interested_in_scribe' in data:
             updates['interested_in_scribe'] = interested_in_scribe
+        if 'preferred_area' in data:
+            updates['preferred_area'] = preferred_area
+            # If participant was a leader and area changed, remove leadership
+            if current_participant.get('is_leader') and preferred_area != current_participant.get('preferred_area'):
+                updates['is_leader'] = False
+                updates['assigned_area_leader'] = None
+                updates['leadership_removed_by'] = user['email']
+                updates['leadership_removed_at'] = datetime.now()
 
         if not participant_model.update_participant(participant_id, updates):
             return jsonify({'success': False, 'message': 'Failed to update participant'})
