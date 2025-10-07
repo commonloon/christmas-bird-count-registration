@@ -585,7 +585,12 @@ dashboard_selectors = [
   - ActionChains for reliable button clicks
   - Success alert handling after reassignment operations
   - Method name fixes: `get_participant_by_email_and_names()` for identity-based queries
-- **Execution**: All 5 tests pass individually and as complete suite (2m 31s total)
+- **Execution**: All 5 tests pass individually and as complete suite (1m 05s total)
+- **Performance Optimization**:
+  - Class-scoped authenticated browser fixture reuses OAuth session across all tests
+  - Single browser instance shared across all tests (removed redundant page object fixture)
+  - Optimized timeouts (10s → 5s for authenticated page loads)
+  - **Overall improvement: 57% faster** than original per-test authentication (151s → 65s)
 
 **Next Steps for Comprehensive Coverage**:
 - Expand from 6 smoke tests to comprehensive scenario coverage
@@ -606,6 +611,140 @@ dashboard_selectors = [
 - Test account credentials in Google Secret Manager
 - Authentication failure results in test skip (not failure) for better reporting
 - Automatic error dialog handling eliminates manual intervention
+
+### 📋 **Test Development Guidelines**
+
+When creating or updating tests, follow these established patterns for optimal performance and maintainability:
+
+#### Fixture Scoping and Reuse
+
+**✅ DO:**
+- Use **session-scoped fixtures** for static data (credentials, configuration)
+  ```python
+  @pytest.fixture(scope="session")
+  def test_credentials(secret_manager_client):
+      # Retrieve once for entire test suite
+  ```
+- Use **class-scoped fixtures** for expensive operations shared across test methods
+  ```python
+  @pytest.fixture(scope="class")
+  def authenticated_browser(chrome_options, firefox_options, test_credentials):
+      # Single browser + OAuth login for all tests in class
+      # Perform authentication once, reuse session
+  ```
+- Use **module-scoped fixtures** for test data that applies to all tests in a file
+  ```python
+  @pytest.fixture(scope="module")
+  def populated_test_data(firestore_client):
+      # Load test data once per module
+  ```
+
+**❌ DON'T:**
+- Request function-scoped fixtures from broader-scoped fixtures (causes scope mismatch)
+- Include unused fixtures in test signatures (triggers unnecessary instantiation)
+- Create new browser instances per test when authentication can be shared
+
+#### Database State Management
+
+**✅ DO:**
+- **Clear database at START** of test suite/module
+  ```python
+  @pytest.fixture(scope="module")
+  def populated_test_data(firestore_client):
+      # Clear existing data first
+      clear_collection(firestore_client, 'participants_2025')
+      # Load fresh test data
+      load_test_data(...)
+  ```
+- **Leave data intact at END** for manual inspection and debugging
+- Use unique test participants per test to avoid conflicts (select from shared dataset)
+
+**❌ DON'T:**
+- Clear database after each test (slows execution, prevents inspection)
+- Share test data instances between tests (causes race conditions)
+- Clean up data on test completion (developer needs to inspect failures)
+
+#### Performance Optimization
+
+**✅ DO:**
+- **Share authenticated browser sessions** across tests with same auth requirements
+- Use **auto-use fixtures** for repetitive setup (e.g., page navigation)
+  ```python
+  @pytest.fixture(autouse=True)
+  def navigate_to_page(authenticated_browser):
+      authenticated_browser.get(url)
+      # Provides test isolation without re-authentication
+  ```
+- **Optimize timeouts** based on context:
+  - 5 seconds for authenticated page loads (browser already logged in)
+  - 10 seconds for initial authentication flows
+  - 3 seconds for simple UI state changes
+- **Avoid duplicate waits** - one wait per operation is sufficient
+  ```python
+  # ✅ GOOD: Single wait
+  WebDriverWait(browser, 5).until(
+      EC.presence_of_element_located((By.TAG_NAME, "table"))
+  )
+
+  # ❌ BAD: Duplicate waits
+  WebDriverWait(browser, 10).until(...)
+  WebDriverWait(browser, 10).until(...)  # Unnecessary
+  ```
+
+**❌ DON'T:**
+- Create new browser instances per test (use class/module scoping)
+- Use 10-second timeouts for operations that typically complete in 1-2 seconds
+- Include fixtures you don't use (causes hidden browser/resource creation)
+
+#### Test Isolation
+
+**✅ DO:**
+- Use **page navigation** for test isolation when sharing browser
+  ```python
+  @pytest.fixture(autouse=True)
+  def navigate_to_participants_page(authenticated_browser):
+      authenticated_browser.get(f"{base_url}/admin/participants")
+      # Fresh page state, reused authentication
+  ```
+- Select **unique test data** for each test from shared dataset
+- Verify test can run **individually** or as part of suite
+
+**❌ DON'T:**
+- Rely on test execution order
+- Share mutable state between tests
+- Assume browser state from previous test
+
+#### Example: Optimized Test Class
+
+```python
+class TestParticipantReassignment:
+    """Example of optimized test class structure."""
+
+    @pytest.fixture(autouse=True)
+    def navigate_to_page(self, authenticated_browser):
+        """Auto-use: Provides isolation via navigation."""
+        authenticated_browser.get(f"{get_base_url()}/admin/participants")
+        WebDriverWait(authenticated_browser, 5).until(
+            EC.presence_of_element_located((By.TAG_NAME, "table"))
+        )
+
+    def test_01_operation(self, authenticated_browser, participant_model):
+        # Uses shared browser, unique data
+        participant = self.test_data[0]  # Unique to test_01
+        # Test logic...
+
+    def test_02_operation(self, authenticated_browser, participant_model):
+        # Same browser session, different data
+        participant = self.test_data[1]  # Unique to test_02
+        # Test logic...
+```
+
+#### Performance Results
+
+Following these guidelines, the participant reassignment test suite achieved:
+- **Original**: 151s (5 browser instances, 5 OAuth logins)
+- **Optimized**: 65s (1 browser instance, 1 OAuth login)
+- **Improvement**: 57% faster execution time
 
 ---
 

@@ -552,7 +552,7 @@ pytest tests/test_admin_workflows.py::test_leader_promotion_deletion -v
 # Participant management operations
 pytest tests/test_admin_workflows.py::test_participant_assignment -v
 
-# Participant reassignment workflows (5 tests - All Passing)
+# Participant reassignment workflows (5 tests - All Passing, 1m 05s with optimizations)
 pytest tests/test_participant_reassignment.py -v
 
 # Individual reassignment tests (Bootstrap modal UI)

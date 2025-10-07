@@ -1,5 +1,5 @@
 # Test suite for participant and leader area reassignment functionality
-# Updated by Claude AI on 2025-10-06
+# Updated by Claude AI on 2025-10-07
 
 import pytest
 import logging
@@ -13,7 +13,6 @@ from selenium.common.exceptions import TimeoutException
 from models.participant import ParticipantModel
 from tests.config import get_base_url, get_database_name
 from tests.utils.auth_utils import admin_login_for_test
-from tests.page_objects.admin_participants_page import AdminParticipantsPage
 
 logger = logging.getLogger(__name__)
 
@@ -25,11 +24,74 @@ def participant_model(firestore_client):
     return ParticipantModel(firestore_client, current_year)
 
 
-@pytest.fixture
-def admin_participants_page(browser):
-    """Create admin participants page object."""
-    base_url = get_base_url()
-    return AdminParticipantsPage(browser, base_url)
+@pytest.fixture(scope="class")
+def authenticated_browser(chrome_options, firefox_options, test_credentials):
+    """Create browser and authenticate once for all tests in the class.
+
+    This fixture performs expensive OAuth authentication once and reuses the
+    browser session across all tests in the class. This saves ~50+ seconds
+    by avoiding redundant OAuth flows.
+
+    Trade-off: Tests share browser state, but each test navigates to a fresh
+    page which provides adequate isolation for these workflow tests.
+    """
+    from selenium import webdriver
+    from selenium.webdriver.chrome.service import Service as ChromeService
+    from selenium.webdriver.firefox.service import Service as FirefoxService
+    from tests.config import TEST_CONFIG
+
+    driver = None
+    browser_type = TEST_CONFIG.get('browser', 'chrome').lower()
+
+    try:
+        # Create browser instance (same logic as conftest.py browser fixture)
+        if browser_type == 'firefox':
+            try:
+                driver_service = FirefoxService()
+                driver = webdriver.Firefox(service=driver_service, options=firefox_options)
+                logger.info("Class-scoped Firefox browser instance created using system geckodriver")
+            except Exception as system_error:
+                logger.info(f"System geckodriver not found, using webdriver-manager: {system_error}")
+                from webdriver_manager.firefox import GeckoDriverManager
+                from webdriver_manager.core.driver_cache import DriverCacheManager
+                cache_manager = DriverCacheManager(valid_range=30)
+                driver_service = FirefoxService(
+                    GeckoDriverManager(cache_manager=cache_manager).install()
+                )
+                driver = webdriver.Firefox(service=driver_service, options=firefox_options)
+                logger.info("Class-scoped Firefox browser instance created using webdriver-manager")
+        else:
+            try:
+                driver_service = ChromeService()
+                driver = webdriver.Chrome(service=driver_service, options=chrome_options)
+                logger.info("Class-scoped Chrome browser instance created using system chromedriver")
+            except Exception as system_error:
+                logger.info(f"System chromedriver not found, using webdriver-manager: {system_error}")
+                from webdriver_manager.chrome import ChromeDriverManager
+                from webdriver_manager.core.driver_cache import DriverCacheManager
+                cache_manager = DriverCacheManager(valid_range=30)
+                driver_service = ChromeService(
+                    ChromeDriverManager(cache_manager=cache_manager).install()
+                )
+                driver = webdriver.Chrome(service=driver_service, options=chrome_options)
+                logger.info("Class-scoped Chrome browser instance created using webdriver-manager")
+
+        # Perform authentication ONCE for the entire class
+        logger.info("Performing one-time OAuth authentication for test class")
+        admin_login_for_test(driver, get_base_url(), test_credentials['admin_primary'])
+        logger.info("OAuth authentication successful - session will be reused across all tests")
+
+        # Resize browser window to ensure buttons are visible (needed for all tests)
+        current_size = driver.get_window_size()
+        driver.set_window_size(current_size['width'] + 500, current_size['height'])
+        logger.info(f"Resized browser to {current_size['width'] + 500}x{current_size['height']}")
+
+        yield driver
+
+    finally:
+        if driver:
+            driver.quit()
+            logger.info("Class-scoped browser instance closed")
 
 
 @pytest.fixture(scope="module")
@@ -121,7 +183,27 @@ def populated_test_data(firestore_client):
 @pytest.mark.admin
 @pytest.mark.critical
 class TestParticipantReassignment:
-    """Test participant and leader area reassignment workflows."""
+    """Test participant and leader area reassignment workflows.
+
+    This class uses class-scoped authenticated_browser fixture to share
+    authentication across all tests, significantly reducing execution time.
+    """
+
+    @pytest.fixture(autouse=True)
+    def navigate_to_participants_page(self, authenticated_browser):
+        """Navigate to participants page before each test.
+
+        This provides test isolation by ensuring each test starts from a
+        clean page state, while reusing the authenticated browser session.
+
+        Uses shorter timeout (5s) since we're already authenticated and
+        subsequent page loads are fast.
+        """
+        authenticated_browser.get(f"{get_base_url()}/admin/participants")
+        WebDriverWait(authenticated_browser, 5).until(
+            EC.presence_of_element_located((By.TAG_NAME, "table"))
+        )
+        logger.info("Navigated to participants page")
 
     @pytest.fixture(autouse=True)
     def setup_test_data(self, firestore_client, populated_test_data):
@@ -169,7 +251,7 @@ class TestParticipantReassignment:
         logger.info(f"Test 4 participant: {self.test4_participant.get('first_name')} {self.test4_participant.get('last_name')} in Area {self.test4_participant.get('preferred_area')}")
         logger.info(f"Test 5 participant: {self.test5_participant.get('first_name')} {self.test5_participant.get('last_name')} in Area {self.test5_participant.get('preferred_area')}")
 
-    def test_01_regular_participant_reassignment(self, browser, test_credentials, participant_model, admin_participants_page):
+    def test_01_regular_participant_reassignment(self, authenticated_browser, participant_model):
         """Test reassigning a regular participant from Area A to Area C."""
         logger.info("=" * 80)
         logger.info("TEST: Regular Participant Reassignment (Area A → Area C)")
@@ -179,22 +261,11 @@ class TestParticipantReassignment:
         participant = self.test1_participant
         participant_name = f"{participant['first_name']} {participant['last_name']}"
 
-        # Login as admin
-        admin_login_for_test(browser, get_base_url(), test_credentials['admin_primary'])
-
-        # Navigate to participants page
-        browser.get(f"{get_base_url()}/admin/participants")
-
-        # Wait for page load
-        WebDriverWait(browser, 10).until(
-            EC.presence_of_element_located((By.TAG_NAME, "table"))
-        )
-
-        # Find the participant's row
+        # Page navigation already done by navigate_to_participants_page fixture
         logger.info(f"Looking for participant: {participant_name}")
 
         # Find the participant row
-        rows = browser.find_elements(By.CSS_SELECTOR, "tbody tr")
+        rows = authenticated_browser.find_elements(By.CSS_SELECTOR, "tbody tr")
         target_row = None
         for row in rows:
             if participant_name in row.text:
@@ -206,13 +277,13 @@ class TestParticipantReassignment:
 
         # Click Reassign button (use ActionChains for reliable event triggering)
         reassign_button = target_row.find_element(By.CSS_SELECTOR, ".btn-reassign")
-        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", reassign_button)
+        authenticated_browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", reassign_button)
         time.sleep(0.5)  # Brief pause after scroll
-        ActionChains(browser).move_to_element(reassign_button).click().perform()
+        ActionChains(authenticated_browser).move_to_element(reassign_button).click().perform()
         logger.info("Clicked Reassign button")
 
         # Wait for reassignment controls to appear
-        WebDriverWait(browser, 5).until(
+        WebDriverWait(authenticated_browser, 5).until(
             EC.visibility_of_element_located((By.CSS_SELECTOR, ".reassign-controls"))
         )
 
@@ -230,8 +301,8 @@ class TestParticipantReassignment:
 
         # Handle success alert
         try:
-            WebDriverWait(browser, 5).until(EC.alert_is_present())
-            alert = browser.switch_to.alert
+            WebDriverWait(authenticated_browser, 5).until(EC.alert_is_present())
+            alert = authenticated_browser.switch_to.alert
             alert_text = alert.text
             logger.info(f"Success alert appeared: {alert_text}")
             alert.accept()
@@ -239,11 +310,8 @@ class TestParticipantReassignment:
         except:
             logger.warning("No alert appeared (page may have reloaded already)")
 
-        # Wait for page reload
-        WebDriverWait(browser, 10).until(
-            EC.presence_of_element_located((By.TAG_NAME, "table"))
-        )
-        WebDriverWait(browser, 10).until(
+        # Wait for page reload (single wait is sufficient)
+        WebDriverWait(authenticated_browser, 5).until(
             EC.presence_of_element_located((By.TAG_NAME, "table"))
         )
         logger.info("Page reloaded after reassignment")
@@ -263,35 +331,20 @@ class TestParticipantReassignment:
         logger.info(f"✓ Successfully reassigned {participant_name} to Area C")
         logger.info(f"✓ Database verified: preferred_area=C, is_leader=False")
 
-    def test_02_leader_reassignment_decline_leadership(self, browser, test_credentials, participant_model, admin_participants_page):
+    def test_02_leader_reassignment_decline_leadership(self, authenticated_browser, participant_model):
         """Test reassigning a leader from Area B to Area D, declining new leadership."""
         logger.info("=" * 80)
         logger.info("TEST: Leader Reassignment - Decline Leadership (Area B → Area D)")
         logger.info("=" * 80)
 
-        # Login as admin
-        admin_login_for_test(browser, get_base_url(), test_credentials['admin_primary'])
-
-        # Navigate to participants page
-        browser.get(f"{get_base_url()}/admin/participants")
-
-        # Resize browser window to ensure buttons are visible (add 500px width)
-        current_size = browser.get_window_size()
-        browser.set_window_size(current_size['width'] + 500, current_size['height'])
-        logger.info(f"Resized browser to {current_size['width'] + 500}x{current_size['height']}")
-
-        # Wait for page load
-        WebDriverWait(browser, 10).until(
-            EC.presence_of_element_located((By.TAG_NAME, "table"))
-        )
-
+        # Page navigation and auth already done by fixtures
         # Use unique leader for test 2
         participant = self.test2_leader
         participant_name = f"{participant['first_name']} {participant['last_name']}"
         logger.info(f"Looking for leader: {participant_name}")
 
         # Find the participant row
-        rows = browser.find_elements(By.CSS_SELECTOR, "tbody tr")
+        rows = authenticated_browser.find_elements(By.CSS_SELECTOR, "tbody tr")
         target_row = None
         for row in rows:
             if participant_name in row.text and "Leader" in row.text:
@@ -303,9 +356,9 @@ class TestParticipantReassignment:
 
         # Click Reassign button (use ActionChains for reliable event triggering)
         reassign_button = target_row.find_element(By.CSS_SELECTOR, ".btn-reassign")
-        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", reassign_button)
+        authenticated_browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", reassign_button)
         time.sleep(0.5)  # Brief pause after scroll
-        ActionChains(browser).move_to_element(reassign_button).click().perform()
+        ActionChains(authenticated_browser).move_to_element(reassign_button).click().perform()
         logger.info("Clicked Reassign button")
 
         # Debug: Check if reassign-controls exists and its visibility
@@ -318,7 +371,7 @@ class TestParticipantReassignment:
 
             # Force show the controls via JavaScript
             logger.info("Forcing reassign controls to be visible via JavaScript")
-            browser.execute_script("""
+            authenticated_browser.execute_script("""
                 arguments[0].querySelector('.action-buttons').style.display = 'none';
                 arguments[0].querySelector('.reassign-controls').style.display = 'block';
             """, target_row)
@@ -341,18 +394,18 @@ class TestParticipantReassignment:
 
         # Handle leader reassignment modal - click "Team Member" to decline leadership
         try:
-            WebDriverWait(browser, 5).until(
+            WebDriverWait(authenticated_browser, 5).until(
                 EC.visibility_of_element_located((By.ID, "leaderReassignModal"))
             )
             logger.info("Leader reassignment modal appeared")
 
             # Verify modal message contains area information
-            modal_message = browser.find_element(By.ID, "leaderReassignMessage").text
+            modal_message = authenticated_browser.find_element(By.ID, "leaderReassignMessage").text
             logger.info(f"Modal message: {modal_message}")
             assert "Area B" in modal_message and "Area D" in modal_message, f"Unexpected modal message: {modal_message}"
 
             # Click "Team Member" button to decline leadership
-            team_member_btn = browser.find_element(By.ID, "moveAsTeamMember")
+            team_member_btn = authenticated_browser.find_element(By.ID, "moveAsTeamMember")
             team_member_btn.click()
             logger.info("Clicked 'Team Member' button (declined leadership)")
         except TimeoutException:
@@ -360,8 +413,8 @@ class TestParticipantReassignment:
 
         # Handle success alert that appears after reassignment
         try:
-            WebDriverWait(browser, 5).until(EC.alert_is_present())
-            success_alert = browser.switch_to.alert
+            WebDriverWait(authenticated_browser, 5).until(EC.alert_is_present())
+            success_alert = authenticated_browser.switch_to.alert
             success_text = success_alert.text
             logger.info(f"Success alert appeared: {success_text}")
             success_alert.accept()
@@ -369,9 +422,9 @@ class TestParticipantReassignment:
         except TimeoutException:
             logger.warning("No success alert appeared")
 
-        # Wait for page reload
-        WebDriverWait(browser, 10).until(EC.staleness_of(target_row))
-        WebDriverWait(browser, 10).until(
+        # Wait for page reload (staleness check ensures reload happened)
+        WebDriverWait(authenticated_browser, 5).until(EC.staleness_of(target_row))
+        WebDriverWait(authenticated_browser, 5).until(
             EC.presence_of_element_located((By.TAG_NAME, "table"))
         )
         logger.info("Page reloaded after reassignment")
@@ -392,35 +445,20 @@ class TestParticipantReassignment:
         logger.info(f"✓ Successfully reassigned {participant_name} to Area D as regular participant")
         logger.info(f"✓ Database verified: preferred_area=D, is_leader=False, assigned_area_leader=None")
 
-    def test_03_leader_reassignment_accept_leadership(self, browser, test_credentials, participant_model, admin_participants_page):
+    def test_03_leader_reassignment_accept_leadership(self, authenticated_browser, participant_model):
         """Test reassigning a leader from Area D to Area E, accepting new leadership."""
         logger.info("=" * 80)
         logger.info("TEST: Leader Reassignment - Accept Leadership (Area D → Area E)")
         logger.info("=" * 80)
 
-        # Login as admin
-        admin_login_for_test(browser, get_base_url(), test_credentials['admin_primary'])
-
-        # Navigate to participants page
-        browser.get(f"{get_base_url()}/admin/participants")
-
-        # Resize browser window to ensure buttons are visible
-        current_size = browser.get_window_size()
-        browser.set_window_size(current_size['width'] + 500, current_size['height'])
-        logger.info(f"Resized browser to {current_size['width'] + 500}x{current_size['height']}")
-
-        # Wait for page load
-        WebDriverWait(browser, 10).until(
-            EC.presence_of_element_located((By.TAG_NAME, "table"))
-        )
-
+        # Page navigation and auth already done by fixtures
         # Use unique leader for test 3
         participant = self.test3_leader
         participant_name = f"{participant['first_name']} {participant['last_name']}"
         logger.info(f"Looking for leader: {participant_name}")
 
         # Find the participant row
-        rows = browser.find_elements(By.CSS_SELECTOR, "tbody tr")
+        rows = authenticated_browser.find_elements(By.CSS_SELECTOR, "tbody tr")
         target_row = None
         for row in rows:
             if participant_name in row.text and "Leader" in row.text:
@@ -432,9 +470,9 @@ class TestParticipantReassignment:
 
         # Click Reassign button (use ActionChains for reliable event triggering)
         reassign_button = target_row.find_element(By.CSS_SELECTOR, ".btn-reassign")
-        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", reassign_button)
+        authenticated_browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", reassign_button)
         time.sleep(0.5)  # Brief pause after scroll
-        ActionChains(browser).move_to_element(reassign_button).click().perform()
+        ActionChains(authenticated_browser).move_to_element(reassign_button).click().perform()
         logger.info("Clicked Reassign button")
 
         # Debug: Check if reassign-controls exists and its visibility
@@ -447,7 +485,7 @@ class TestParticipantReassignment:
 
             # Force show the controls via JavaScript
             logger.info("Forcing reassign controls to be visible via JavaScript")
-            browser.execute_script("""
+            authenticated_browser.execute_script("""
                 arguments[0].querySelector('.action-buttons').style.display = 'none';
                 arguments[0].querySelector('.reassign-controls').style.display = 'block';
             """, target_row)
@@ -467,18 +505,18 @@ class TestParticipantReassignment:
 
         # Handle leader reassignment modal - click "Leader" to accept leadership
         try:
-            WebDriverWait(browser, 5).until(
+            WebDriverWait(authenticated_browser, 5).until(
                 EC.visibility_of_element_located((By.ID, "leaderReassignModal"))
             )
             logger.info("Leader reassignment modal appeared")
 
             # Verify modal message contains area information
-            modal_message = browser.find_element(By.ID, "leaderReassignMessage").text
+            modal_message = authenticated_browser.find_element(By.ID, "leaderReassignMessage").text
             logger.info(f"Modal message: {modal_message}")
             assert "Area D" in modal_message and "Area E" in modal_message, f"Unexpected modal message: {modal_message}"
 
             # Click "Leader" button to accept leadership
-            leader_btn = browser.find_element(By.ID, "moveAsLeader")
+            leader_btn = authenticated_browser.find_element(By.ID, "moveAsLeader")
             leader_btn.click()
             logger.info("Clicked 'Leader' button (accepted leadership)")
         except TimeoutException:
@@ -486,8 +524,8 @@ class TestParticipantReassignment:
 
         # Handle success alert that appears after reassignment
         try:
-            WebDriverWait(browser, 5).until(EC.alert_is_present())
-            success_alert = browser.switch_to.alert
+            WebDriverWait(authenticated_browser, 5).until(EC.alert_is_present())
+            success_alert = authenticated_browser.switch_to.alert
             success_text = success_alert.text
             logger.info(f"Success alert appeared: {success_text}")
             success_alert.accept()
@@ -495,9 +533,9 @@ class TestParticipantReassignment:
         except TimeoutException:
             logger.warning("No success alert appeared")
 
-        # Wait for page reload
-        WebDriverWait(browser, 10).until(EC.staleness_of(target_row))
-        WebDriverWait(browser, 10).until(
+        # Wait for page reload (staleness check ensures reload happened)
+        WebDriverWait(authenticated_browser, 5).until(EC.staleness_of(target_row))
+        WebDriverWait(authenticated_browser, 5).until(
             EC.presence_of_element_located((By.TAG_NAME, "table"))
         )
         logger.info("Page reloaded after reassignment")
@@ -518,28 +556,13 @@ class TestParticipantReassignment:
         logger.info(f"✓ Successfully reassigned {participant_name} to Area E as leader")
         logger.info(f"✓ Database verified: preferred_area=E, is_leader=True, assigned_area_leader=E")
 
-    def test_04_reassignment_validation_same_area(self, browser, test_credentials, admin_participants_page):
+    def test_04_reassignment_validation_same_area(self, authenticated_browser):
         """Test validation when trying to reassign participant to same area."""
         logger.info("=" * 80)
         logger.info("TEST: Reassignment Validation - Same Area")
         logger.info("=" * 80)
 
-        # Login as admin
-        admin_login_for_test(browser, get_base_url(), test_credentials['admin_primary'])
-
-        # Navigate to participants page
-        browser.get(f"{get_base_url()}/admin/participants")
-
-        # Resize browser window to ensure buttons are visible
-        current_size = browser.get_window_size()
-        browser.set_window_size(current_size['width'] + 500, current_size['height'])
-        logger.info(f"Resized browser to {current_size['width'] + 500}x{current_size['height']}")
-
-        # Wait for page load
-        WebDriverWait(browser, 10).until(
-            EC.presence_of_element_located((By.TAG_NAME, "table"))
-        )
-
+        # Page navigation and auth already done by fixtures
         # Use unique participant for test 4
         participant = self.test4_participant
         participant_name = f"{participant['first_name']} {participant['last_name']}"
@@ -547,7 +570,7 @@ class TestParticipantReassignment:
         logger.info(f"Looking for participant: {participant_name} in Area {current_area}")
 
         # Find the participant row
-        rows = browser.find_elements(By.CSS_SELECTOR, "tbody tr")
+        rows = authenticated_browser.find_elements(By.CSS_SELECTOR, "tbody tr")
         target_row = None
         for row in rows:
             if participant_name in row.text:
@@ -559,9 +582,9 @@ class TestParticipantReassignment:
 
         # Click Reassign button (use ActionChains for reliable event triggering)
         reassign_button = target_row.find_element(By.CSS_SELECTOR, ".btn-reassign")
-        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", reassign_button)
+        authenticated_browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", reassign_button)
         time.sleep(0.5)  # Brief pause after scroll
-        ActionChains(browser).move_to_element(reassign_button).click().perform()
+        ActionChains(authenticated_browser).move_to_element(reassign_button).click().perform()
         logger.info("Clicked Reassign button")
 
         # Debug: Check if reassign-controls exists and its visibility
@@ -574,7 +597,7 @@ class TestParticipantReassignment:
 
             # Force show the controls via JavaScript
             logger.info("Forcing reassign controls to be visible via JavaScript")
-            browser.execute_script("""
+            authenticated_browser.execute_script("""
                 arguments[0].querySelector('.action-buttons').style.display = 'none';
                 arguments[0].querySelector('.reassign-controls').style.display = 'block';
             """, target_row)
@@ -593,8 +616,8 @@ class TestParticipantReassignment:
 
         # Expect validation alert
         try:
-            WebDriverWait(browser, 5).until(EC.alert_is_present())
-            alert = browser.switch_to.alert
+            WebDriverWait(authenticated_browser, 5).until(EC.alert_is_present())
+            alert = authenticated_browser.switch_to.alert
             alert_text = alert.text
             logger.info(f"Validation alert appeared: {alert_text}")
 
@@ -606,28 +629,13 @@ class TestParticipantReassignment:
         except TimeoutException:
             pytest.fail("Expected validation alert for same-area reassignment did not appear")
 
-    def test_05_reassignment_cancel(self, browser, test_credentials, participant_model, admin_participants_page):
+    def test_05_reassignment_cancel(self, authenticated_browser, participant_model):
         """Test canceling a reassignment operation."""
         logger.info("=" * 80)
         logger.info("TEST: Reassignment Cancel")
         logger.info("=" * 80)
 
-        # Login as admin
-        admin_login_for_test(browser, get_base_url(), test_credentials['admin_primary'])
-
-        # Navigate to participants page
-        browser.get(f"{get_base_url()}/admin/participants")
-
-        # Resize browser window to ensure buttons are visible
-        current_size = browser.get_window_size()
-        browser.set_window_size(current_size['width'] + 500, current_size['height'])
-        logger.info(f"Resized browser to {current_size['width'] + 500}x{current_size['height']}")
-
-        # Wait for page load
-        WebDriverWait(browser, 10).until(
-            EC.presence_of_element_located((By.TAG_NAME, "table"))
-        )
-
+        # Page navigation and auth already done by fixtures
         # Use unique participant for test 5
         participant = self.test5_participant
         participant_name = f"{participant['first_name']} {participant['last_name']}"
@@ -635,7 +643,7 @@ class TestParticipantReassignment:
         logger.info(f"Looking for participant: {participant_name} in Area {original_area}")
 
         # Find the participant row
-        rows = browser.find_elements(By.CSS_SELECTOR, "tbody tr")
+        rows = authenticated_browser.find_elements(By.CSS_SELECTOR, "tbody tr")
         target_row = None
         for row in rows:
             if participant_name in row.text:
@@ -647,9 +655,9 @@ class TestParticipantReassignment:
 
         # Click Reassign button (use ActionChains for reliable event triggering)
         reassign_button = target_row.find_element(By.CSS_SELECTOR, ".btn-reassign")
-        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", reassign_button)
+        authenticated_browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", reassign_button)
         time.sleep(0.5)  # Brief pause after scroll
-        ActionChains(browser).move_to_element(reassign_button).click().perform()
+        ActionChains(authenticated_browser).move_to_element(reassign_button).click().perform()
         logger.info("Clicked Reassign button")
 
         # Debug: Check if reassign-controls exists and its visibility
@@ -662,7 +670,7 @@ class TestParticipantReassignment:
 
             # Force show the controls via JavaScript
             logger.info("Forcing reassign controls to be visible via JavaScript")
-            browser.execute_script("""
+            authenticated_browser.execute_script("""
                 arguments[0].querySelector('.action-buttons').style.display = 'none';
                 arguments[0].querySelector('.reassign-controls').style.display = 'block';
             """, target_row)
@@ -682,7 +690,7 @@ class TestParticipantReassignment:
         logger.info("Clicked Cancel button")
 
         # Verify UI returns to normal
-        WebDriverWait(browser, 3).until(
+        WebDriverWait(authenticated_browser, 3).until(
             lambda d: action_buttons.is_displayed()
         )
 

@@ -97,9 +97,13 @@ def secret_manager_client():
         logger.error(f"Failed to connect to Secret Manager: {e}")
         pytest.fail(f"Cannot run tests without Secret Manager access: {e}")
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def test_credentials(secret_manager_client):
-    """Retrieve test account credentials from Secret Manager."""
+    """Retrieve test account credentials from Secret Manager.
+
+    Session-scoped to avoid redundant credential retrieval across all tests.
+    Credentials are static for the entire test suite run.
+    """
     credentials = {}
 
     for account_name, account_config in TEST_ACCOUNTS.items():
