@@ -56,6 +56,9 @@ app.register_blueprint(api_bp, url_prefix='/api')
 app.register_blueprint(auth_bp, url_prefix='/auth')
 app.register_blueprint(scheduler_bp, url_prefix='/scheduler')
 
+# Exempt scheduler routes from CSRF protection (they use OIDC tokens instead)
+csrf.exempt(scheduler_bp)
+
 # Load area boundaries data
 def load_area_boundaries():
     """Load area boundary data from JSON file."""

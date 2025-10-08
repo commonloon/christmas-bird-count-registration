@@ -6,6 +6,7 @@ foo
 debug/
 tests/tmp/
 tests/reports/
+reports/
 
 # Node.js / npm
 node_modules/

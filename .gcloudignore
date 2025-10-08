@@ -4,6 +4,7 @@
 .venv/
 __pycache__/
 *.pyc
+*.log
 tests/
 utils/
 /*.md
@@ -12,3 +13,4 @@ foo
 debug/
 tests/tmp/
 tests/reports/
+reports/

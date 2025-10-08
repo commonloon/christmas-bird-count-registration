@@ -1,5 +1,5 @@
 #!/bin/bash
-# Updated by Claude AI on 2025-10-04
+# Updated by Claude AI on 2025-10-07
 #
 # Setup Google Cloud Scheduler jobs for automated email delivery
 #
@@ -12,6 +12,10 @@ set -e
 
 PROJECT_ID="vancouver-cbc-registration"
 REGION="us-west1"
+SERVICE_ACCOUNT="cloud-scheduler-invoker@vancouver-cbc-registration.iam.gserviceaccount.com"
+
+# Get timezone from config/organization.py
+TIMEZONE=$(python3 -c "import sys; sys.path.insert(0, '.'); from config.organization import DISPLAY_TIMEZONE; print(DISPLAY_TIMEZONE)" 2>/dev/null || echo "America/Vancouver")
 
 # Color codes for output
 RED='\033[0;31m'
@@ -39,63 +43,68 @@ create_scheduler_jobs() {
 
     print_info "Creating Cloud Scheduler jobs for $ENV environment..."
     print_info "Service URL: $SERVICE_URL"
+    print_info "Timezone: $TIMEZONE"
 
-    # Job 1: Twice-daily team updates (10am and 4pm Pacific)
-    print_info "Creating team updates job (10am Pacific)..."
+    # Job 1: Twice-daily team updates (6am and 6pm)
+    print_info "Creating team updates job (6am)..."
     gcloud scheduler jobs create http "cbc-${ENV}-team-updates-morning" \
         --location=${REGION} \
-        --schedule="0 10 * * *" \
-        --time-zone="America/Los_Angeles" \
+        --schedule="0 6 * * *" \
+        --time-zone="${TIMEZONE}" \
         --uri="${SERVICE_URL}/scheduler/trigger-team-updates" \
         --http-method=POST \
-        --headers="X-CloudScheduler=true" \
+        --oidc-service-account-email="${SERVICE_ACCOUNT}" \
+        --oidc-token-audience="${SERVICE_URL}" \
         --attempt-deadline=540s \
         --max-retry-attempts=3 \
         --description="Send twice-daily team update emails to area leaders (morning)" \
         --project=${PROJECT_ID} \
         2>&1 | grep -v "already exists" || print_warning "Job may already exist"
 
-    print_info "Creating team updates job (4pm Pacific)..."
+    print_info "Creating team updates job (6pm)..."
     gcloud scheduler jobs create http "cbc-${ENV}-team-updates-afternoon" \
         --location=${REGION} \
-        --schedule="0 16 * * *" \
-        --time-zone="America/Los_Angeles" \
+        --schedule="0 18 * * *" \
+        --time-zone="${TIMEZONE}" \
         --uri="${SERVICE_URL}/scheduler/trigger-team-updates" \
         --http-method=POST \
-        --headers="X-CloudScheduler=true" \
+        --oidc-service-account-email="${SERVICE_ACCOUNT}" \
+        --oidc-token-audience="${SERVICE_URL}" \
         --attempt-deadline=540s \
         --max-retry-attempts=3 \
         --description="Send twice-daily team update emails to area leaders (afternoon)" \
         --project=${PROJECT_ID} \
         2>&1 | grep -v "already exists" || print_warning "Job may already exist"
 
-    # Job 2: Weekly summaries (Fridays at 11pm Pacific)
-    print_info "Creating weekly summaries job (Fridays 11pm Pacific)..."
+    # Job 2: Weekly summaries (Fridays at 11pm)
+    print_info "Creating weekly summaries job (Fridays 11pm)..."
     gcloud scheduler jobs create http "cbc-${ENV}-weekly-summaries" \
         --location=${REGION} \
         --schedule="0 23 * * 5" \
-        --time-zone="America/Los_Angeles" \
+        --time-zone="${TIMEZONE}" \
         --uri="${SERVICE_URL}/scheduler/trigger-weekly-summaries" \
         --http-method=POST \
-        --headers="X-CloudScheduler=true" \
+        --oidc-service-account-email="${SERVICE_ACCOUNT}" \
+        --oidc-token-audience="${SERVICE_URL}" \
         --attempt-deadline=540s \
         --max-retry-attempts=3 \
         --description="Send weekly summary emails to area leaders (Fridays 11pm)" \
         --project=${PROJECT_ID} \
         2>&1 | grep -v "already exists" || print_warning "Job may already exist"
 
-    # Job 3: Daily admin digest (9am Pacific)
-    print_info "Creating admin digest job (9am Pacific)..."
+    # Job 3: Daily admin digest (6pm)
+    print_info "Creating admin digest job (6pm)..."
     gcloud scheduler jobs create http "cbc-${ENV}-admin-digest" \
         --location=${REGION} \
-        --schedule="0 9 * * *" \
-        --time-zone="America/Los_Angeles" \
+        --schedule="0 18 * * *" \
+        --time-zone="${TIMEZONE}" \
         --uri="${SERVICE_URL}/scheduler/trigger-admin-digest" \
         --http-method=POST \
-        --headers="X-CloudScheduler=true" \
+        --oidc-service-account-email="${SERVICE_ACCOUNT}" \
+        --oidc-token-audience="${SERVICE_URL}" \
         --attempt-deadline=540s \
         --max-retry-attempts=3 \
-        --description="Send daily admin digest for unassigned participants (9am)" \
+        --description="Send daily admin digest for unassigned participants (6pm)" \
         --project=${PROJECT_ID} \
         2>&1 | grep -v "already exists" || print_warning "Job may already exist"
 

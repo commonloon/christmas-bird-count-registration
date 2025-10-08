@@ -5,11 +5,11 @@ date
 # Usage: ./deploy.sh [test|production|registration|both]
 # Default: both
 
-# Display timezone configuration (single source of truth)
-DISPLAY_TIMEZONE="America/Vancouver"
+# Get timezone from config/organization.py
+DISPLAY_TIMEZONE=$(python3 -c "import sys; sys.path.insert(0, '.'); from config.organization import DISPLAY_TIMEZONE; print(DISPLAY_TIMEZONE)" 2>/dev/null || echo "America/Vancouver")
 
 echo "Deploying with display timezone: $DISPLAY_TIMEZONE"
-echo "If this timezone is incorrect for your location, update the DISPLAY_TIMEZONE variable in deploy.sh"
+echo "If this timezone is incorrect for your location, update DISPLAY_TIMEZONE in config/organization.py"
 echo ""
 
 DEPLOY_TARGET=${1:-both}

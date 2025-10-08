@@ -1,14 +1,17 @@
-# Updated by Claude AI on 2025-10-04
+# Updated by Claude AI on 2025-10-07
 """
 Scheduler routes for automated email triggers.
 
 These routes are designed to be called by Google Cloud Scheduler for automated email delivery.
-They are protected by requiring specific headers that Cloud Scheduler includes.
+They are protected by OIDC token verification to prevent unauthorized access.
 """
 
-from flask import Blueprint, jsonify, request, current_app
+from flask import Blueprint, jsonify, request, current_app, session
 from functools import wraps
 import logging
+import os
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
 
 logger = logging.getLogger(__name__)
 
@@ -16,35 +19,55 @@ scheduler_bp = Blueprint('scheduler', __name__)
 
 
 def require_cloud_scheduler(f):
-    """Decorator to verify requests come from Cloud Scheduler."""
+    """Decorator to verify requests come from Cloud Scheduler with OIDC token."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # Cloud Scheduler sends requests with specific headers
-        # Verify the request comes from Cloud Scheduler for security
-
-        # Check for Cloud Scheduler user agent
-        user_agent = request.headers.get('User-Agent', '')
-
-        # Cloud Scheduler uses "Google-Cloud-Scheduler" in the user agent
-        if 'Google-Cloud-Scheduler' in user_agent:
-            logger.info(f"Scheduler request authenticated from Cloud Scheduler")
-            return f(*args, **kwargs)
-
-        # Also check for X-CloudScheduler custom header (can be set in Cloud Scheduler job)
-        custom_header = request.headers.get('X-CloudScheduler', '')
-        if custom_header == 'true':
-            logger.info(f"Scheduler request authenticated via X-CloudScheduler header")
-            return f(*args, **kwargs)
-
-        # For development/testing, allow if TEST_MODE is enabled
-        import os
+        # In TEST_MODE, allow admin-authenticated requests
+        # This enables the admin dashboard test buttons to work
         if os.environ.get('TEST_MODE', 'false').lower() == 'true':
-            logger.warning("Allowing scheduler request in TEST_MODE without Cloud Scheduler headers")
-            return f(*args, **kwargs)
+            # Check if this is an admin-authenticated session (dashboard button)
+            from config.admins import get_admin_emails
+            if session.get('user_email') in get_admin_emails():
+                logger.info("Allowing scheduler request from authenticated admin in TEST_MODE")
+                return f(*args, **kwargs)
 
-        # Reject unauthorized requests
-        logger.warning(f"Unauthorized scheduler request from {request.remote_addr} - User-Agent: {user_agent}")
-        return jsonify({'error': 'Unauthorized - Cloud Scheduler access required'}), 403
+        # Verify OIDC token from Cloud Scheduler
+        auth_header = request.headers.get('Authorization', '')
+        if not auth_header.startswith('Bearer '):
+            logger.warning(f"No valid Authorization header from {request.remote_addr}")
+            return jsonify({'error': 'Unauthorized - OIDC token required'}), 403
+
+        token = auth_header.split('Bearer ')[1]
+
+        try:
+            # Verify token signature and claims
+            # Cloud Scheduler sends tokens with audience = target URL (HTTPS)
+            # Flask's request.url_root may return HTTP behind a proxy, so we ensure HTTPS
+            url_root = request.url_root.rstrip('/')
+            if url_root.startswith('http://'):
+                url_root = url_root.replace('http://', 'https://', 1)
+            expected_audience = url_root
+
+            claims = id_token.verify_oauth2_token(
+                token,
+                google_requests.Request(),
+                expected_audience
+            )
+
+            # Verify the service account email
+            email = claims.get('email', '')
+            expected_sa = 'cloud-scheduler-invoker@vancouver-cbc-registration.iam.gserviceaccount.com'
+
+            if email == expected_sa:
+                logger.info(f"Authenticated Cloud Scheduler request from {email}")
+                return f(*args, **kwargs)
+            else:
+                logger.warning(f"Invalid service account in token: {email}")
+                return jsonify({'error': 'Unauthorized service account'}), 403
+
+        except ValueError as e:
+            logger.error(f"Token verification failed: {e}")
+            return jsonify({'error': 'Invalid OIDC token'}), 403
 
     return decorated_function
 

@@ -1,6 +1,7 @@
 Flask
 Flask-WTF
 Flask-Limiter
+google-auth
 google-cloud-firestore
 google-cloud-functions
 gunicorn
