@@ -1,4 +1,5 @@
 from google.cloud import firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
 from datetime import datetime
 from typing import List, Dict, Optional
 import logging
@@ -43,7 +44,7 @@ class RemovalLogModel:
     def get_pending_removals(self) -> List[Dict]:
         """Get removals that haven't been emailed yet for the current year."""
         removals = []
-        query = self.db.collection(self.collection).where('emailed', '==', False)
+        query = self.db.collection(self.collection).where(filter=FieldFilter('emailed', '==', False))
 
         for doc in query.stream():
             data = doc.to_dict()
@@ -56,8 +57,8 @@ class RemovalLogModel:
         """Get pending removals for a specific area."""
         removals = []
         query = (self.db.collection(self.collection)
-                 .where('emailed', '==', False)
-                 .where('area_code', '==', area_code))
+                 .where(filter=FieldFilter('emailed', '==', False))
+                 .where(filter=FieldFilter('area_code', '==', area_code)))
 
         for doc in query.stream():
             data = doc.to_dict()
@@ -85,7 +86,7 @@ class RemovalLogModel:
         """Get all removals for a specific area in the current year."""
         removals = []
         query = (self.db.collection(self.collection)
-                 .where('area_code', '==', area_code)
+                 .where(filter=FieldFilter('area_code', '==', area_code))
                  .order_by('removed_at', direction=firestore.Query.DESCENDING))
 
         for doc in query.stream():
@@ -172,7 +173,7 @@ class RemovalLogModel:
 
         removals = []
         query = (self.db.collection(self.collection)
-                 .where('removed_at', '>=', cutoff_date)
+                 .where(filter=FieldFilter('removed_at', '>=', cutoff_date))
                  .order_by('removed_at', direction=firestore.Query.DESCENDING))
 
         for doc in query.stream():
@@ -186,8 +187,8 @@ class RemovalLogModel:
         """Get removals for a specific area since the given timestamp."""
         removals = []
         query = (self.db.collection(self.collection)
-                 .where('area_code', '==', area_code)
-                 .where('removed_at', '>=', since_timestamp)
+                 .where(filter=FieldFilter('area_code', '==', area_code))
+                 .where(filter=FieldFilter('removed_at', '>=', since_timestamp))
                  .order_by('removed_at', direction=firestore.Query.DESCENDING))
 
         for doc in query.stream():

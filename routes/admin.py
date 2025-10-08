@@ -421,6 +421,23 @@ def add_leader():
         flash(f'Invalid area code: {area_code}', 'error')
         return redirect(url_for('admin.leaders', year=selected_year))
 
+    # Get additional form fields
+    phone2 = sanitize_phone(request.form.get('phone2', ''))
+    skill_level = request.form.get('skill_level', 'Expert').strip()
+    experience = request.form.get('experience', '3+ counts').strip()
+    has_binoculars = request.form.get('has_binoculars') == 'on'
+    spotting_scope = request.form.get('spotting_scope') == 'on'
+    interested_in_scribe = request.form.get('interested_in_scribe') == 'on'
+
+    # Validate skill level
+    valid_skill_levels = ['Newbie', 'Beginner', 'Intermediate', 'Expert']
+    if skill_level not in valid_skill_levels:
+        flash(f'Invalid skill level: {skill_level}', 'error')
+        return redirect(url_for('admin.leaders', year=selected_year))
+
+    # Initialize participant model
+    participant_model = ParticipantModel(g.db, selected_year)
+
     try:
         # Check if this exact person (identity) is already assigned to this area
         existing_leaders_for_person = participant_model.get_leaders_by_identity(first_name, last_name, email)
@@ -436,13 +453,19 @@ def add_leader():
             flash(f'{first_name} {last_name} is already leading Area {existing_area}. Each person can only lead one area.', 'error')
             return redirect(url_for('admin.leaders', year=selected_year))
 
-        # Create the area leader record
+        # Create the area leader record with full participant data
         leader_data = {
             'area_code': area_code,
             'email': email,
             'first_name': first_name,
             'last_name': last_name,
             'phone': phone,
+            'phone2': phone2,
+            'skill_level': skill_level,
+            'experience': experience,
+            'has_binoculars': has_binoculars,
+            'spotting_scope': spotting_scope,
+            'interested_in_scribe': interested_in_scribe,
             'assigned_by': user['email'],
             'assigned_at': datetime.now(),
             'active': True,
@@ -872,7 +895,7 @@ def edit_participant():
             return jsonify({'success': False, 'message': 'Secondary phone number must be 20 characters or less'})
 
         # Validate skill level
-        valid_skill_levels = ['Beginner', 'Intermediate', 'Expert']
+        valid_skill_levels = ['Newbie', 'Beginner', 'Intermediate', 'Expert']
         if skill_level and skill_level not in valid_skill_levels:
             return jsonify({'success': False, 'message': f'Invalid skill level: {skill_level}'})
 

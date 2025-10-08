@@ -164,11 +164,12 @@
     </div>
     <div class="card-body">
         <p>Manually add a leader who is not registered as a participant (primary workflow):</p>
-        
+
         <form id="add-leader-form" method="POST" action="{{ url_for('admin.add_leader') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="year" value="{{ selected_year }}">
-            
+
+            <!-- Contact Information -->
             <div class="row">
                 <div class="col-md-3">
                     <label for="first_name" class="form-label">First Name *</label>
@@ -184,13 +185,14 @@
                 </div>
                 <div class="col-md-3">
                     <label for="phone" class="form-label">Cell Phone *</label>
-                    <input type="tel" class="form-control" id="phone" name="phone" required 
+                    <input type="tel" class="form-control" id="phone" name="phone" required
                            placeholder="(604) 555-1234">
                 </div>
             </div>
-            
+
+            <!-- Area and Secondary Phone -->
             <div class="row mt-3">
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label for="area_code" class="form-label">Area to Lead *</label>
                     <select class="form-select" id="area_code" name="area_code" required>
                         <option value="">Select area...</option>
@@ -199,9 +201,50 @@
                         {% endfor %}
                     </select>
                 </div>
+                <div class="col-md-3">
+                    <label for="phone2" class="form-label">Secondary Phone</label>
+                    <input type="tel" class="form-control" id="phone2" name="phone2"
+                           placeholder="(604) 555-1234">
+                </div>
+                <div class="col-md-3">
+                    <label for="skill_level" class="form-label">Skill Level *</label>
+                    <select class="form-select" id="skill_level" name="skill_level" required>
+                        <option value="Newbie">Newbie - I'm new to birding</option>
+                        <option value="Beginner">Beginner - I know some common birds</option>
+                        <option value="Intermediate">Intermediate - I can identify many species</option>
+                        <option value="Expert" selected>Expert - I'm experienced with identification</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="experience" class="form-label">Experience *</label>
+                    <select class="form-select" id="experience" name="experience" required>
+                        <option value="None">This is my first Christmas Bird Count</option>
+                        <option value="1-2 counts">I've done 1-2 Christmas Bird Counts</option>
+                        <option value="3+ counts" selected>I've done 3 or more Christmas Bird Counts</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Equipment and Notes -->
+            <div class="row mt-3">
+                <div class="col-md-4">
+                    <label class="form-label">Equipment</label>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="has_binoculars" name="has_binoculars">
+                        <label class="form-check-label" for="has_binoculars">
+                            Has binoculars
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="spotting_scope" name="spotting_scope">
+                        <label class="form-check-label" for="spotting_scope">
+                            Has spotting scope
+                        </label>
+                    </div>
+                </div>
                 <div class="col-md-6">
                     <label for="notes" class="form-label">Notes (optional)</label>
-                    <input type="text" class="form-control" id="notes" name="notes" 
+                    <input type="text" class="form-control" id="notes" name="notes"
                            placeholder="Previous experience, special considerations, etc.">
                 </div>
                 <div class="col-md-2 d-flex align-items-end">

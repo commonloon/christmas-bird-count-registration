@@ -270,7 +270,7 @@ class TestAdminDataAccess:
     """Test admin data access and operations."""
 
     @pytest.mark.admin
-    def test_csv_export_functionality(self, browser, test_credentials):
+    def test_csv_export_functionality(self, browser, test_credentials, populated_database):
         """Test CSV export functionality from dashboard."""
         logger.info("Testing CSV export functionality")
 

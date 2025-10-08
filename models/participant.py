@@ -1,5 +1,6 @@
-# Updated by Claude AI on 2025-09-16
+# Updated by Claude AI on 2025-10-08
 from google.cloud import firestore
+from google.cloud.firestore_v1.base_query import FieldFilter
 from datetime import datetime
 from typing import List, Dict, Optional
 import logging
@@ -50,7 +51,7 @@ class ParticipantModel:
     def get_participants_by_area(self, area_code: str) -> List[Dict]:
         """Get all participants for a specific area in the current year."""
         participants = []
-        query = self.db.collection(self.collection).where('preferred_area', '==', area_code)
+        query = self.db.collection(self.collection).where(filter=FieldFilter('preferred_area', '==', area_code))
 
         for doc in query.stream():
             data = doc.to_dict()
@@ -62,7 +63,7 @@ class ParticipantModel:
     def get_unassigned_participants(self) -> List[Dict]:
         """Get all participants with preferred_area = 'UNASSIGNED'."""
         participants = []
-        query = self.db.collection(self.collection).where('preferred_area', '==', 'UNASSIGNED')
+        query = self.db.collection(self.collection).where(filter=FieldFilter('preferred_area', '==', 'UNASSIGNED'))
 
         for doc in query.stream():
             data = doc.to_dict()
@@ -103,7 +104,7 @@ class ParticipantModel:
     def get_participants_by_email(self, email: str) -> List[Dict]:
         """Get all participants with a specific email address."""
         participants = []
-        query = self.db.collection(self.collection).where('email', '==', email.lower())
+        query = self.db.collection(self.collection).where(filter=FieldFilter('email', '==', email.lower()))
         
         for doc in query.stream():
             data = doc.to_dict()
@@ -115,9 +116,9 @@ class ParticipantModel:
     def get_participant_by_email_and_names(self, email: str, first_name: str, last_name: str) -> Optional[Dict]:
         """Get participant by exact email + first_name + last_name match."""
         query = (self.db.collection(self.collection)
-                .where('email', '==', email.lower())
-                .where('first_name', '==', first_name)
-                .where('last_name', '==', last_name))
+                .where(filter=FieldFilter('email', '==', email.lower()))
+                .where(filter=FieldFilter('first_name', '==', first_name))
+                .where(filter=FieldFilter('last_name', '==', last_name)))
 
         docs = list(query.stream())
         if docs:
@@ -165,16 +166,16 @@ class ParticipantModel:
 
     def email_exists(self, email: str) -> bool:
         """Check if an email is already registered for the current year."""
-        query = self.db.collection(self.collection).where('email', '==', email.lower())
+        query = self.db.collection(self.collection).where(filter=FieldFilter('email', '==', email.lower()))
         docs = list(query.stream())
         return len(docs) > 0
 
     def email_name_exists(self, email: str, first_name: str, last_name: str) -> bool:
         """Check if email+name combination exists for current year."""
         query = (self.db.collection(self.collection)
-                .where('email', '==', email.lower())
-                .where('first_name', '==', first_name)
-                .where('last_name', '==', last_name))
+                .where(filter=FieldFilter('email', '==', email.lower()))
+                .where(filter=FieldFilter('first_name', '==', first_name))
+                .where(filter=FieldFilter('last_name', '==', last_name)))
         docs = list(query.stream())
         return len(docs) > 0
 
@@ -182,8 +183,8 @@ class ParticipantModel:
         """Get participants who expressed interest in leadership but aren't assigned as leaders."""
         participants = []
         query = (self.db.collection(self.collection)
-                 .where('interested_in_leadership', '==', True)
-                 .where('is_leader', '==', False))
+                 .where(filter=FieldFilter('interested_in_leadership', '==', True))
+                 .where(filter=FieldFilter('is_leader', '==', False)))
 
         for doc in query.stream():
             data = doc.to_dict()
@@ -219,7 +220,7 @@ class ParticipantModel:
         """Get all active leaders for the current year."""
         leaders = []
         query = (self.db.collection(self.collection)
-                 .where('is_leader', '==', True))
+                 .where(filter=FieldFilter('is_leader', '==', True)))
 
         for doc in query.stream():
             data = doc.to_dict()
@@ -232,8 +233,8 @@ class ParticipantModel:
         """Get all active leaders for a specific area."""
         leaders = []
         query = (self.db.collection(self.collection)
-                 .where('is_leader', '==', True)
-                 .where('assigned_area_leader', '==', area_code))
+                 .where(filter=FieldFilter('is_leader', '==', True))
+                 .where(filter=FieldFilter('assigned_area_leader', '==', area_code)))
 
         for doc in query.stream():
             data = doc.to_dict()
@@ -245,11 +246,11 @@ class ParticipantModel:
     def is_area_leader(self, email: str, area_code: str = None) -> bool:
         """Check if an email is an area leader (optionally for a specific area)."""
         query = (self.db.collection(self.collection)
-                 .where('email', '==', email.lower())
-                 .where('is_leader', '==', True))
+                 .where(filter=FieldFilter('email', '==', email.lower()))
+                 .where(filter=FieldFilter('is_leader', '==', True)))
 
         if area_code:
-            query = query.where('assigned_area_leader', '==', area_code)
+            query = query.where(filter=FieldFilter('assigned_area_leader', '==', area_code))
 
         docs = list(query.stream())
         return len(docs) > 0
@@ -258,7 +259,7 @@ class ParticipantModel:
         """Get all leaders matching exact identity (first_name, last_name, email)."""
         leaders = []
         query = (self.db.collection(self.collection)
-                 .where('is_leader', '==', True))
+                 .where(filter=FieldFilter('is_leader', '==', True)))
 
         search_first = first_name.strip().lower()
         search_last = last_name.strip().lower()
@@ -376,13 +377,20 @@ class ParticipantModel:
             'last_name': last_name,
             'email': email.lower(),
             'phone': leader_data.get('phone', ''),
+            'phone2': leader_data.get('phone2', ''),
             'is_leader': True,
             'assigned_area_leader': leader_data.get('area_code'),
             'leadership_assigned_by': leader_data.get('assigned_by'),
             'leadership_assigned_at': datetime.now(),
             'preferred_area': leader_data.get('area_code'),  # Leader's preferred area matches their leadership area
-            'experience_level': 'Expert',  # Assume leaders are experienced
-            'participation_type': 'regular'
+            'skill_level': leader_data.get('skill_level', 'Expert'),
+            'experience': leader_data.get('experience', '3+ counts'),
+            'participation_type': 'regular',
+            'has_binoculars': leader_data.get('has_binoculars', False),
+            'spotting_scope': leader_data.get('spotting_scope', False),
+            'interested_in_scribe': leader_data.get('interested_in_scribe', False),
+            'interested_in_leadership': True,  # Leaders are by definition interested in leadership
+            'notes_to_organizers': leader_data.get('notes', '')
         }
 
         return self.add_participant(participant_data)

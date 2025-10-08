@@ -178,97 +178,84 @@ def csv_download_cleanup():
 
 
 
-@pytest.fixture
-def populated_test_data(db_client):
-    """Load test participants from CSV fixture for validation."""
-    import os
-    from tests.utils.load_test_data import load_csv_participants, load_participants_to_firestore
+# Note: populated_database fixture is now defined in conftest.py and shared across all test files
 
-    current_year = datetime.now().year
-    participant_model = ParticipantModel(db_client, current_year)
 
-    # Clear existing participants for current year to start fresh
-    logger.info("Clearing existing participants for clean test")
+@pytest.fixture(scope="class")
+def authenticated_browser(chrome_options, firefox_options, test_credentials):
+    """Create browser and authenticate once for all tests in the class.
+
+    This fixture performs expensive OAuth authentication once and reuses the
+    browser session across all tests in the class, following the pattern from
+    test_participant_reassignment.py.
+    """
+    from selenium import webdriver
+    from selenium.webdriver.chrome.service import Service as ChromeService
+    from selenium.webdriver.firefox.service import Service as FirefoxService
+    from tests.config import TEST_CONFIG
+    from tests.utils.auth_utils import admin_login_for_test
+
+    driver = None
+    browser_type = TEST_CONFIG.get('browser', 'chrome').lower()
+
     try:
-        participants_ref = db_client.collection(f'participants_{current_year}')
-        batch_size = 100
-        deleted = 0
+        # Create browser instance
+        if browser_type == 'firefox':
+            try:
+                driver_service = FirefoxService()
+                driver = webdriver.Firefox(service=driver_service, options=firefox_options)
+                logger.info("Class-scoped Firefox browser instance created using system geckodriver")
+            except Exception as system_error:
+                logger.info(f"System geckodriver not found, using webdriver-manager: {system_error}")
+                from webdriver_manager.firefox import GeckoDriverManager
+                from webdriver_manager.core.driver_cache import DriverCacheManager
+                cache_manager = DriverCacheManager(valid_range=30)
+                driver_service = FirefoxService(
+                    GeckoDriverManager(cache_manager=cache_manager).install()
+                )
+                driver = webdriver.Firefox(service=driver_service, options=firefox_options)
+                logger.info("Class-scoped Firefox browser instance created using webdriver-manager")
+        else:
+            try:
+                driver_service = ChromeService()
+                driver = webdriver.Chrome(service=driver_service, options=chrome_options)
+                logger.info("Class-scoped Chrome browser instance created using system chromedriver")
+            except Exception as system_error:
+                logger.info(f"System chromedriver not found, using webdriver-manager: {system_error}")
+                from webdriver_manager.chrome import ChromeDriverManager
+                from webdriver_manager.core.driver_cache import DriverCacheManager
+                cache_manager = DriverCacheManager(valid_range=30)
+                driver_service = ChromeService(
+                    ChromeDriverManager(cache_manager=cache_manager).install()
+                )
+                driver = webdriver.Chrome(service=driver_service, options=chrome_options)
+                logger.info("Class-scoped Chrome browser instance created using webdriver-manager")
 
-        while True:
-            docs = participants_ref.limit(batch_size).stream()
-            batch = db_client.batch()
-            count = 0
+        # Perform authentication ONCE for the entire class
+        logger.info("Performing one-time OAuth authentication for test class")
+        admin_login_for_test(driver, get_base_url(), test_credentials['admin_primary'])
+        logger.info("OAuth authentication successful - session will be reused across all tests")
 
-            for doc in docs:
-                batch.delete(doc.reference)
-                count += 1
-                deleted += 1
+        yield driver
 
-            if count == 0:
-                break
-
-            batch.commit()
-
-        logger.info(f"Cleared {deleted} existing participants")
-    except Exception as e:
-        logger.warning(f"Could not clear participants: {e}")
-
-    # Load participants from CSV fixture
-    csv_path = os.path.join(os.path.dirname(__file__), 'fixtures', 'test_participants_2025.csv')
-    logger.info(f"Loading test participants from {csv_path}")
-
-    participants = load_csv_participants(csv_path)
-    logger.info(f"Loaded {len(participants)} participants from CSV")
-
-    # Upload to Firestore
-    load_participants_to_firestore(db_client, current_year, participants)
-    logger.info(f"Successfully loaded {len(participants)} test participants to Firestore")
-
-    yield participants
-
-    # Clean up test participants
-    logger.info(f"Cleaning up {len(participants)} CSV test participants")
-    try:
-        # Batch delete for efficiency
-        participants_ref = db_client.collection(f'participants_{current_year}')
-        batch_size = 100
-        deleted = 0
-
-        while True:
-            docs = participants_ref.limit(batch_size).stream()
-            batch = db_client.batch()
-            count = 0
-
-            for doc in docs:
-                batch.delete(doc.reference)
-                count += 1
-                deleted += 1
-
-            if count == 0:
-                break
-
-            batch.commit()
-
-        logger.info(f"Cleaned up {deleted} test participants")
-    except Exception as e:
-        logger.warning(f"Could not clean up test participants: {e}")
+    finally:
+        if driver:
+            driver.quit()
+            logger.info("Class-scoped browser instance closed")
 
 
-class TestCSVExportFunctionality:
-    """Test basic CSV export functionality."""
+class TestCSVExport:
+    """Consolidated CSV export tests with shared authentication."""
 
     @pytest.mark.critical
     @pytest.mark.csv
-    def test_csv_export_button_availability(self, browser, test_credentials):
+    def test_csv_export_button_availability(self, authenticated_browser, populated_database):
         """Test that CSV export buttons are available to admin users."""
         logger.info("Testing CSV export button availability")
 
-        admin_creds = test_credentials['admin_primary']
         base_url = get_base_url()
-        admin_login_for_test(browser, base_url, admin_creds)
-
-        dashboard = AdminDashboardPage(browser, base_url)
-        browser.get(f"{base_url}/admin")
+        dashboard = AdminDashboardPage(authenticated_browser, base_url)
+        authenticated_browser.get(f"{base_url}/admin")
 
         # Test export from dashboard
         assert dashboard.is_dashboard_loaded(), "Should be on dashboard"
@@ -276,7 +263,7 @@ class TestCSVExportFunctionality:
         # Find and click the Export CSV link
         try:
             # Use exact link text - most reliable selector
-            export_link = browser.find_element(By.LINK_TEXT, "Export CSV")
+            export_link = authenticated_browser.find_element(By.LINK_TEXT, "Export CSV")
             csv_url = export_link.get_attribute('href')
             logger.info(f"✓ Found Export CSV link: {csv_url}")
 
@@ -286,16 +273,16 @@ class TestCSVExportFunctionality:
             logger.info(f"Existing files before download: {existing_files}")
 
             # Set short page load timeout for file download
-            browser.set_page_load_timeout(3)
+            authenticated_browser.set_page_load_timeout(3)
 
             # Navigate to CSV URL (will timeout but download starts)
             try:
-                browser.get(csv_url)
+                authenticated_browser.get(csv_url)
             except Exception as e:
                 logger.debug(f"Navigation timeout (expected): {str(e)[:100]}")
 
             # Reset timeout
-            browser.set_page_load_timeout(15)
+            authenticated_browser.set_page_load_timeout(15)
             logger.info("✓ Triggered CSV download")
 
             # Check immediately if file appeared
@@ -331,17 +318,17 @@ class TestCSVExportFunctionality:
         logger.info("=" * 60)
 
         # Navigate back to dashboard first (browser is currently on CSV download URL)
-        browser.get(f"{base_url}/admin")
+        authenticated_browser.get(f"{base_url}/admin")
         assert dashboard.is_dashboard_loaded(), "Should be back on dashboard before navigating to participants"
 
         # Test export from participants page
         try:
             logger.info("Navigating to participants page")
-            browser.get(f"{base_url}/admin/participants")
+            authenticated_browser.get(f"{base_url}/admin/participants")
             time.sleep(2)  # Wait for page load
 
             # Find Export CSV link
-            export_link = browser.find_element(By.LINK_TEXT, "Export CSV")
+            export_link = authenticated_browser.find_element(By.LINK_TEXT, "Export CSV")
             csv_url = export_link.get_attribute('href')
             logger.info(f"✓ Found Export CSV link on participants page")
 
@@ -349,12 +336,12 @@ class TestCSVExportFunctionality:
             existing_files = set(glob.glob(os.path.join(download_dir, '*.csv')))
 
             # Set short timeout and navigate to CSV URL
-            browser.set_page_load_timeout(3)
+            authenticated_browser.set_page_load_timeout(3)
             try:
-                browser.get(csv_url)
+                authenticated_browser.get(csv_url)
             except Exception:
                 pass  # Expected timeout
-            browser.set_page_load_timeout(15)
+            authenticated_browser.set_page_load_timeout(15)
 
             # Check for new file
             time.sleep(2)
@@ -377,16 +364,13 @@ class TestCSVExportFunctionality:
         logger.info("=" * 60)
 
     @pytest.mark.csv
-    def test_direct_csv_route_access(self, browser, test_credentials):
+    def test_direct_csv_route_access(self, authenticated_browser, populated_database):
         """Test direct access to CSV export route via browser navigation."""
         logger.info("Testing direct CSV route access")
 
-        admin_creds = test_credentials['admin_primary']
         base_url = get_base_url()
-        admin_login_for_test(browser, base_url, admin_creds)
-
-        dashboard = AdminDashboardPage(browser, base_url)
-        browser.get(f"{base_url}/admin")
+        dashboard = AdminDashboardPage(authenticated_browser, base_url)
+        authenticated_browser.get(f"{base_url}/admin")
         assert dashboard.is_dashboard_loaded(), "Should be on dashboard"
 
         # Test the actual CSV export route that exists: /admin/export_csv
@@ -399,12 +383,12 @@ class TestCSVExportFunctionality:
         existing_files = set(glob.glob(os.path.join(download_dir, '*.csv')))
 
         # Navigate to CSV URL with short timeout
-        browser.set_page_load_timeout(3)
+        authenticated_browser.set_page_load_timeout(3)
         try:
-            browser.get(csv_url)
+            authenticated_browser.get(csv_url)
         except Exception as nav_error:
             logger.debug(f"Navigation timeout (expected): {str(nav_error)[:100]}")
-        browser.set_page_load_timeout(15)
+        authenticated_browser.set_page_load_timeout(15)
 
         # Check for new file
         time.sleep(2)
@@ -429,14 +413,12 @@ class TestCSVExportFunctionality:
             pytest.fail(f"No CSV file downloaded from {csv_url}")
 
 
-class TestCSVContentValidation:
-    """Test CSV export content validation."""
-
     @pytest.fixture(scope="function")
-    def csv_export_data(self, browser, test_credentials, populated_test_data, request):
+    def csv_export_data(self, authenticated_browser, populated_database, request):
         """
         Download CSV once and cache across all content validation tests.
         Uses request.session caching to avoid repeated OAuth/download overhead.
+        Now uses authenticated_browser fixture for shared OAuth session.
         """
         # Check if we already downloaded the CSV in this test session
         cache_key = 'csv_export_validation_data'
@@ -449,12 +431,9 @@ class TestCSVContentValidation:
         logger.info("FIXTURE: Downloading CSV for content validation tests")
         logger.info("=" * 60)
 
-        admin_creds = test_credentials['admin_primary']
         base_url = get_base_url()
-        admin_login_for_test(browser, base_url, admin_creds)
-
-        dashboard = AdminDashboardPage(browser, base_url)
-        browser.get(f"{base_url}/admin")
+        dashboard = AdminDashboardPage(authenticated_browser, base_url)
+        authenticated_browser.get(f"{base_url}/admin")
 
         # Get CSV export
         csv_content = self._get_csv_export_content(dashboard, base_url)
@@ -474,7 +453,7 @@ class TestCSVContentValidation:
         data = {
             'content': csv_content,
             'parsed': csv_data,
-            'test_participants': populated_test_data
+            'test_participants': populated_database
         }
 
         # Cache for subsequent tests
@@ -763,23 +742,20 @@ class TestCSVContentValidation:
         return None
 
 
-class TestCSVExportPerformance:
-    """Test CSV export performance and reliability."""
-
     @pytest.mark.csv
     @pytest.mark.slow
-    def test_large_dataset_export_performance(self, browser, test_credentials, db_client):
+    def test_large_dataset_export_performance(self, authenticated_browser, populated_database):
         """Test CSV export performance with larger datasets."""
         logger.info("Testing CSV export performance with large dataset")
 
-        admin_creds = test_credentials['admin_primary']
         base_url = get_base_url()
-        admin_login_for_test(browser, base_url, admin_creds)
-
-        dashboard = AdminDashboardPage(browser, base_url)
-        browser.get(f"{base_url}/admin")
+        dashboard = AdminDashboardPage(authenticated_browser, base_url)
+        authenticated_browser.get(f"{base_url}/admin")
         current_year = datetime.now().year
-        participant_model = ParticipantModel(db_client, current_year)
+
+        from config.database import get_firestore_client
+        db, _ = get_firestore_client()
+        participant_model = ParticipantModel(db, current_year)
 
         # Create larger test dataset (if not already present)
         large_dataset = get_test_dataset('large_realistic')

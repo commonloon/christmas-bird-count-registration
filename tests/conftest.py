@@ -329,11 +329,79 @@ def clean_database(firestore_client):
     # logger.info("Database cleaned after test")
 
 @pytest.fixture
-def populated_database(firestore_client, test_credentials):
-    """Provide a database with realistic test data."""
-    # This will be implemented when we create the dataset generation utilities
-    logger.info("Populated database fixture (to be implemented)")
-    yield firestore_client
+def populated_database(firestore_client):
+    """Provide a database with realistic test data loaded from CSV fixture."""
+    from tests.utils.load_test_data import load_csv_participants, load_participants_to_firestore
+    from models.participant import ParticipantModel
+
+    current_year = datetime.now().year
+    participant_model = ParticipantModel(firestore_client, current_year)
+
+    # Clear existing participants for current year to start fresh
+    logger.info("Clearing existing participants for clean test")
+    try:
+        participants_ref = firestore_client.collection(f'participants_{current_year}')
+        batch_size = 100
+        deleted = 0
+
+        while True:
+            docs = participants_ref.limit(batch_size).stream()
+            batch = firestore_client.batch()
+            count = 0
+
+            for doc in docs:
+                batch.delete(doc.reference)
+                count += 1
+                deleted += 1
+
+            if count == 0:
+                break
+
+            batch.commit()
+
+        logger.info(f"Cleared {deleted} existing participants")
+    except Exception as e:
+        logger.warning(f"Could not clear participants: {e}")
+
+    # Load participants from CSV fixture
+    csv_path = os.path.join(os.path.dirname(__file__), 'fixtures', 'test_participants_2025.csv')
+    logger.info(f"Loading test participants from {csv_path}")
+
+    participants = load_csv_participants(csv_path)
+    logger.info(f"Loaded {len(participants)} participants from CSV")
+
+    # Upload to Firestore
+    load_participants_to_firestore(firestore_client, current_year, participants)
+    logger.info(f"Successfully loaded {len(participants)} test participants to Firestore")
+
+    yield participants
+
+    # Clean up test participants
+    logger.info(f"Cleaning up {len(participants)} CSV test participants")
+    try:
+        # Batch delete for efficiency
+        participants_ref = firestore_client.collection(f'participants_{current_year}')
+        batch_size = 100
+        deleted = 0
+
+        while True:
+            docs = participants_ref.limit(batch_size).stream()
+            batch = firestore_client.batch()
+            count = 0
+
+            for doc in docs:
+                batch.delete(doc.reference)
+                count += 1
+                deleted += 1
+
+            if count == 0:
+                break
+
+            batch.commit()
+
+        logger.info(f"Cleaned up {deleted} participants from database")
+    except Exception as e:
+        logger.warning(f"Error during cleanup: {e}")
 
 @pytest.fixture
 def identity_test_database(clean_database):

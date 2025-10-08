@@ -14,3 +14,4 @@ debug/
 tests/tmp/
 tests/reports/
 reports/
+pytest.ini
