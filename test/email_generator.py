@@ -132,18 +132,22 @@ def get_participants_changes_since(participant_model: ParticipantModel, area_cod
             if updated_at and updated_at.tzinfo is None:
                 updated_at = updated_at.replace(tzinfo=timezone.utc)
 
+            # Check if participant was recently assigned to this area
+            assigned_at = participant.get('assigned_at')
+            if assigned_at and assigned_at.tzinfo is None:
+                assigned_at = assigned_at.replace(tzinfo=timezone.utc)
+
             # New participant: created after last email
             if created_at and created_at > since_timestamp:
+                new_participants.append(participant)
+            # Recently assigned to this area (from UNASSIGNED or different area)
+            elif assigned_at and assigned_at > since_timestamp:
                 new_participants.append(participant)
             # Updated participant: updated after last email but created before
             elif updated_at and updated_at > since_timestamp:
                 if created_at and created_at <= since_timestamp:
-                    # This is a participant info update (not a new registration)
+                    # This is a participant info update (not a new registration or reassignment)
                     updated_participants.append(participant)
-                else:
-                    # Area reassignment or other update - treat as new to this area
-                    if participant.get('preferred_area') == area_code:
-                        new_participants.append(participant)
 
         # Get removed participants from removal log
         removal_model = RemovalLogModel(participant_model.db, participant_model.year)

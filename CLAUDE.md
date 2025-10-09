@@ -285,6 +285,43 @@ historical_model = ParticipantModel(db, 2024)  # Specific year
 historical_participants = participant_model.get_historical_participants('A', years_back=3)
 ```
 
+### Firestore Query Syntax (MANDATORY)
+**Always use the modern `FieldFilter` syntax to avoid deprecation warnings:**
+
+```python
+from google.cloud.firestore_v1.base_query import FieldFilter
+
+# CORRECT - Modern syntax (no warnings)
+query = collection.where(filter=FieldFilter('field_name', '==', value))
+
+# INCORRECT - Deprecated positional arguments (causes warnings)
+query = collection.where('field_name', '==', value)
+```
+
+**Key Points:**
+- **Import required**: `from google.cloud.firestore_v1.base_query import FieldFilter`
+- **Use `filter` keyword**: Always pass `filter=FieldFilter(...)` to `.where()` calls
+- **Applies to all queries**: Single filters, chained filters, and complex queries
+- **Reference**: See [Google Cloud PR #10407](https://github.com/GoogleCloudPlatform/python-docs-samples/pull/10407/files)
+
+**Examples:**
+```python
+# Single filter
+query = db.collection('participants_2025').where(filter=FieldFilter('is_leader', '==', True))
+
+# Multiple filters (chained)
+query = (db.collection('participants_2025')
+         .where(filter=FieldFilter('email', '==', email.lower()))
+         .where(filter=FieldFilter('is_leader', '==', True)))
+
+# Conditional filter
+if area_code:
+    query = query.where(filter=FieldFilter('assigned_area_leader', '==', area_code))
+
+# Comparison operators
+query = db.collection('removal_log_2025').where(filter=FieldFilter('removed_at', '>=', cutoff_date))
+```
+
 ### Authentication Flow
 1. **Google Identity Services OAuth** for protected routes using client credentials stored in Google Secret Manager
 2. **Role determination**:

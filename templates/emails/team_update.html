@@ -202,7 +202,7 @@
 
         {% if updated_participants %}
         <div class="changes-section" style="background-color: #fff3cd; border-left: 4px solid {{ branding.badge_warning }};">
-            <h4>📝 Participant Info Updates ({{ updated_participants|length }})</h4>
+            <h4>📝 Updated Team Members ({{ updated_participants|length }})</h4>
             {% for participant in updated_participants %}
             <p><strong>{{ participant.first_name }} {{ participant.last_name }}</strong> - {{ participant.email }}</p>
             {% endfor %}
@@ -218,15 +218,17 @@
         </div>
         {% endif %}
 
-        {% if current_team %}
-        <!-- Email Summary Section -->
-        <div class="email-summary">
-            <h4>📧 Team Email Addresses ({{ current_team|length }} members)</h4>
-            <p><strong>To copy:</strong> Select all text in the box below, then copy (Ctrl+C or Cmd+C)</p>
-            <div class="email-list" id="emailList">{{ current_team|map(attribute='email')|join(', ') }}</div>
-        </div>
+        <h4>📋 Next Steps</h4>
+        <ul>
+            {% if new_participants %}
+                <li><strong>Welcome new members to the team.</strong> <ul><li>Ideally new members should hear from you within a few days of joining your team, even if it's just a quick greeting and a note to say you'll send details later.</li></ul></li>
+            {% endif %}
+            <li>Share meeting location and time information</li>
+            <li>Coordinate any special equipment or preparation needs</li>
+        </ul>
 
-        <h4>👥 Complete Team Roster ({{ current_team|length }} members)</h4>
+        {% if current_team %}
+        <h4>👥 Complete List of Team Members ({{ current_team|length }} members)</h4>
 
         <table class="participant-table">
             <thead>
@@ -286,14 +288,14 @@
                 {% endfor %}
             </tbody>
         </table>
-        {% endif %}
 
-        <h4>📋 Next Steps</h4>
-        <ul>
-            <li>Welcome new team members and provide them with count day details</li>
-            <li>Share meeting location and time information</li>
-            <li>Coordinate any special equipment or preparation needs</li>
-        </ul>
+        <!-- Email Summary Section -->
+        <div class="email-summary">
+            <h4>📧 Email Addresses of Team Members</h4>
+            <p><strong>To copy:</strong> Select all text in the box below, then copy (Ctrl+C or Cmd+C) and paste (Ctrl+V or Cmd+V) to a new email. <em>We recommend pasting addresses in the BCC field when emailing multiple team members, for privacy reasons. Not everyone is comfortable sharing their contact information with strangers.</em></p>
+            <div class="email-list" id="emailList">{{ current_team|map(attribute='email')|join(', ') }}</div>
+        </div>
+        {% endif %}
     </div>
 
 

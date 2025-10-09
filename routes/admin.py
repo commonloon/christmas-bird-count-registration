@@ -122,8 +122,11 @@ def participants():
     all_participants = participant_model.get_all_participants()
     all_leaders = participant_model.get_leaders()
 
+    # Filter out UNASSIGNED participants - they have their own dedicated interface at /admin/unassigned
+    assigned_participants = [p for p in all_participants if p.get('preferred_area') != 'UNASSIGNED']
+
     # Normalize participant data to ensure all fields are present
-    normalized_participants = [normalize_participant_record(p) for p in all_participants]
+    normalized_participants = [normalize_participant_record(p) for p in assigned_participants]
 
     # Convert manually added leaders to participant-like records for display
     leader_as_participants = []

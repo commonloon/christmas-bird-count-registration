@@ -227,7 +227,7 @@
         {% if has_changes %}
         {% if new_participants %}
         <div class="changes-section new-members">
-            <h4>➕ New Team Members ({{ new_participants|length }})</h4>
+            <h4>📥 New Team Members ({{ new_participants|length }})</h4>
             <ul>
             {% for participant in new_participants %}
                 <li><strong>{{ participant.first_name|e }} {{ participant.last_name|e }}</strong> ({{ participant.email|e }})
@@ -241,7 +241,7 @@
 
         {% if updated_participants %}
         <div class="changes-section" style="background-color: #fff3cd; border-left: 4px solid #ffc107;">
-            <h4>📝 Participant Info Updates ({{ updated_participants|length }})</h4>
+            <h4>📝 Updated Team Members ({{ updated_participants|length }})</h4>
             <ul>
             {% for participant in updated_participants %}
                 <li><strong>{{ participant.first_name|e }} {{ participant.last_name|e }}</strong> - Contact info or preferences updated</li>
@@ -252,7 +252,7 @@
 
         {% if removed_participants %}
         <div class="changes-section removed-members">
-            <h4>➖ Removed Team Members ({{ removed_participants|length }})</h4>
+            <h4>📤 Removed Team Members ({{ removed_participants|length }})</h4>
             <ul>
             {% for removal in removed_participants %}
                 <li><strong>{{ removal.participant_name|e }}</strong>{% if removal.reason %} - {{ removal.reason|e }}{% endif %}</li>
@@ -262,11 +262,19 @@
         {% endif %}
         {% endif %}
 
+        <h4>📋 Next Steps</h4>
+        <ul>
+            {% if new_participants %}
+                <li><strong>Welcome new members to the team.</strong> <ul><li>Ideally new members should hear from you within a few days of joining your team, even if it's just a quick greeting and a note to say you'll send details later.</li></ul></li>
+            {% endif %}
+            <li>Confirm count day logistics with your team</li>
+            <li>Share meeting location and time details</li>
+            <li>Coordinate transportation and equipment needs</li>
+            <li>Review count area boundaries and special considerations</li>
+        </ul>
+
         {% if current_team %}
-        <!-- Complete Team Roster -->
-        <div class="section-title">
-            👥 COMPLETE CURRENT TEAM ROSTER ({{ current_team|length }} members)
-        </div>
+        <h4>👥 Complete List of Team Members ({{ current_team|length }} members)</h4>
 
         <table class="participant-table">
             <thead>
@@ -329,41 +337,9 @@
 
         <!-- Team Email Addresses -->
         <div class="email-summary">
-            <h3>📧 Team Email Addresses ({{ current_team|length }} members)</h3>
-            <p><strong>To copy:</strong> Select all text in the box below, then copy (Ctrl+C or Cmd+C)</p>
+            <h4>📧 Email Addresses of Team Members</h4>
+            <p><strong>To copy:</strong> Select all text in the box below, then copy (Ctrl+C or Cmd+C) and paste (Ctrl+V or Cmd+V) to a new email. <em>We recommend pasting addresses in the BCC field when emailing multiple team members, for privacy reasons. Not everyone is comfortable sharing their contact information with strangers.</em></p>
             <div class="email-list" id="emailList">{{ current_team|map(attribute='email')|join(', ') }}</div>
-        </div>
-        {% endif %}
-
-        <!-- Upcoming Tasks -->
-        <p><strong>Upcoming Tasks:</strong></p>
-        <ul>
-            <li>Confirm count day logistics with your team</li>
-            <li>Share meeting location and time details</li>
-            <li>Coordinate transportation and equipment needs</li>
-            <li>Review count area boundaries and special considerations</li>
-        </ul>
-
-        <!-- Team Statistics -->
-        {% if current_team %}
-        <div class="section-title">📊 Team Statistics</div>
-        <div class="stats-grid">
-            <div class="stat-box">
-                <div class="stat-number">{{ current_team|length }}</div>
-                <div class="stat-label">Total Members</div>
-            </div>
-            {% for skill, count in skill_breakdown.items() %}
-            <div class="stat-box">
-                <div class="stat-number">{{ count }}</div>
-                <div class="stat-label">{{ skill }}</div>
-            </div>
-            {% endfor %}
-            {% if leadership_interest_count > 0 %}
-            <div class="stat-box">
-                <div class="stat-number">{{ leadership_interest_count }}</div>
-                <div class="stat-label">Leadership Interest</div>
-            </div>
-            {% endif %}
         </div>
         {% endif %}
     </div>
