@@ -99,43 +99,56 @@ class TestRegistrationFormEmailValidation:
 
     def test_valid_email_accepted(self, registration_page, test_cleanup):
         """Test that valid email formats are accepted in registration form."""
-        # Get test data and use unique identity (name) with standard email format
+        # Get test data and use unique identity (name AND email for test independence)
         participant_data = get_test_participant('participants', 'regular_newbie')
         unique_identity = generate_unique_identity("ValidTest", "User", "validtest")
         participant_data['personal']['first_name'] = unique_identity['first_name']
         participant_data['personal']['last_name'] = unique_identity['last_name']
-        participant_data['personal']['email'] = 'validtest@example.com'
+        participant_data['personal']['email'] = unique_identity['email']  # Use unique email
 
         # Navigate and fill form
         assert registration_page.navigate_to_registration(), "Failed to navigate"
         assert registration_page.fill_complete_registration_form(participant_data), "Failed to fill form"
         assert registration_page.submit_registration(), "Failed to submit"
 
-        # Wait for success page
-        time.sleep(2)
-        success_url = registration_page.get_current_url()
-        assert 'success' in success_url or 'registered' in success_url, \
+        # Wait for success page with retry (handle spinner delays)
+        success_found = False
+        for attempt in range(5):
+            time.sleep(2)
+            success_url = registration_page.get_current_url()
+            if 'success' in success_url or 'registered' in success_url:
+                success_found = True
+                break
+
+        assert success_found, \
             f"Valid email should redirect to success page, got: {success_url}"
 
 
     def test_plus_sign_email_accepted(self, registration_page, test_cleanup):
         """Test that emails with plus signs are accepted (RFC 5322 compliance)."""
-        # Get test data with unique identity and plus sign email
+        # Get test data with unique identity (keeping plus sign but making email unique)
         participant_data = get_test_participant('participants', 'regular_intermediate')
         unique_identity = generate_unique_identity("PlusSign", "Test", "plustest")
         participant_data['personal']['first_name'] = unique_identity['first_name']
         participant_data['personal']['last_name'] = unique_identity['last_name']
-        participant_data['personal']['email'] = 'test+tag@example.com'
+        # Use unique base but add plus sign for RFC 5322 testing
+        participant_data['personal']['email'] = unique_identity['email'].replace('@', '+tag@')
 
         # Navigate and fill form
         assert registration_page.navigate_to_registration(), "Failed to navigate"
         assert registration_page.fill_complete_registration_form(participant_data), "Failed to fill form"
         assert registration_page.submit_registration(), "Failed to submit"
 
-        # Wait for success page
-        time.sleep(2)
-        success_url = registration_page.get_current_url()
-        assert 'success' in success_url or 'registered' in success_url, \
+        # Wait for success page with retry (handle spinner delays)
+        success_found = False
+        for attempt in range(5):
+            time.sleep(2)
+            success_url = registration_page.get_current_url()
+            if 'success' in success_url or 'registered' in success_url:
+                success_found = True
+                break
+
+        assert success_found, \
             f"Email with plus sign should redirect to success page, got: {success_url}"
 
 

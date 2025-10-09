@@ -187,10 +187,17 @@ class TestRegistrationWorkflows:
             "Failed to fill registration form for unassigned volunteer"
         assert registration_page.submit_registration(), "Failed to submit unassigned volunteer registration"
 
-        time.sleep(3)
-        success_url = registration_page.get_current_url()
-        assert 'success' in success_url or 'registered' in success_url, \
-            f"Unassigned volunteer did not redirect to success: {success_url}"
+        # Wait for success page with retry (handle spinner delays)
+        success_found = False
+        for attempt in range(5):
+            time.sleep(2)
+            success_url = registration_page.get_current_url()
+            if 'success' in success_url or 'registered' in success_url:
+                success_found = True
+                break
+
+        assert success_found, \
+            f"Unassigned volunteer did not redirect to success page, got: {success_url}"
 
         # Verify database registration
         time.sleep(2)
@@ -398,10 +405,17 @@ class TestRegistrationFormValidation:
             "Failed to fill first registration"
         assert registration_page.submit_registration(), "Failed to submit first registration"
 
-        time.sleep(3)
-        first_url = registration_page.get_current_url()
-        assert 'success' in first_url or 'registered' in first_url, \
-            f"First registration should succeed: {first_url}"
+        # Wait for success page with retry (handle spinner delays)
+        success_found = False
+        for attempt in range(5):
+            time.sleep(2)
+            first_url = registration_page.get_current_url()
+            if 'success' in first_url or 'registered' in first_url:
+                success_found = True
+                break
+
+        assert success_found, \
+            f"First registration should succeed, got: {first_url}"
 
         # Verify first participant was created in database
         time.sleep(2)

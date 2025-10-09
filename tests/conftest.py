@@ -286,6 +286,62 @@ def browser(chrome_options, firefox_options):
             except Exception as e:
                 logger.warning(f"Error closing {browser_type} browser: {e}")
 
+@pytest.fixture(scope="class")
+def authenticated_browser(chrome_options, firefox_options, test_credentials):
+    """Create browser and authenticate once for all tests in the class.
+
+    This fixture performs OAuth authentication once and reuses the browser
+    session across all tests in the class, avoiding repeated expensive OAuth flows.
+    Uses admin_primary credentials by default.
+    """
+    from tests.utils.auth_utils import admin_login_for_test
+
+    driver = None
+    browser_type = TEST_CONFIG.get('browser', 'firefox').lower()
+
+    try:
+        if browser_type == 'firefox':
+            try:
+                driver_service = FirefoxService()
+                driver = webdriver.Firefox(service=driver_service, options=firefox_options)
+                logger.info("Class-scoped Firefox browser instance created using system geckodriver")
+            except Exception as system_error:
+                logger.info(f"System geckodriver not found, using webdriver-manager: {system_error}")
+                from webdriver_manager.firefox import GeckoDriverManager
+                from webdriver_manager.core.driver_cache import DriverCacheManager
+                cache_manager = DriverCacheManager(valid_range=30)
+                driver_service = FirefoxService(GeckoDriverManager(cache_manager=cache_manager).install())
+                driver = webdriver.Firefox(service=driver_service, options=firefox_options)
+                logger.info("Class-scoped Firefox browser instance created using webdriver-manager")
+        else:
+            try:
+                driver_service = ChromeService()
+                driver = webdriver.Chrome(service=driver_service, options=chrome_options)
+                logger.info("Class-scoped Chrome browser instance created using system chromedriver")
+            except Exception as system_error:
+                logger.info(f"System chromedriver not found, using webdriver-manager: {system_error}")
+                from webdriver_manager.chrome import ChromeDriverManager
+                from webdriver_manager.core.driver_cache import DriverCacheManager
+                cache_manager = DriverCacheManager(valid_range=30)
+                driver_service = ChromeService(ChromeDriverManager(cache_manager=cache_manager).install())
+                driver = webdriver.Chrome(service=driver_service, options=chrome_options)
+                logger.info("Class-scoped Chrome browser instance created using webdriver-manager")
+
+        driver.implicitly_wait(3)
+        driver.set_page_load_timeout(15)
+
+        # Perform authentication ONCE for the entire class
+        logger.info("Performing one-time OAuth authentication for test class")
+        admin_login_for_test(driver, get_base_url(), test_credentials['admin_primary'])
+        logger.info("OAuth authentication successful - session will be reused across all tests")
+
+        yield driver
+
+    finally:
+        if driver:
+            driver.quit()
+            logger.info("Class-scoped browser instance closed")
+
 # Database State Management Fixtures
 @pytest.fixture
 def clean_database(firestore_client):

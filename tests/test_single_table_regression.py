@@ -228,7 +228,7 @@ class TestLeaderPromotionWorkflows:
 
     @pytest.mark.critical
     @pytest.mark.admin
-    def test_participant_to_leader_promotion(self, browser, base_url, test_credentials, clean_database):
+    def test_participant_to_leader_promotion(self, browser, authenticated_browser, base_url, clean_database):
         """Test promoting a participant to area leader through admin interface."""
         import random
         import string
@@ -237,7 +237,7 @@ class TestLeaderPromotionWorkflows:
         test_suffix = ''.join(random.choices(string.ascii_lowercase, k=8))
         test_email = f"promotion-test-{test_suffix}@test-regression.ca"
 
-        # Step 1: Register a participant through the UI
+        # Step 1: Register a participant through the UI (using unauthenticated browser)
         browser.get(base_url)
 
         browser.find_element(By.ID, "first_name").send_keys("LeaderPromo")
@@ -254,29 +254,83 @@ class TestLeaderPromotionWorkflows:
 
         safe_click(browser, (By.XPATH, "//button[@type='submit']"))
 
-        # Verify registration succeeded
+        # Wait for success page with retry (handle spinner delays)
+        success_found = False
+        for attempt in range(5):
+            time.sleep(2)
+            current_url = browser.current_url
+            if 'success' in current_url or 'participant_id=' in current_url:
+                success_found = True
+                break
+
+        assert success_found, \
+            f"Registration should redirect to success page, got: {current_url}"
+
+        # Verify registration succeeded in database
         participant_id, participant = verify_registration_success(browser, test_email)
         logger.info(f"Created test participant: {participant_id}")
 
-        # Step 2: Login as admin
-        admin_creds = test_credentials['admin_primary']
-        admin_login_for_test(browser, base_url, admin_creds)
+        # Step 2: Use pre-authenticated admin browser (already logged in)
+        # Navigate to leaders page to promote participant
+        # Participant must have indicated leadership interest during registration
+        authenticated_browser.get(f"{base_url}/admin/leaders")
+        wait = WebDriverWait(authenticated_browser, 10)
 
-        # Step 3: Navigate to participants page and promote to leader
-        browser.get(f"{base_url}/admin/participants")
-        wait = WebDriverWait(browser, 10)
+        # Verify we're on the right page and authenticated
+        current_url = authenticated_browser.current_url
+        logger.info(f"After navigation, current URL: {current_url}")
 
-        # Look for promote button for our test participant (using email since it's unique)
-        # The UI should have a promote button/link for interested_in_leadership participants
-        promotion_element = wait.until(EC.element_to_be_clickable(
-            (By.XPATH, f"//tr[contains(., '{test_email}')]//button[contains(@class, 'promote') or contains(@title, 'Promote')]")
+        # Wait for page to load
+        wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+
+        # Wait for participant data to sync - look for our specific participant in the table
+        # IMPORTANT: Use identity tuple (first_name, last_name, email) not just email
+        # Family members can share email addresses
+        participant_wait = WebDriverWait(authenticated_browser, 20)  # Longer wait for DB sync
+        try:
+            logger.info(f"Waiting for participant LeaderPromo Test{test_suffix} ({test_email}) to appear in potential leaders...")
+            # Match on all three identity fields to uniquely identify the participant
+            participant_wait.until(EC.presence_of_element_located(
+                (By.XPATH, f"//tr[contains(., 'LeaderPromo') and contains(., 'Test{test_suffix}') and contains(., '{test_email}')]")
+            ))
+            logger.info(f"Found participant LeaderPromo Test{test_suffix} in leaders page")
+        except TimeoutException:
+            logger.error(f"Participant LeaderPromo Test{test_suffix} ({test_email}) did not appear in leaders page after 20 seconds")
+            logger.error(f"Current URL: {authenticated_browser.current_url}")
+            logger.error(f"Page title: {authenticated_browser.title}")
+            # Check if Potential Leaders section exists at all
+            try:
+                authenticated_browser.find_element(By.XPATH, "//h3[contains(text(), 'Potential Leaders')]")
+                logger.error("Potential Leaders section exists but participant not in it")
+            except:
+                logger.error("Potential Leaders section does not exist on page")
+            raise
+
+        # Find participant in "Potential Leaders" section using identity tuple
+        # Select area from dropdown in their row
+        area_dropdown = wait.until(EC.presence_of_element_located(
+            (By.XPATH, f"//tr[contains(., 'LeaderPromo') and contains(., 'Test{test_suffix}') and contains(., '{test_email}')]//select[@name='area_code']")
         ))
-        promotion_element.click()
+
+        # Scroll dropdown into view and ensure it's visible
+        authenticated_browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", area_dropdown)
+        time.sleep(0.5)
+
+        # Use JavaScript to set the value as a workaround for "element not interactable" errors
+        authenticated_browser.execute_script("arguments[0].value = 'A'; arguments[0].dispatchEvent(new Event('change'));", area_dropdown)
+        time.sleep(0.5)
+
+        # Click "Assign" button to promote to leader using identity tuple
+        assign_button = wait.until(EC.element_to_be_clickable(
+            (By.XPATH, f"//tr[contains(., 'LeaderPromo') and contains(., 'Test{test_suffix}') and contains(., '{test_email}')]//button[contains(text(), 'Assign')]")
+        ))
+        authenticated_browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", assign_button)
+        time.sleep(0.3)
+        assign_button.click()
 
         time.sleep(2)  # Allow promotion to process
 
-        # Step 4: Verify promotion succeeded - check leaders page
-        browser.get(f"{base_url}/admin/leaders")
+        # Step 3: Verify promotion succeeded - participant should now be in leaders table
 
         # Verify leader appears in table (search for email since names might be in different columns)
         wait.until(EC.presence_of_element_located(
