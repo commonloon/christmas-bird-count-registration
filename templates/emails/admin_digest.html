@@ -159,14 +159,14 @@
         {% for participant in unassigned_participants %}
         <div class="participant">
             <div class="participant-header">
-                {{ loop.index }}. {{ participant.first_name }} {{ participant.last_name }}
+                {{ loop.index }}. {{ participant.first_name|e }} {{ participant.last_name|e }}
                 {% if days_waiting[loop.index0] >= 3 %}
                 <span class="waiting-time">({{ days_waiting[loop.index0] }} days waiting)</span>
                 {% endif %}
             </div>
             <div class="participant-details">
-                <strong>Email:</strong> {{ participant.email }}<br>
-                <strong>Phone:</strong> {{ participant.phone or 'Not provided' }}<br>
+                <strong>Email:</strong> {{ participant.email|e }}<br>
+                <strong>Phone:</strong> {{ participant.phone|e or 'Not provided' }}<br>
                 <strong>Skill Level:</strong> {{ participant.skill_level or 'Not specified' }} | 
                 <strong>CBC Experience:</strong> {{ participant.experience or 'Not specified' }}<br>
                 <strong>Registered:</strong> {{ participant.created_at.strftime('%Y-%m-%d %H:%M') if participant.created_at else 'Unknown' }}

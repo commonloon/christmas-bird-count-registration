@@ -84,15 +84,15 @@
                 <tbody>
                     {% for participant in participants %}
                     <tr>
-                        <td><strong>{{ participant.first_name }} {{ participant.last_name }}</strong></td>
-                        <td><a href="mailto:{{ participant.email }}">{{ participant.email }}</a></td>
-                        <td>{{ participant.phone or 'N/A' }}</td>
+                        <td><strong>{{ participant.first_name|e }} {{ participant.last_name|e }}</strong></td>
+                        <td><a href="mailto:{{ participant.email|e }}">{{ participant.email|e }}</a></td>
+                        <td>{{ participant.phone|e or 'N/A' }}</td>
                         <td>
                             <span class="badge bg-{% if participant.skill_level == 'Expert' %}success{% elif participant.skill_level == 'Intermediate' %}primary{% elif participant.skill_level == 'Beginner' %}info{% else %}secondary{% endif %}">
-                                {{ participant.skill_level }}
+                                {{ participant.skill_level|e }}
                             </span>
                         </td>
-                        <td>{{ participant.experience }}</td>
+                        <td>{{ participant.experience|e }}</td>
                         <td>
                             {% if participant.interested_in_leadership %}
                                 <span class="badge bg-warning">Yes</span>

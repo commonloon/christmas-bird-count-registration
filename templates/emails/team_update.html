@@ -195,7 +195,7 @@
         <div class="changes-section new-members">
             <h4>📥 New Team Members ({{ new_participants|length }})</h4>
             {% for participant in new_participants %}
-            <p><strong>{{ participant.first_name }} {{ participant.last_name }}</strong> - {{ participant.email }}</p>
+            <p><strong>{{ participant.first_name|e }} {{ participant.last_name|e }}</strong> - {{ participant.email|e }}</p>
             {% endfor %}
         </div>
         {% endif %}
@@ -204,7 +204,7 @@
         <div class="changes-section" style="background-color: #fff3cd; border-left: 4px solid {{ branding.badge_warning }};">
             <h4>📝 Updated Team Members ({{ updated_participants|length }})</h4>
             {% for participant in updated_participants %}
-            <p><strong>{{ participant.first_name }} {{ participant.last_name }}</strong> - {{ participant.email }}</p>
+            <p><strong>{{ participant.first_name|e }} {{ participant.last_name|e }}</strong> - {{ participant.email|e }}</p>
             {% endfor %}
         </div>
         {% endif %}

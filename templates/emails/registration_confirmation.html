@@ -185,8 +185,8 @@
             <div style="margin-top: 15px;">
                 <strong>Your Area Leader{{ 's' if area_leaders|length > 1 else '' }}:</strong><br>
                 {% for leader in area_leaders %}
-                📧 {{ leader.first_name }} {{ leader.last_name }} - {{ leader.leader_email }}<br>
-                📱 {{ leader.cell_phone }}<br>
+                📧 {{ leader.first_name|e }} {{ leader.last_name|e }} - {{ leader.leader_email|e }}<br>
+                📱 {{ leader.cell_phone|e }}<br>
                 {% endfor %}
             </div>
             {% endif %}

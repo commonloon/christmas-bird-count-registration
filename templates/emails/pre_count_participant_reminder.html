@@ -140,9 +140,9 @@
             <p><strong>Your Area Leader{{ 's' if area_leaders|length > 1 else '' }}:</strong></p>
             {% for leader in area_leaders %}
             <div style="margin: 10px 0; padding: 10px; background-color: white; border-radius: 3px;">
-                <strong>📧 {{ leader.first_name }} {{ leader.last_name }}</strong><br>
-                <strong>Email:</strong> {{ leader.leader_email }}<br>
-                <strong>Phone:</strong> {{ leader.cell_phone }}
+                <strong>📧 {{ leader.first_name|e }} {{ leader.last_name|e }}</strong><br>
+                <strong>Email:</strong> {{ leader.leader_email|e }}<br>
+                <strong>Phone:</strong> {{ leader.cell_phone|e }}
             </div>
             {% endfor %}
             {% else %}

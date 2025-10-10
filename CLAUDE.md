@@ -84,6 +84,108 @@ When writing or modifying code that mentions organization details:
 - **Required for**: names, emails, phone numbers, notes, any user-generated content
 - **XSS Prevention**: This prevents script injection attacks
 
+### **Template Output Escaping Rules (CRITICAL)**
+
+**ALWAYS escape user-controlled data in templates, even though Jinja2 auto-escape is enabled.** Explicit escaping provides defense-in-depth and makes security intent clear.
+
+#### **HTML Context Escaping:**
+```html
+<!-- CORRECT - Always use |e filter for user data -->
+{{ participant.first_name|e }} {{ participant.last_name|e }}
+{{ participant.email|e }}
+{{ participant.phone|e or 'N/A' }}
+{{ participant.notes_to_organizers|e }}
+
+<!-- INCORRECT - Missing explicit escaping (relies only on auto-escape) -->
+{{ participant.first_name }} {{ participant.last_name }}
+{{ participant.email }}
+```
+
+#### **JavaScript Context Escaping:**
+```html
+<!-- CORRECT - Use |tojson for JavaScript variables -->
+<script>
+const userName = {{ participant.first_name|tojson }};
+const userEmail = {{ participant.email|tojson }};
+const areaCode = {{ leader.assigned_area_leader|tojson }};
+</script>
+
+<!-- INCORRECT - Direct interpolation causes XSS vulnerability -->
+<script>
+const userName = "{{ participant.first_name }}";  // DANGEROUS!
+var email = "{{ participant.email }}";            // DANGEROUS!
+</script>
+```
+
+#### **HTML Attribute Escaping:**
+```html
+<!-- CORRECT - Escape in attributes too -->
+<input type="text" value="{{ participant.first_name|e }}">
+<div title="{{ participant.notes|e }}">...</div>
+<a href="mailto:{{ participant.email|e }}">{{ participant.email|e }}</a>
+
+<!-- INCORRECT - Missing escaping in attributes -->
+<input type="text" value="{{ participant.first_name }}">
+```
+
+#### **URL Context Safety:**
+```html
+<!-- SAFE - url_for() generates safe URLs -->
+<a href="{{ url_for('admin.dashboard', year=selected_year) }}">Dashboard</a>
+
+<!-- SAFE - mailto: with escaped email -->
+<a href="mailto:{{ participant.email|e }}">{{ participant.email|e }}</a>
+
+<!-- DANGEROUS - Never put user data directly in URLs without validation -->
+<a href="/search?q={{ user_query }}">  <!-- Missing escaping! -->
+```
+
+#### **Dangerous Patterns to AVOID:**
+```html
+<!-- NEVER use |safe on user data -->
+{{ participant.notes|safe }}  <!-- DANGEROUS! Bypasses all escaping -->
+
+<!-- NEVER disable auto-escape for user data -->
+{% autoescape false %}
+{{ user_content }}  <!-- DANGEROUS! -->
+{% endautoescape %}
+
+<!-- NEVER trust "sanitized" data in JavaScript context -->
+<script>
+var note = "{{ sanitized_note }}";  <!-- Still vulnerable! Use |tojson -->
+</script>
+```
+
+#### **Code Review Checklist for Templates:**
+When creating or modifying templates, verify:
+- [ ] All `{{ participant.* }}` variables use `|e` filter
+- [ ] All `{{ leader.* }}` variables use `|e` filter
+- [ ] JavaScript context uses `|tojson`, never direct interpolation
+- [ ] HTML attributes containing user data are escaped
+- [ ] No `|safe` filters on user-controlled data
+- [ ] No `{% autoescape false %}` blocks with user data
+- [ ] Email template variables are escaped (even for trusted recipients)
+
+#### **Common User Data Fields Requiring Escaping:**
+- `first_name`, `last_name` - ALWAYS escape
+- `email` - ALWAYS escape
+- `phone`, `phone2` - ALWAYS escape
+- `notes_to_organizers`, `notes` - ALWAYS escape
+- `skill_level`, `experience` - Usually safe (enum), but escape anyway
+- `assigned_area_leader`, `preferred_area` - Usually safe (validated), but escape for consistency
+
+#### **Testing for XSS:**
+Test templates with malicious input during development:
+```python
+# Test data examples
+first_name = "<script>alert('XSS')</script>"
+last_name = "O'Brien"  # Tests quote handling
+email = "test+<img src=x onerror=alert(1)>@example.com"
+notes = '"; alert("XSS"); //'
+```
+
+Expected behavior: All displayed as literal text, no JavaScript execution
+
 ### **CSRF Protection (MANDATORY)**
 - **ALL POST forms** must include `{{ csrf_token() }}` in templates
 - **AJAX requests** must include `csrf_token: '{{ csrf_token() }}'` in JSON payload

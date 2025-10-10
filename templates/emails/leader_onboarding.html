@@ -170,10 +170,10 @@
             <div class="team-roster">
                 {% for participant in scribe_participants %}
                 <div class="participant scribe">
-                    <strong>{{ participant.first_name }} {{ participant.last_name }}</strong>
+                    <strong>{{ participant.first_name|e }} {{ participant.last_name|e }}</strong>
                     <span class="participation-type">(Scribe Interest)</span><br>
-                    <strong>Email:</strong> {{ participant.email }}<br>
-                    <strong>Phone:</strong> {{ participant.phone or 'Not provided' }}<br>
+                    <strong>Email:</strong> {{ participant.email|e }}<br>
+                    <strong>Phone:</strong> {{ participant.phone|e or 'Not provided' }}<br>
                     <strong>Skill:</strong> {{ participant.skill_level or 'Not specified' }} |
                     <strong>Experience:</strong> {{ participant.experience or 'Not specified' }}<br>
                     <strong>Equipment:</strong>
@@ -196,9 +196,9 @@
             <div class="team-roster">
                 {% for participant in regular_participants %}
                 <div class="participant">
-                    <strong>{{ participant.first_name }} {{ participant.last_name }}</strong><br>
-                    <strong>Email:</strong> {{ participant.email }}<br>
-                    <strong>Phone:</strong> {{ participant.phone or 'Not provided' }}<br>
+                    <strong>{{ participant.first_name|e }} {{ participant.last_name|e }}</strong><br>
+                    <strong>Email:</strong> {{ participant.email|e }}<br>
+                    <strong>Phone:</strong> {{ participant.phone|e or 'Not provided' }}<br>
                     <strong>Skill:</strong> {{ participant.skill_level or 'Not specified' }} |
                     <strong>Experience:</strong> {{ participant.experience or 'Not specified' }}<br>
                     <strong>Equipment:</strong>
@@ -221,10 +221,10 @@
             <div class="team-roster">
                 {% for participant in feeder_participants %}
                 <div class="participant feeder">
-                    <strong>{{ participant.first_name }} {{ participant.last_name }}</strong>
+                    <strong>{{ participant.first_name|e }} {{ participant.last_name|e }}</strong>
                     <span class="participation-type">(FEEDER)</span><br>
-                    <strong>Email:</strong> {{ participant.email }}<br>
-                    <strong>Phone:</strong> {{ participant.phone or 'Not provided' }}<br>
+                    <strong>Email:</strong> {{ participant.email|e }}<br>
+                    <strong>Phone:</strong> {{ participant.phone|e or 'Not provided' }}<br>
                     <strong>Skill:</strong> {{ participant.skill_level or 'Not specified' }} |
                     <strong>Experience:</strong> {{ participant.experience or 'Not specified' }}<br>
                     <strong>Equipment:</strong>

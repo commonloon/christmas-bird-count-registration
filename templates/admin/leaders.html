@@ -93,27 +93,27 @@
                         </td>
                         <td>
                             <div class="name-display">
-                                <span class="leader-name">{{ leader.first_name }} {{ leader.last_name }}</span>
+                                <span class="leader-name">{{ leader.first_name|e }} {{ leader.last_name|e }}</span>
                                 <span class="badge bg-info ms-1" title="All leaders are participants in single-table design">Participant</span>
                             </div>
                             <div class="name-edit" style="display: none;">
                                 <div class="d-flex gap-1">
                                     {% if leader.first_name and leader.last_name %}
-                                        <input type="text" class="form-control form-control-sm first-name-input" placeholder="First" value="{{ leader.first_name }}">
-                                        <input type="text" class="form-control form-control-sm last-name-input" placeholder="Last" value="{{ leader.last_name }}">
+                                        <input type="text" class="form-control form-control-sm first-name-input" placeholder="First" value="{{ leader.first_name|e }}">
+                                        <input type="text" class="form-control form-control-sm last-name-input" placeholder="Last" value="{{ leader.last_name|e }}">
                                     {% else %}
-                                        <input type="text" class="form-control form-control-sm first-name-input" placeholder="First" value="{{ leader.first_name or '' }}">
-                                        <input type="text" class="form-control form-control-sm last-name-input" placeholder="Last" value="{{ leader.last_name or '' }}">
+                                        <input type="text" class="form-control form-control-sm first-name-input" placeholder="First" value="{{ leader.first_name|e or '' }}">
+                                        <input type="text" class="form-control form-control-sm last-name-input" placeholder="Last" value="{{ leader.last_name|e or '' }}">
                                     {% endif %}
                                 </div>
                             </div>
                         </td>
                         <td>
                             <div class="email-display">
-                                <a href="mailto:{{ leader.email }}">{{ leader.email }}</a>
+                                <a href="mailto:{{ leader.email|e }}">{{ leader.email|e }}</a>
                             </div>
                             <div class="email-edit" style="display: none;">
-                                <input type="email" class="form-control form-control-sm email-input" value="{{ leader.email }}">
+                                <input type="email" class="form-control form-control-sm email-input" value="{{ leader.email|e }}">
                             </div>
                         </td>
                         <td>
@@ -301,8 +301,8 @@
                 <tbody>
                     {% for participant in leadership_interested %}
                     <tr>
-                        <td>{{ participant.first_name }} {{ participant.last_name }}</td>
-                        <td>{{ participant.email }}</td>
+                        <td>{{ participant.first_name|e }} {{ participant.last_name|e }}</td>
+                        <td>{{ participant.email|e }}</td>
                         <td>{{ participant.skill_level }}</td>
                         <td>
                             {% if participant.preferred_area == 'UNASSIGNED' %}
@@ -373,10 +373,14 @@
 window.leaderData = {};
 {% if all_leaders %}
 {% for leader in all_leaders %}
-if (!window.leaderData["{{ leader.assigned_area_leader }}"]) {
-    window.leaderData["{{ leader.assigned_area_leader }}"] = [];
+{
+    const areaCode = {{ leader.assigned_area_leader|tojson }};
+    const leaderName = {{ (leader.first_name + ' ' + leader.last_name)|tojson }};
+    if (!window.leaderData[areaCode]) {
+        window.leaderData[areaCode] = [];
+    }
+    window.leaderData[areaCode].push(leaderName);
 }
-window.leaderData["{{ leader.assigned_area_leader }}"].push("{{ leader.first_name }} {{ leader.last_name }}");
 {% endfor %}
 {% endif %}
 
