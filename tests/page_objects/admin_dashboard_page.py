@@ -28,14 +28,14 @@ class AdminDashboardPage(BasePage):
     def is_dashboard_loaded(self):
         """Check if admin dashboard is loaded."""
         # Look for dashboard-specific elements
-        # Use tuples to avoid multi-strategy timeouts from string identifiers
+        # ORDERED FROM MOST LIKELY TO LEAST LIKELY TO SUCCEED (performance optimization)
         dashboard_indicators = [
-            (By.ID, 'dashboard-title'),
-            (By.ID, 'admin-dashboard'),
-            (By.XPATH, '//h1[contains(text(), "Dashboard")]'),
-            (By.CSS_SELECTOR, '.admin-dashboard'),
-            (By.PARTIAL_LINK_TEXT, 'Participants'),
-            (By.PARTIAL_LINK_TEXT, 'Leaders')
+            (By.PARTIAL_LINK_TEXT, 'Participants'),  # MOST LIKELY - admin nav link always present
+            (By.PARTIAL_LINK_TEXT, 'Leaders'),       # Second most likely - admin nav link
+            (By.ID, 'dashboard-title'),               # Less likely - may not exist
+            (By.ID, 'admin-dashboard'),              # Less likely - may not exist
+            (By.XPATH, '//h1[contains(text(), "Dashboard")]'),  # Slower XPath fallback
+            (By.CSS_SELECTOR, '.admin-dashboard'),   # Last resort class-based selector
         ]
 
         # Use short timeout since we're trying multiple selectors

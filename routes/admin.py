@@ -22,6 +22,7 @@ from services.security import (
     sanitize_name, sanitize_email, sanitize_phone, sanitize_notes,
     validate_area_code, validate_experience, validate_email_format, is_suspicious_input, log_security_event
 )
+from services.csv_security import escape_csv_formula
 from services.limiter import limiter
 from config.rate_limits import RATE_LIMITS, get_rate_limit_message
 from datetime import datetime
@@ -296,8 +297,9 @@ def area_detail(area_code):
 
 @admin_bp.route('/leaders')
 @require_admin
+@limiter.limit(RATE_LIMITS['admin_general'])
 def leaders():
-    """Manage area leaders."""
+    """Manage area leaders with CSV export support."""
     if not g.db:
         return render_template('admin/leaders.html', error="Database unavailable")
 
@@ -346,7 +348,8 @@ def leaders():
                     # Handle boolean values
                     elif isinstance(value, bool):
                         value = 'Yes' if value else 'No'
-                    row.append(value)
+                    # Apply CSV formula injection protection (defense in depth)
+                    row.append(escape_csv_formula(value))
                 writer.writerow(row)
 
         # Create response
@@ -608,8 +611,9 @@ def delete_participant(participant_id):
 
 @admin_bp.route('/export_csv')
 @require_admin
+@limiter.limit(RATE_LIMITS['admin_general'])
 def export_csv():
-    """Export all participants as CSV."""
+    """Export all participants as CSV with formula injection protection."""
     if not g.db:
         flash('Database unavailable.', 'error')
         return redirect(url_for('admin.dashboard'))
@@ -652,7 +656,8 @@ def export_csv():
                 # Handle boolean values
                 elif isinstance(value, bool):
                     value = 'Yes' if value else 'No'
-                row.append(value)
+                # Apply CSV formula injection protection (defense in depth)
+                row.append(escape_csv_formula(value))
             writer.writerow(row)
 
     # Prepare response

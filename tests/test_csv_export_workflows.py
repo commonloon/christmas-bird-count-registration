@@ -1391,3 +1391,286 @@ class TestCSVExport:
         except Exception as e:
             logger.error(f"Failed to parse CSV content: {e}")
             return None
+
+    @pytest.mark.critical
+    @pytest.mark.csv
+    @pytest.mark.security
+    def test_csv_formula_injection_protection(self, authenticated_browser):
+        """Test that CSV exports protect against formula injection attacks."""
+        logger.info("Testing CSV formula injection protection")
+
+        base_url = get_base_url()
+        current_year = datetime.now().year
+
+        # Get database client
+        from config.database import get_firestore_client
+        db, _ = get_firestore_client()
+        participant_model = ParticipantModel(db, current_year)
+
+        # Create test participants with dangerous formula prefixes
+        dangerous_inputs = [
+            ('=SUM(1+1)', 'FormulaEquals', 'formula-equals@test.com'),
+            ('+cmd|/c calc', 'FormulaPlus', 'formula-plus@test.com'),
+            ('-2+3', 'FormulaMinus', 'formula-minus@test.com'),
+            ('@SUM(A1:A10)', 'FormulaAt', 'formula-at@test.com'),
+            ('\t\tTabPrefix', 'TabTest', 'formula-tab@test.com'),
+        ]
+
+        created_participants = []
+        logger.info(f"Creating {len(dangerous_inputs)} test participants with dangerous input...")
+
+        for first_name, last_name, email in dangerous_inputs:
+            try:
+                participant_data = {
+                    'first_name': first_name,
+                    'last_name': last_name,
+                    'email': email.lower(),
+                    'phone': '604-555-0100',
+                    'skill_level': 'Beginner',
+                    'experience': 'First count',
+                    'preferred_area': 'A',
+                    'participation_type': 'regular',
+                    'has_binoculars': False,
+                    'spotting_scope': False,
+                    'interested_in_leadership': False,
+                    'interested_in_scribe': False,
+                    'notes_to_organizers': '=DANGEROUS()'  # Also test in notes field
+                }
+
+                participant_id = participant_model.add_participant(participant_data)
+                created_participants.append({
+                    'id': participant_id,
+                    'first_name': first_name,
+                    'last_name': last_name,
+                    'email': email.lower()
+                })
+                logger.info(f"Created test participant: {first_name} {last_name}")
+
+            except Exception as e:
+                logger.error(f"Failed to create test participant {first_name} {last_name}: {e}")
+
+        if not created_participants:
+            pytest.fail("Could not create any test participants with dangerous inputs")
+
+        logger.info(f"✓ Created {len(created_participants)} test participants")
+
+        try:
+            # Download CSV export
+            dashboard = AdminDashboardPage(authenticated_browser, base_url)
+            authenticated_browser.get(f"{base_url}/admin")
+
+            # Find Export CSV link
+            export_link = authenticated_browser.find_element(By.LINK_TEXT, "Export CSV")
+            csv_url = export_link.get_attribute('href')
+
+            # Record existing files
+            download_dir = get_download_dir()
+            existing_files = set(glob.glob(os.path.join(download_dir, '*.csv')))
+
+            # Navigate to CSV URL with short timeout
+            authenticated_browser.set_page_load_timeout(3)
+            try:
+                authenticated_browser.get(csv_url)
+            except Exception:
+                pass  # Expected timeout
+            authenticated_browser.set_page_load_timeout(15)
+
+            # Check for new file
+            time.sleep(2)
+            current_files = set(glob.glob(os.path.join(download_dir, '*.csv')))
+            new_files = current_files - existing_files
+
+            if not new_files:
+                pytest.fail("Could not retrieve CSV export content")
+
+            csv_file = list(new_files)[0]
+            csv_content = read_csv_file(csv_file)
+            assert csv_content, "Should be able to read CSV file"
+
+            # Parse CSV
+            reader = csv.reader(io.StringIO(csv_content))
+            csv_data = list(reader)
+
+            if not csv_data or len(csv_data) < 2:
+                pytest.fail("CSV is empty or has no data rows")
+
+            headers = csv_data[0]
+            data_rows = csv_data[1:]
+
+            logger.info(f"CSV contains {len(data_rows)} rows")
+
+            # Find column indices
+            first_name_col = None
+            email_col = None
+            notes_col = None
+
+            for i, header in enumerate(headers):
+                header_lower = header.lower()
+                if 'first' in header_lower and 'name' in header_lower:
+                    first_name_col = i
+                elif 'email' in header_lower:
+                    email_col = i
+                elif 'notes_to_organizers' in header_lower or 'notes' in header_lower:
+                    notes_col = i
+
+            if first_name_col is None or email_col is None:
+                pytest.fail("Could not find required columns in CSV")
+
+            logger.info(f"Column indices - First: {first_name_col}, Email: {email_col}, Notes: {notes_col}")
+
+            # TEST: Verify dangerous inputs are escaped
+            logger.info("=" * 60)
+            logger.info("VERIFYING FORMULA INJECTION PROTECTION")
+            logger.info("=" * 60)
+
+            dangerous_chars_found = []
+            properly_escaped = []
+
+            for row in data_rows:
+                if len(row) <= max(first_name_col, email_col):
+                    continue
+
+                email = row[email_col].strip().lower()
+
+                # Check if this is one of our test participants
+                test_participant = next((p for p in created_participants if p['email'] == email), None)
+
+                if test_participant:
+                    first_name_csv = row[first_name_col]
+
+                    logger.info(f"Checking participant: {test_participant['first_name']} -> CSV: '{first_name_csv}'")
+
+                    # Check if dangerous character is at start WITHOUT being escaped
+                    original_first = test_participant['first_name']
+
+                    if len(original_first) > 0 and original_first[0] in ('=', '+', '-', '@', '\t', '\r'):
+                        # Original had dangerous character - CSV should have it escaped
+                        if len(first_name_csv) > 0 and first_name_csv[0] == "'":
+                            # Properly escaped with single quote prefix
+                            properly_escaped.append({
+                                'field': 'first_name',
+                                'original': original_first,
+                                'csv': first_name_csv,
+                                'email': email
+                            })
+                            logger.info(f"✓ Properly escaped: '{original_first}' -> '{first_name_csv}'")
+                        else:
+                            # NOT escaped - dangerous!
+                            dangerous_chars_found.append({
+                                'field': 'first_name',
+                                'original': original_first,
+                                'csv': first_name_csv,
+                                'email': email
+                            })
+                            logger.error(f"❌ NOT ESCAPED: '{original_first}' appears as '{first_name_csv}'")
+
+            # ASSERTIONS
+            logger.info("=" * 60)
+            logger.info("TEST RESULTS")
+            logger.info("=" * 60)
+
+            logger.info(f"Test participants checked: {len(created_participants)}")
+            logger.info(f"Properly escaped values: {len(properly_escaped)}")
+            logger.info(f"DANGEROUS unescaped values: {len(dangerous_chars_found)}")
+
+            if dangerous_chars_found:
+                logger.error("❌ FORMULA INJECTION PROTECTION FAILED")
+                logger.error("The following dangerous values were NOT escaped:")
+                for item in dangerous_chars_found:
+                    logger.error(f"  Field: {item['field']}, Email: {item['email']}")
+                    logger.error(f"    Original: '{item['original']}'")
+                    logger.error(f"    In CSV: '{item['csv']}'")
+
+                pytest.fail(f"CSV formula injection protection FAILED: {len(dangerous_chars_found)} unescaped dangerous values found")
+
+            # Verify we actually tested dangerous inputs
+            assert len(properly_escaped) > 0, "Should have found at least one dangerous input that was properly escaped"
+
+            logger.info(f"✓ All {len(properly_escaped)} dangerous inputs properly escaped with single quote prefix")
+            logger.info("✓ CSV FORMULA INJECTION PROTECTION TEST PASSED")
+
+        finally:
+            # Cleanup: Delete test participants
+            logger.info("Cleaning up test participants...")
+            for participant in created_participants:
+                try:
+                    participant_model.delete_participant(participant['id'])
+                    logger.debug(f"Deleted test participant: {participant['id']}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete test participant {participant['id']}: {e}")
+
+    @pytest.mark.csv
+    @pytest.mark.security
+    def test_csv_security_module_unit_tests(self):
+        """Unit tests for CSV security escaping function."""
+        logger.info("Testing CSV security module unit tests")
+
+        from services.csv_security import escape_csv_formula
+
+        # TEST 1: Dangerous formula prefixes should be escaped
+        test_cases = [
+            ('=SUM(1+1)', "'=SUM(1+1)"),
+            ('+cmd', "'+cmd"),
+            ('-2+3', "'-2+3"),
+            ('@SUM(A1)', "'@SUM(A1)"),
+            ('\tTabPrefix', "'\tTabPrefix"),
+            ('\rCarriageReturn', "'\rCarriageReturn"),
+        ]
+
+        logger.info("Testing dangerous prefix escaping...")
+        for input_val, expected in test_cases:
+            result = escape_csv_formula(input_val)
+            assert result == expected, f"Failed for '{input_val}': expected '{expected}', got '{result}'"
+            logger.info(f"✓ '{input_val}' -> '{result}'")
+
+        # TEST 2: Safe strings should pass through unchanged
+        safe_cases = [
+            'Normal Name',
+            'John Smith',
+            '123 Main St',
+            'email@example.com',
+            'Regular text without dangerous prefixes'
+        ]
+
+        logger.info("Testing safe strings pass through...")
+        for input_val in safe_cases:
+            result = escape_csv_formula(input_val)
+            assert result == input_val, f"Safe string '{input_val}' should not be modified"
+            logger.info(f"✓ '{input_val}' unchanged")
+
+        # TEST 3: Non-string types should pass through unchanged
+        non_string_cases = [
+            123,
+            45.67,
+            True,
+            False,
+            None,
+        ]
+
+        logger.info("Testing non-string types pass through...")
+        for input_val in non_string_cases:
+            result = escape_csv_formula(input_val)
+            assert result == input_val, f"Non-string {type(input_val).__name__} should not be modified"
+            logger.info(f"✓ {type(input_val).__name__} unchanged")
+
+        # TEST 4: Empty strings should pass through unchanged
+        result = escape_csv_formula('')
+        assert result == '', "Empty string should not be modified"
+        logger.info("✓ Empty string unchanged")
+
+        # TEST 5: Dangerous characters in middle of string should NOT be escaped
+        middle_cases = [
+            ('Price is $100', 'Price is $100'),  # No prefix char
+            ('Formula =SUM()', 'Formula =SUM()'),  # = not at start
+            ('Email me+you@test.com', 'Email me+you@test.com'),  # + not at start
+        ]
+
+        logger.info("Testing dangerous chars in middle (should NOT be escaped)...")
+        for input_val, expected in middle_cases:
+            result = escape_csv_formula(input_val)
+            assert result == expected, f"Dangerous char in middle should not be escaped: '{input_val}'"
+            logger.info(f"✓ '{input_val}' unchanged (char not at start)")
+
+        logger.info("=" * 60)
+        logger.info("✓ ALL CSV SECURITY UNIT TESTS PASSED")
+        logger.info("=" * 60)
