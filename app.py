@@ -13,7 +13,7 @@ import logging
 
 # Initialize Flask app
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')
+app.secret_key = os.environ.get('SECRET_KEY', 'dev-key-change-in-production').strip()
 
 # Initialize CSRF protection
 csrf = CSRFProtect(app)
