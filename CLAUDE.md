@@ -105,6 +105,46 @@ Always use these validation functions from `services/security.py`:
 - **Rate limit testing**: Use `--test-rate-limit` flag to validate rate limiting works
 - **CSRF testing**: Script automatically tests CSRF token validation
 
+## ⚠️ CRITICAL TEST SELECTOR ORDERING ⚠️
+
+**ALWAYS order UI element selectors from MOST LIKELY to LEAST LIKELY to succeed.** This is fundamental QA best practice and prevents unnecessary timeout delays that can add 30+ seconds per test.
+
+### Selector Ordering Rules:
+1. **Put the most specific, reliable selector FIRST** (e.g., exact ID, data attribute, href match)
+2. **Put generic fallbacks LAST** (e.g., partial text, contains, class-based)
+3. **Test actual page HTML** to determine which selector will work
+4. **Remove selectors that will never work** (e.g., invalid CSS like `button:contains()`)
+
+### Bad Example (causes 3-6 second delays):
+```python
+export_selectors = [
+    'non-existent-id',  # ❌ Doesn't exist - wastes 3 seconds on timeout
+    (By.PARTIAL_LINK_TEXT, 'Wrong Text'),  # ❌ Wrong text - wastes 3 more seconds
+    (By.CSS_SELECTOR, 'a[href*="export_csv"]'),  # ✅ THIS WORKS but tried last after 6 seconds!
+    (By.CSS_SELECTOR, 'button:contains("Export")')  # ❌ Invalid CSS syntax
+]
+```
+
+### Good Example (instant success):
+```python
+export_selectors = [
+    (By.CSS_SELECTOR, 'a[href*="export_csv"]'),  # ✅ WORKS - try first! (instant)
+    (By.PARTIAL_LINK_TEXT, 'Export CSV'),  # Fallback with correct text
+    (By.ID, 'export-csv-button'),  # Additional fallback
+    (By.XPATH, '//button[contains(text(), "Export")]')  # Last resort (use XPath not invalid CSS)
+]
+```
+
+### Impact:
+- **Bad ordering**: Each failed selector wastes 3+ seconds waiting for timeout
+- **Good ordering**: Instant success on first try
+- **On tests with many elements**: Bad ordering adds 30+ seconds per test execution!
+
+### Technical Note:
+- CSS does NOT support `:contains()` pseudo-selector - use XPath `[contains(text(), ...)]` instead
+- Always prefer CSS selectors over XPath when both work (CSS is faster)
+- Test your selectors in browser DevTools before adding to code
+
 ## ⚠️ CRITICAL DATA INTEGRITY REQUIREMENTS ⚠️
 
 **ALWAYS use identity-based matching for participant/leader operations.** This application supports family members sharing email addresses, making email-only matching unreliable and potentially destructive.

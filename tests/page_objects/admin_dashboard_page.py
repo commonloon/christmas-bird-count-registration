@@ -359,10 +359,10 @@ class AdminDashboardPage(BasePage):
     def click_export_participants_csv(self):
         """Click the export participants CSV button/link."""
         export_selectors = [
-            'export-participants-csv',
-            (By.PARTIAL_LINK_TEXT, 'Export Participants'),
-            (By.CSS_SELECTOR, 'a[href*="export_csv"]'),
-            (By.CSS_SELECTOR, 'button:contains("Export")')
+            (By.CSS_SELECTOR, 'a[href*="export_csv"]'),  # MOST LIKELY - actual link on dashboard
+            (By.PARTIAL_LINK_TEXT, 'Export CSV'),  # Fallback with correct button text
+            (By.ID, 'export-csv-button'),  # Less common ID variant
+            (By.XPATH, '//button[contains(text(), "Export")]')  # Last resort with XPath
         ]
 
         for selector in export_selectors:

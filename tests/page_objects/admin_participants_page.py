@@ -507,10 +507,10 @@ class AdminParticipantsPage(BasePage):
     def click_export_csv(self):
         """Click the export CSV button on participants page."""
         export_selectors = [
-            'export-csv',
-            (By.PARTIAL_LINK_TEXT, 'Export'),
-            (By.CSS_SELECTOR, 'a[href*="export"]'),
-            (By.CSS_SELECTOR, 'button:contains("Export")')
+            (By.CSS_SELECTOR, 'a[href*="export"]'),  # MOST LIKELY - actual export link
+            (By.PARTIAL_LINK_TEXT, 'Export CSV'),  # Fallback with correct button text
+            (By.ID, 'export-csv'),  # Less common ID
+            (By.XPATH, '//button[contains(text(), "Export")]')  # Last resort with XPath
         ]
 
         for selector in export_selectors:

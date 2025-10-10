@@ -24,74 +24,8 @@ def participant_model(firestore_client):
     return ParticipantModel(firestore_client, current_year)
 
 
-@pytest.fixture(scope="class")
-def authenticated_browser(chrome_options, firefox_options, test_credentials):
-    """Create browser and authenticate once for all tests in the class.
-
-    This fixture performs expensive OAuth authentication once and reuses the
-    browser session across all tests in the class. This saves ~50+ seconds
-    by avoiding redundant OAuth flows.
-
-    Trade-off: Tests share browser state, but each test navigates to a fresh
-    page which provides adequate isolation for these workflow tests.
-    """
-    from selenium import webdriver
-    from selenium.webdriver.chrome.service import Service as ChromeService
-    from selenium.webdriver.firefox.service import Service as FirefoxService
-    from tests.config import TEST_CONFIG
-
-    driver = None
-    browser_type = TEST_CONFIG.get('browser', 'chrome').lower()
-
-    try:
-        # Create browser instance (same logic as conftest.py browser fixture)
-        if browser_type == 'firefox':
-            try:
-                driver_service = FirefoxService()
-                driver = webdriver.Firefox(service=driver_service, options=firefox_options)
-                logger.info("Class-scoped Firefox browser instance created using system geckodriver")
-            except Exception as system_error:
-                logger.info(f"System geckodriver not found, using webdriver-manager: {system_error}")
-                from webdriver_manager.firefox import GeckoDriverManager
-                from webdriver_manager.core.driver_cache import DriverCacheManager
-                cache_manager = DriverCacheManager(valid_range=30)
-                driver_service = FirefoxService(
-                    GeckoDriverManager(cache_manager=cache_manager).install()
-                )
-                driver = webdriver.Firefox(service=driver_service, options=firefox_options)
-                logger.info("Class-scoped Firefox browser instance created using webdriver-manager")
-        else:
-            try:
-                driver_service = ChromeService()
-                driver = webdriver.Chrome(service=driver_service, options=chrome_options)
-                logger.info("Class-scoped Chrome browser instance created using system chromedriver")
-            except Exception as system_error:
-                logger.info(f"System chromedriver not found, using webdriver-manager: {system_error}")
-                from webdriver_manager.chrome import ChromeDriverManager
-                from webdriver_manager.core.driver_cache import DriverCacheManager
-                cache_manager = DriverCacheManager(valid_range=30)
-                driver_service = ChromeService(
-                    ChromeDriverManager(cache_manager=cache_manager).install()
-                )
-                driver = webdriver.Chrome(service=driver_service, options=chrome_options)
-                logger.info("Class-scoped Chrome browser instance created using webdriver-manager")
-
-        # Perform authentication ONCE for the entire class
-        logger.info("Performing one-time OAuth authentication for test class")
-        admin_login_for_test(driver, get_base_url(), test_credentials['admin_primary'])
-        logger.info("OAuth authentication successful - session will be reused across all tests")
-
-        # Resize browser window to ensure buttons are visible (needed for all tests)
-        current_size = driver.get_window_size()
-        driver.set_window_size(current_size['width'] + 500, current_size['height'])
-        logger.info(f"Resized browser to {current_size['width'] + 500}x{current_size['height']}")
-
-        yield driver
-
-    finally:
-        if driver:
-            driver.quit()
-            logger.info("Class-scoped browser instance closed")
+# Note: authenticated_browser fixture is now defined in conftest.py and shared across all test files
+# This test class uses the global fixture but adds browser window resizing in the navigate fixture
 
 
 @pytest.fixture(scope="module")

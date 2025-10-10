@@ -24,7 +24,6 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, project_root)
 
 # Import test utilities
-from tests.utils.auth_utils import admin_login_for_test
 from tests.utils.database_utils import create_database_manager
 from tests.config import get_base_url
 from tests.page_objects.admin_participants_page import AdminParticipantsPage
@@ -53,20 +52,19 @@ class TestAdminCoreFunctionality:
         # Clean up after test
         db_manager.clear_test_collections()
 
-    def test_01_admin_authentication_and_dashboard_access(self, browser, test_credentials):
+    def test_01_admin_authentication_and_dashboard_access(self, authenticated_browser):
         """Test 1: Verify OAuth flow and admin dashboard loads correctly."""
-        admin_creds = test_credentials['admin_primary']
         base_url = get_base_url()
 
-        # Perform admin login
-        admin_login_for_test(browser, base_url, admin_creds)
+        # Navigate to admin dashboard (already authenticated)
+        authenticated_browser.get(f"{base_url}/admin")
 
         # Verify we're on the admin dashboard
-        wait = WebDriverWait(browser, 5)
+        wait = WebDriverWait(authenticated_browser, 5)
         wait.until(EC.presence_of_element_located((By.TAG_NAME, "h1")))
 
         # Check for admin dashboard elements
-        assert "admin" in browser.current_url.lower()
+        assert "admin" in authenticated_browser.current_url.lower()
 
         # Verify key dashboard elements are present
         dashboard_elements = [
@@ -75,7 +73,7 @@ class TestAdminCoreFunctionality:
             "2025"  # current year
         ]
 
-        page_text = browser.page_source
+        page_text = authenticated_browser.page_source
         found_elements = []
         for element in dashboard_elements:
             if element in page_text:
@@ -84,9 +82,8 @@ class TestAdminCoreFunctionality:
         # At least 2 out of 3 dashboard elements should be present
         assert len(found_elements) >= 2, f"Only found {len(found_elements)} dashboard elements: {found_elements}"
 
-    def test_02_participant_search_and_filtering(self, browser, test_credentials, participant_model):
+    def test_02_participant_search_and_filtering(self, authenticated_browser, participant_model):
         """Test 2: Verify core search functionality works correctly."""
-        admin_creds = test_credentials['admin_primary']
         base_url = get_base_url()
 
         # Create test participants for searching
@@ -110,15 +107,14 @@ class TestAdminCoreFunctionality:
         for participant in test_participants:
             participant_model.add_participant(participant)
 
-        # Login and navigate to participants page
-        admin_login_for_test(browser, base_url, admin_creds)
-        browser.get(f"{base_url}/admin/participants")
+        # Navigate to participants page (already authenticated)
+        authenticated_browser.get(f"{base_url}/admin/participants")
 
         # Initialize page object
-        admin_page = AdminParticipantsPage(browser, base_url)
+        admin_page = AdminParticipantsPage(authenticated_browser, base_url)
 
         # Test search functionality
-        wait = WebDriverWait(browser, 5)
+        wait = WebDriverWait(authenticated_browser, 5)
 
         # Wait for page to load
         wait.until(EC.presence_of_element_located((By.TAG_NAME, "table")))
@@ -135,7 +131,7 @@ class TestAdminCoreFunctionality:
 
         for selector in search_selectors:
             try:
-                search_input = browser.find_element(By.CSS_SELECTOR, selector)
+                search_input = authenticated_browser.find_element(By.CSS_SELECTOR, selector)
                 break
             except:
                 continue
@@ -147,18 +143,17 @@ class TestAdminCoreFunctionality:
             time.sleep(1)  # Allow search to process
 
             # Verify both test participants are visible
-            page_text = browser.page_source
+            page_text = authenticated_browser.page_source
             assert "SearchTest Alpha" in page_text
             assert "SearchTest Beta" in page_text
         else:
             # If no search found, just verify participants are displayed
-            page_text = browser.page_source
+            page_text = authenticated_browser.page_source
             assert "SearchTest Alpha" in page_text
             assert "SearchTest Beta" in page_text
 
-    def test_03_participant_editing_with_field_preservation(self, browser, test_credentials, participant_model):
+    def test_03_participant_editing_with_field_preservation(self, authenticated_browser, participant_model):
         """Test 3: Verify only modified fields change (regression prevention)."""
-        admin_creds = test_credentials['admin_primary']
         base_url = get_base_url()
 
         # Create test participant with all fields populated
@@ -179,22 +174,21 @@ class TestAdminCoreFunctionality:
 
         participant_id = participant_model.add_participant(original_participant)
 
-        # Login and navigate to participants page
-        admin_login_for_test(browser, base_url, admin_creds)
-        browser.get(f"{base_url}/admin/participants")
+        # Navigate to participants page (already authenticated)
+        authenticated_browser.get(f"{base_url}/admin/participants")
 
-        wait = WebDriverWait(browser, 5)
+        wait = WebDriverWait(authenticated_browser, 5)
         wait.until(EC.presence_of_element_located((By.TAG_NAME, "table")))
 
         # Find the edit button for our test participant
         edit_button = None
         try:
             # Look for edit button in the participant's row
-            participant_row = browser.find_element(By.XPATH, f"//tr[contains(., 'FieldTest Preservation')]")
+            participant_row = authenticated_browser.find_element(By.XPATH, f"//tr[contains(., 'FieldTest Preservation')]")
             edit_button = participant_row.find_element(By.XPATH, ".//button[contains(text(), 'Edit') or contains(@title, 'Edit')]")
         except:
             # Alternative: find any edit button
-            edit_buttons = browser.find_elements(By.XPATH, "//button[contains(text(), 'Edit') or contains(@title, 'Edit')]")
+            edit_buttons = authenticated_browser.find_elements(By.XPATH, "//button[contains(text(), 'Edit') or contains(@title, 'Edit')]")
             if edit_buttons:
                 edit_button = edit_buttons[0]
 
@@ -214,7 +208,7 @@ class TestAdminCoreFunctionality:
 
             for selector in phone_selectors:
                 try:
-                    phone_input = browser.find_element(By.CSS_SELECTOR, selector)
+                    phone_input = authenticated_browser.find_element(By.CSS_SELECTOR, selector)
                     break
                 except:
                     continue
@@ -235,22 +229,22 @@ class TestAdminCoreFunctionality:
                 for selector in submit_selectors:
                     try:
                         if 'contains' in selector:
-                            submit_button = browser.find_element(By.XPATH, f"//button[contains(text(), 'Save') or contains(text(), 'Update')]")
+                            submit_button = authenticated_browser.find_element(By.XPATH, f"//button[contains(text(), 'Save') or contains(text(), 'Update')]")
                         else:
-                            submit_button = browser.find_element(By.CSS_SELECTOR, selector)
+                            submit_button = authenticated_browser.find_element(By.CSS_SELECTOR, selector)
                         break
                     except:
                         continue
 
                 if submit_button:
                     # Scroll into view and click safely
-                    browser.execute_script("arguments[0].scrollIntoView(true);", submit_button)
+                    authenticated_browser.execute_script("arguments[0].scrollIntoView(true);", submit_button)
                     time.sleep(1)
                     try:
                         submit_button.click()
                     except Exception as e:
                         # Try JavaScript click as fallback
-                        browser.execute_script("arguments[0].click();", submit_button)
+                        authenticated_browser.execute_script("arguments[0].click();", submit_button)
                     time.sleep(2)  # Allow save to process
 
                     # Verify the participant was updated correctly
@@ -289,9 +283,8 @@ class TestAdminCoreFunctionality:
         assert final_participant['first_name'] == 'FieldTest'
         assert final_participant['last_name'] == 'Preservation'
 
-    def test_04_leader_promotion_and_demotion_workflow(self, browser, test_credentials, participant_model):
+    def test_04_leader_promotion_and_demotion_workflow(self, authenticated_browser, participant_model):
         """Test 4: Test critical leader management functions."""
-        admin_creds = test_credentials['admin_primary']
         base_url = get_base_url()
 
         # Create test participant interested in leadership
@@ -306,18 +299,15 @@ class TestAdminCoreFunctionality:
 
         participant_id = participant_model.add_participant(test_participant)
 
-        # Login and navigate to admin interface
-        admin_login_for_test(browser, base_url, admin_creds)
-
-        # Try leaders page first
-        browser.get(f"{base_url}/admin/leaders")
-        wait = WebDriverWait(browser, 5)
+        # Navigate to leaders page (already authenticated)
+        authenticated_browser.get(f"{base_url}/admin/leaders")
+        wait = WebDriverWait(authenticated_browser, 5)
 
         try:
             wait.until(EC.presence_of_element_located((By.TAG_NAME, "h1")))
 
             # Look for promote button or leadership management
-            promote_elements = browser.find_elements(By.XPATH, "//button[contains(text(), 'Promote') or contains(text(), 'Add Leader')]")
+            promote_elements = authenticated_browser.find_elements(By.XPATH, "//button[contains(text(), 'Promote') or contains(text(), 'Add Leader')]")
 
             if promote_elements:
                 # Test promotion workflow
@@ -329,8 +319,8 @@ class TestAdminCoreFunctionality:
                 area_select = None
 
                 try:
-                    name_input = browser.find_element(By.CSS_SELECTOR, 'input[name*="name" i]')
-                    area_select = browser.find_element(By.CSS_SELECTOR, 'select[name*="area" i]')
+                    name_input = authenticated_browser.find_element(By.CSS_SELECTOR, 'input[name*="name" i]')
+                    area_select = authenticated_browser.find_element(By.CSS_SELECTOR, 'select[name*="area" i]')
                 except:
                     pass
 
@@ -339,12 +329,12 @@ class TestAdminCoreFunctionality:
                     Select(area_select).select_by_value('C')
 
                     # Submit
-                    submit_btn = browser.find_element(By.XPATH, "//button[contains(text(), 'Save') or contains(text(), 'Add')]")
+                    submit_btn = authenticated_browser.find_element(By.XPATH, "//button[contains(text(), 'Save') or contains(text(), 'Add')]")
                     submit_btn.click()
                     time.sleep(2)
 
             # Verify leader was created (basic check)
-            page_text = browser.page_source
+            page_text = authenticated_browser.page_source
             leader_indicators = ['Leader', 'Area C', 'leader.candidate@test.com']
             found_indicators = sum(1 for indicator in leader_indicators if indicator in page_text)
 
@@ -353,14 +343,13 @@ class TestAdminCoreFunctionality:
 
         except Exception as e:
             # If leaders page doesn't work as expected, just verify participant still exists
-            browser.get(f"{base_url}/admin/participants")
+            authenticated_browser.get(f"{base_url}/admin/participants")
             wait.until(EC.presence_of_element_located((By.TAG_NAME, "table")))
-            page_text = browser.page_source
+            page_text = authenticated_browser.page_source
             assert "Leader Candidate" in page_text
 
-    def test_05_area_assignment_changes(self, browser, test_credentials, participant_model):
+    def test_05_area_assignment_changes(self, authenticated_browser, participant_model):
         """Test 5: Verify participant area reassignment works."""
-        admin_creds = test_credentials['admin_primary']
         base_url = get_base_url()
 
         # Create test participant
@@ -374,20 +363,19 @@ class TestAdminCoreFunctionality:
 
         participant_id = participant_model.add_participant(test_participant)
 
-        # Login and navigate to participants page
-        admin_login_for_test(browser, base_url, admin_creds)
-        browser.get(f"{base_url}/admin/participants")
+        # Navigate to participants page (already authenticated)
+        authenticated_browser.get(f"{base_url}/admin/participants")
 
-        wait = WebDriverWait(browser, 5)
+        wait = WebDriverWait(authenticated_browser, 5)
         wait.until(EC.presence_of_element_located((By.TAG_NAME, "table")))
 
         # Verify participant appears with original area
-        page_text = browser.page_source
+        page_text = authenticated_browser.page_source
         assert "Area Changer" in page_text
 
         # Look for area assignment interface
-        area_selects = browser.find_elements(By.CSS_SELECTOR, 'select[name*="area" i]')
-        area_inputs = browser.find_elements(By.CSS_SELECTOR, 'input[name*="area" i]')
+        area_selects = authenticated_browser.find_elements(By.CSS_SELECTOR, 'select[name*="area" i]')
+        area_inputs = authenticated_browser.find_elements(By.CSS_SELECTOR, 'input[name*="area" i]')
 
         if area_selects or area_inputs:
             # Basic area assignment interface exists
@@ -399,9 +387,8 @@ class TestAdminCoreFunctionality:
         assert updated_participant['first_name'] == 'Area'
         assert updated_participant['last_name'] == 'Changer'
 
-    def test_06_basic_csv_export_functionality(self, browser, test_credentials, participant_model):
+    def test_06_basic_csv_export_functionality(self, authenticated_browser, participant_model):
         """Test 6: Ensure data export generates valid output."""
-        admin_creds = test_credentials['admin_primary']
         base_url = get_base_url()
 
         # Create test participants for export
@@ -425,12 +412,12 @@ class TestAdminCoreFunctionality:
         for participant in test_participants:
             participant_model.add_participant(participant)
 
-        # Login and navigate to admin dashboard
-        admin_login_for_test(browser, base_url, admin_creds)
+        # Navigate to admin dashboard (already authenticated)
+        authenticated_browser.get(f"{base_url}/admin")
 
         # Look for CSV export functionality
-        export_links = browser.find_elements(By.XPATH, "//a[contains(text(), 'Export') or contains(text(), 'CSV') or contains(@href, 'export')]")
-        export_buttons = browser.find_elements(By.XPATH, "//button[contains(text(), 'Export') or contains(text(), 'CSV')]")
+        export_links = authenticated_browser.find_elements(By.XPATH, "//a[contains(text(), 'Export') or contains(text(), 'CSV') or contains(@href, 'export')]")
+        export_buttons = authenticated_browser.find_elements(By.XPATH, "//button[contains(text(), 'Export') or contains(text(), 'CSV')]")
 
         if export_links:
             # Click export link
@@ -438,7 +425,7 @@ class TestAdminCoreFunctionality:
             time.sleep(3)  # Allow download to start
 
             # Verify we get some kind of response (not an error page)
-            if "error" not in browser.current_url.lower() and "404" not in browser.page_source:
+            if "error" not in authenticated_browser.current_url.lower() and "404" not in authenticated_browser.page_source:
                 # Export appears to work
                 assert True
             else:
@@ -450,22 +437,22 @@ class TestAdminCoreFunctionality:
             time.sleep(3)
 
             # Similar verification
-            if "error" not in browser.current_url.lower():
+            if "error" not in authenticated_browser.current_url.lower():
                 assert True
             else:
                 assert False, "CSV export button resulted in error"
 
         else:
             # No obvious export functionality found, check if export route exists
-            browser.get(f"{base_url}/admin/export")
+            authenticated_browser.get(f"{base_url}/admin/export")
 
             # If the page loads without 404, export route exists
-            if "404" not in browser.page_source and "Not Found" not in browser.page_source:
+            if "404" not in authenticated_browser.page_source and "Not Found" not in authenticated_browser.page_source:
                 assert True  # Export route exists
             else:
                 # Try alternative export URL
-                browser.get(f"{base_url}/admin/participants/export")
-                if "404" not in browser.page_source:
+                authenticated_browser.get(f"{base_url}/admin/participants/export")
+                if "404" not in authenticated_browser.page_source:
                     assert True
                 else:
                     # Can't find export functionality, but don't fail the test

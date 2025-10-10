@@ -32,7 +32,6 @@ import requests
 import csv
 import io
 import re
-from tests.utils.auth_utils import admin_login_for_test
 
 logger = logging.getLogger(__name__)
 
@@ -356,41 +355,37 @@ class TestAdminLeaderManagement:
     """Test admin leader management UI functionality."""
 
     @pytest.mark.admin
-    def test_add_new_leader_via_ui(self, browser, base_url, test_credentials, clean_database):
+    def test_add_new_leader_via_ui(self, authenticated_browser, base_url, clean_database):
         """Test adding a new leader through the admin leaders interface."""
-        # Login as admin
-        admin_creds = test_credentials['admin_primary']
-        admin_login_for_test(browser, base_url, admin_creds)
-
-        # Navigate to leaders page
-        browser.get(f"{base_url}/admin/leaders")
+        # Navigate to leaders page (already authenticated via fixture)
+        authenticated_browser.get(f"{base_url}/admin/leaders")
 
         # Fill new leader form
-        wait = WebDriverWait(browser, 10)
+        wait = WebDriverWait(authenticated_browser, 10)
 
         # Leader contact details
-        browser.find_element(By.ID, "first_name").send_keys("NewLeader")
-        browser.find_element(By.ID, "last_name").send_keys("AdminTest")
-        browser.find_element(By.ID, "email").send_keys("newleader.admin@test-regression.ca")
-        browser.find_element(By.ID, "phone").send_keys("604-555-0100")
+        authenticated_browser.find_element(By.ID, "first_name").send_keys("NewLeader")
+        authenticated_browser.find_element(By.ID, "last_name").send_keys("AdminTest")
+        authenticated_browser.find_element(By.ID, "email").send_keys("newleader.admin@test-regression.ca")
+        authenticated_browser.find_element(By.ID, "phone").send_keys("604-555-0100")
 
         # Area and optional fields
-        Select(browser.find_element(By.ID, "area_code")).select_by_value("E")
-        browser.find_element(By.ID, "phone2").send_keys("604-555-0101")
+        Select(authenticated_browser.find_element(By.ID, "area_code")).select_by_value("E")
+        authenticated_browser.find_element(By.ID, "phone2").send_keys("604-555-0101")
 
         # Skill level and experience (required fields)
-        Select(browser.find_element(By.ID, "skill_level")).select_by_value("Expert")
-        Select(browser.find_element(By.ID, "experience")).select_by_value("3+ counts")
+        Select(authenticated_browser.find_element(By.ID, "skill_level")).select_by_value("Expert")
+        Select(authenticated_browser.find_element(By.ID, "experience")).select_by_value("3+ counts")
 
         # Equipment checkboxes
-        browser.find_element(By.ID, "has_binoculars").click()
-        browser.find_element(By.ID, "spotting_scope").click()
+        authenticated_browser.find_element(By.ID, "has_binoculars").click()
+        authenticated_browser.find_element(By.ID, "spotting_scope").click()
 
         # Notes
-        browser.find_element(By.ID, "notes").send_keys("Experienced area leader from previous years")
+        authenticated_browser.find_element(By.ID, "notes").send_keys("Experienced area leader from previous years")
 
         # Submit form
-        browser.find_element(By.XPATH, "//button[contains(text(), 'Add Leader')]").click()
+        authenticated_browser.find_element(By.XPATH, "//button[contains(text(), 'Add Leader')]").click()
 
         # Verify leader appears in table (use span.leader-name for exact element)
         time.sleep(1)  # Brief pause for form submission
@@ -413,7 +408,7 @@ class TestAdminLeaderManagement:
         assert leaders[0]['spotting_scope'] == True
 
     @pytest.mark.admin
-    def test_edit_leader_via_ui(self, browser, base_url, test_credentials, single_identity_test):
+    def test_edit_leader_via_ui(self, authenticated_browser, base_url, single_identity_test):
         """Test editing leader information through inline editing."""
         # Create a leader to edit
         identity_helper = single_identity_test.identity_helper
@@ -421,14 +416,10 @@ class TestAdminLeaderManagement:
             "EditableLeader", "F", "leader"
         )
 
-        # Login as admin
-        admin_creds = test_credentials['admin_primary']
-        admin_login_for_test(browser, base_url, admin_creds)
+        # Navigate to leaders page (already authenticated via fixture)
+        authenticated_browser.get(f"{base_url}/admin/leaders")
 
-        # Navigate to leaders page
-        browser.get(f"{base_url}/admin/leaders")
-
-        wait = WebDriverWait(browser, 10)
+        wait = WebDriverWait(authenticated_browser, 10)
 
         # Find the edit button for our leader
         edit_button = wait.until(EC.element_to_be_clickable(
@@ -446,7 +437,7 @@ class TestAdminLeaderManagement:
         name_input.send_keys("EditedLeader")
 
         # Save changes
-        save_button = browser.find_element(
+        save_button = authenticated_browser.find_element(
             By.XPATH, f"//tr[@data-leader-id='{participant_id}']//button[contains(@class, 'btn-save')]"
         )
         save_button.click()

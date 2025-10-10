@@ -17,7 +17,6 @@ sys.path.insert(0, project_root)
 
 from models.participant import ParticipantModel
 from tests.utils.database_utils import create_database_manager
-from tests.utils.auth_utils import admin_login_for_test
 from tests.config import get_base_url
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -43,12 +42,11 @@ def cleanup_test_data(firestore_client):
 class TestAdminLeadersSorting:
     """Test the sorting functionality on admin/leaders page."""
 
-    def test_leaders_page_sorting(self, browser, test_credentials, participant_model):
+    def test_leaders_page_sorting(self, authenticated_browser, participant_model):
         """
         Test that both current leaders and potential leaders tables are sorted
         by area code then by first name in ascending order.
         """
-        admin_creds = test_credentials['admin_primary']
         base_url = get_base_url()
 
         # Create test participants with mixed names and areas to verify sorting
@@ -103,16 +101,15 @@ class TestAdminLeadersSorting:
 
         # Beta and Charlie remain as potential leaders
 
-        # Login and navigate to leaders page
-        admin_login_for_test(browser, base_url, admin_creds)
-        browser.get(f"{base_url}/admin/leaders")
+        # Navigate to leaders page (already authenticated via fixture)
+        authenticated_browser.get(f"{base_url}/admin/leaders")
 
-        wait = WebDriverWait(browser, 10)
+        wait = WebDriverWait(authenticated_browser, 10)
         wait.until(EC.presence_of_element_located((By.TAG_NAME, "table")))
 
         # Verify current leaders sorting (should be: Alpha/Area B, Zebra/Area D)
         # Find the current leaders table - it's in a card with "Current Area Leaders" header
-        current_leaders_rows = browser.find_elements(By.XPATH, "//h5[contains(text(), 'Current Area Leaders')]/../..//tbody/tr")
+        current_leaders_rows = authenticated_browser.find_elements(By.XPATH, "//h5[contains(text(), 'Current Area Leaders')]/../..//tbody/tr")
 
         if len(current_leaders_rows) >= 2:
             # Check that leaders are sorted by area then name
@@ -134,7 +131,7 @@ class TestAdminLeadersSorting:
 
         # Verify potential leaders sorting (should be: Beta/Area A, Charlie/Area B)
         # Find the potential leaders table - it's in a card with "Potential Leaders" header
-        potential_leaders_rows = browser.find_elements(By.XPATH, "//h5[contains(text(), 'Potential Leaders')]/../..//tbody/tr")
+        potential_leaders_rows = authenticated_browser.find_elements(By.XPATH, "//h5[contains(text(), 'Potential Leaders')]/../..//tbody/tr")
 
         if len(potential_leaders_rows) >= 2:
             # Extract area and name information from potential leaders table
@@ -155,37 +152,34 @@ class TestAdminLeadersSorting:
                     f"Within same area, names not sorted: {first_potential_name} should come before {second_potential_name}"
 
             # At minimum, verify we have the expected participants
-            page_source = browser.page_source
+            page_source = authenticated_browser.page_source
             assert 'Beta' in page_source, "Beta should appear in potential leaders"
             assert 'Charlie' in page_source, "Charlie should appear in potential leaders"
 
         # Additional verification: check that all expected participants are present
-        page_text = browser.page_source
+        page_text = authenticated_browser.page_source
         assert 'Alpha' in page_text, "Alpha should be visible on the page"
         assert 'Beta' in page_text, "Beta should be visible on the page"
         assert 'Charlie' in page_text, "Charlie should be visible on the page"
         assert 'Zebra' in page_text, "Zebra should be visible on the page"
 
-    def test_empty_tables_no_errors(self, browser, test_credentials):
+    def test_empty_tables_no_errors(self, authenticated_browser):
         """Test that empty tables don't cause errors and page loads correctly."""
-        admin_creds = test_credentials['admin_primary']
         base_url = get_base_url()
 
-        # Login and navigate to leaders page with no data
-        admin_login_for_test(browser, base_url, admin_creds)
-        browser.get(f"{base_url}/admin/leaders")
+        # Navigate to leaders page with no data (already authenticated via fixture)
+        authenticated_browser.get(f"{base_url}/admin/leaders")
 
-        wait = WebDriverWait(browser, 10)
+        wait = WebDriverWait(authenticated_browser, 10)
         # Just verify the page loads without errors
         wait.until(EC.presence_of_element_located((By.TAG_NAME, "h1")))
 
         # Check that page title or header is present
-        page_text = browser.page_source
+        page_text = authenticated_browser.page_source
         assert "Leaders" in page_text or "Area Leaders" in page_text
 
-    def test_single_entry_tables(self, browser, test_credentials, participant_model):
+    def test_single_entry_tables(self, authenticated_browser, participant_model):
         """Test sorting works correctly with single entries in each table."""
-        admin_creds = test_credentials['admin_primary']
         base_url = get_base_url()
 
         # Create single test participant
@@ -214,14 +208,13 @@ class TestAdminLeadersSorting:
         }
         participant_model.add_participant(potential_participant)
 
-        # Login and navigate to leaders page
-        admin_login_for_test(browser, base_url, admin_creds)
-        browser.get(f"{base_url}/admin/leaders")
+        # Navigate to leaders page (already authenticated via fixture)
+        authenticated_browser.get(f"{base_url}/admin/leaders")
 
-        wait = WebDriverWait(browser, 10)
+        wait = WebDriverWait(authenticated_browser, 10)
         wait.until(EC.presence_of_element_located((By.TAG_NAME, "table")))
 
         # Verify both participants are visible
-        page_text = browser.page_source
+        page_text = authenticated_browser.page_source
         assert 'SingleTest' in page_text, "Current leader should be visible"
         assert 'PotentialTest' in page_text, "Potential leader should be visible"

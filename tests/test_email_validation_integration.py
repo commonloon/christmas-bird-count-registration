@@ -34,7 +34,6 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, project_root)
 
 from tests.config import get_base_url, TEST_CONFIG
-from tests.utils.auth_utils import admin_login_for_test
 from tests.page_objects.registration_page import RegistrationPage
 from tests.data.test_scenarios import get_test_participant, generate_unique_email, generate_unique_identity
 from google.cloud import firestore
@@ -331,19 +330,16 @@ class TestBackendAPIEmailValidation:
 class TestAdminEmailValidation:
     """Browser-based tests for admin interface email validation."""
 
-    def test_admin_participant_edit_rejects_invalid_email(self, browser, db, test_credentials, test_cleanup):
+    def test_admin_participant_edit_rejects_invalid_email(self, authenticated_browser, db, test_cleanup):
         """Test that admin participant edit validates email format."""
         base_url = get_base_url()
 
-        # Login as admin first
-        admin_login_for_test(browser, base_url, test_credentials['admin_primary'])
-
-        # Navigate to participants page
-        browser.get(f"{base_url}/admin/participants")
+        # Navigate to participants page (already authenticated)
+        authenticated_browser.get(f"{base_url}/admin/participants")
         time.sleep(2)
 
         # Find ANY participant row to test editing (avoid registration to prevent duplicates)
-        wait = WebDriverWait(browser, 10)
+        wait = WebDriverWait(authenticated_browser, 10)
         try:
             # Find first participant row with edit button
             participant_row = wait.until(
@@ -354,9 +350,9 @@ class TestAdminEmailValidation:
 
         # Click edit button - use JavaScript to avoid scroll issues
         edit_button = participant_row.find_element(By.CSS_SELECTOR, '.btn-edit')
-        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", edit_button)
+        authenticated_browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", edit_button)
         time.sleep(0.5)
-        browser.execute_script("arguments[0].click();", edit_button)
+        authenticated_browser.execute_script("arguments[0].click();", edit_button)
         time.sleep(1)
 
         # Change email to invalid format
@@ -371,7 +367,7 @@ class TestAdminEmailValidation:
 
         # Should see alert (JavaScript alert() used in code)
         try:
-            alert = browser.switch_to.alert
+            alert = authenticated_browser.switch_to.alert
             alert_text = alert.text
             assert 'valid email' in alert_text.lower(), f"Expected email validation error, got: {alert_text}"
             alert.accept()
@@ -381,21 +377,18 @@ class TestAdminEmailValidation:
                 "Should still be in edit mode after validation failure"
 
 
-    def test_admin_leader_inline_edit_rejects_invalid_email(self, browser, db, test_credentials, test_cleanup):
+    def test_admin_leader_inline_edit_rejects_invalid_email(self, authenticated_browser, db, test_cleanup):
         """Test that editing a leader validates email format."""
         base_url = get_base_url()
 
-        # Login as admin
-        admin_login_for_test(browser, base_url, test_credentials['admin_primary'])
-
-        # Navigate to leaders page
-        browser.get(f"{base_url}/admin/leaders")
+        # Navigate to leaders page (already authenticated)
+        authenticated_browser.get(f"{base_url}/admin/leaders")
         time.sleep(2)
 
         # Check if there are existing leaders to edit
-        wait = WebDriverWait(browser, 10)
+        wait = WebDriverWait(authenticated_browser, 10)
         try:
-            leader_rows = browser.find_elements(By.CSS_SELECTOR, 'table tbody tr[data-leader-id]')
+            leader_rows = authenticated_browser.find_elements(By.CSS_SELECTOR, 'table tbody tr[data-leader-id]')
             if len(leader_rows) == 0:
                 pytest.skip("No existing leaders to test inline edit")
 
@@ -418,7 +411,7 @@ class TestAdminEmailValidation:
 
             # Should see alert
             try:
-                alert = browser.switch_to.alert
+                alert = authenticated_browser.switch_to.alert
                 alert_text = alert.text
                 assert 'valid email' in alert_text.lower(), f"Expected email validation error, got: {alert_text}"
                 alert.accept()
@@ -430,46 +423,43 @@ class TestAdminEmailValidation:
             pytest.skip("No leader table found on page")
 
 
-    def test_admin_manual_leader_add_validates_email(self, browser, db, test_credentials, test_cleanup):
+    def test_admin_manual_leader_add_validates_email(self, authenticated_browser, db, test_cleanup):
         """Test that adding a leader via manual form validates email format."""
         base_url = get_base_url()
 
-        # Login as admin
-        admin_login_for_test(browser, base_url, test_credentials['admin_primary'])
-
-        # Navigate to leaders page
-        browser.get(f"{base_url}/admin/leaders")
+        # Navigate to leaders page (already authenticated)
+        authenticated_browser.get(f"{base_url}/admin/leaders")
         time.sleep(2)
 
         # Fill in the Add Leader form with invalid email
-        wait = WebDriverWait(browser, 10)
+        wait = WebDriverWait(authenticated_browser, 10)
         first_name_input = wait.until(EC.presence_of_element_located((By.ID, 'first_name')))
         first_name_input.send_keys('Test')
 
-        browser.find_element(By.ID, 'last_name').send_keys('Leader')
-        browser.find_element(By.ID, 'email').send_keys('testleader%invalid@example.com')
-        browser.find_element(By.ID, 'phone').send_keys('604-555-9999')
+        authenticated_browser.find_element(By.ID, 'last_name').send_keys('Leader')
+        authenticated_browser.find_element(By.ID, 'email').send_keys('testleader%invalid@example.com')
+        authenticated_browser.find_element(By.ID, 'phone').send_keys('604-555-9999')
 
         # Select an area
-        area_select = browser.find_element(By.ID, 'area_code')
+        area_select = authenticated_browser.find_element(By.ID, 'area_code')
         Select(area_select).select_by_index(1)  # Select first area
 
         # Submit form
-        browser.find_element(By.CSS_SELECTOR, 'button[type="submit"]').click()
+        authenticated_browser.find_element(By.CSS_SELECTOR, 'button[type="submit"]').click()
         time.sleep(2)
 
         # Should see inline validation error (Bootstrap .is-invalid)
-        email_input = browser.find_element(By.ID, 'email')
+        email_input = authenticated_browser.find_element(By.ID, 'email')
         assert 'is-invalid' in email_input.get_attribute('class'), \
             "Email input should have is-invalid class"
 
         # Should see error message
-        error_div = browser.find_element(By.CSS_SELECTOR, '#email + .invalid-feedback, #email ~ .invalid-feedback')
+        error_div = authenticated_browser.find_element(By.CSS_SELECTOR, '#email + .invalid-feedback, #email ~ .invalid-feedback')
         assert 'valid email' in error_div.text.lower(), \
             f"Expected email validation error, got: {error_div.text}"
 
         # Should still be on leaders page (not redirected)
-        assert '/admin/leaders' in browser.current_url, \
+        assert '/admin/leaders' in authenticated_browser.current_url, \
             "Should remain on leaders page after validation failure"
 
 
