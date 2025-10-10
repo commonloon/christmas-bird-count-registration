@@ -10,7 +10,9 @@ utils/
 /*.md
 client_secret.json
 foo
+nul
 debug/
+docs/
 tests/tmp/
 tests/reports/
 reports/
