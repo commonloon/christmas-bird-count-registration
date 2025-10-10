@@ -59,6 +59,39 @@ app.register_blueprint(scheduler_bp, url_prefix='/scheduler')
 # Exempt scheduler routes from CSRF protection (they use OIDC tokens instead)
 csrf.exempt(scheduler_bp)
 
+# Add security headers to all responses
+@app.after_request
+def set_security_headers(response):
+    """Add security headers to all responses for defense-in-depth protection."""
+    # Strict-Transport-Security: Force HTTPS for 1 year (prevents downgrade attacks)
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+
+    # X-Content-Type-Options: Prevent MIME sniffing attacks
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+
+    # X-Frame-Options: Prevent clickjacking attacks
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+
+    # X-XSS-Protection: Enable browser XSS filter (legacy browsers)
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+
+    # Referrer-Policy: Limit referrer information leakage
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+
+    # Content-Security-Policy: Restrict resource loading to trusted sources
+    # Note: Allows Google OAuth, Bootstrap CDN, and Leaflet map resources
+    response.headers['Content-Security-Policy'] = (
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline' https://accounts.google.com https://cdn.jsdelivr.net https://unpkg.com; "
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; "
+        "img-src 'self' data: https:; "
+        "font-src 'self' https://cdn.jsdelivr.net; "
+        "connect-src 'self' https://accounts.google.com; "
+        "frame-src https://accounts.google.com;"
+    )
+
+    return response
+
 # Load area boundaries data
 def load_area_boundaries():
     """Load area boundary data from JSON file."""

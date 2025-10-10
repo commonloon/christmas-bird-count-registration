@@ -176,12 +176,22 @@ def logout():
 
 def init_auth(app):
     """Initialize authentication for the Flask app."""
+    from datetime import timedelta
+
     # Set up session configuration
     app.config['SESSION_TYPE'] = 'filesystem'
-    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-key-change-in-production').strip()
     app.config['SESSION_PERMANENT'] = False
     app.config['SESSION_USE_SIGNER'] = True
     app.config['SESSION_KEY_PREFIX'] = 'cbc:'
+
+    # Session cookie security attributes (CRITICAL for XSS/CSRF protection)
+    app.config['SESSION_COOKIE_HTTPONLY'] = True      # Prevent JavaScript access to session cookie
+    app.config['SESSION_COOKIE_SECURE'] = True        # Only send cookie over HTTPS
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'     # Prevent CSRF while allowing OAuth redirects
+
+    # Session timeout (security best practice for admin sessions)
+    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
 
     # Ensure Google OAuth credentials are available
     if not GOOGLE_CLIENT_ID:
