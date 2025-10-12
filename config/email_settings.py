@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2025-09-16
+# Updated by Claude AI on 2025-10-12
 # Email service configuration and SMTP settings
 import os
 from flask import request
@@ -70,6 +70,9 @@ def get_email_config() -> Optional[Dict[str, Any]]:
     if not username or not password:
         return None
 
+    # Import FROM_EMAIL from organization config
+    from config.organization import FROM_EMAIL
+
     # Build complete configuration
     config = {
         'smtp_server': provider_config['smtp_server'],
@@ -77,7 +80,7 @@ def get_email_config() -> Optional[Dict[str, Any]]:
         'use_tls': provider_config['use_tls'],
         'smtp_username': username,
         'smtp_password': password,
-        'from_email': os.environ.get('FROM_EMAIL', 'cbc@naturevancouver.ca'),
+        'from_email': os.environ.get('FROM_EMAIL', FROM_EMAIL),
         'provider_name': provider,
         'provider_description': provider_config['description'],
         'test_mode': is_test_server()
@@ -118,33 +121,40 @@ def is_test_server() -> bool:
 
 
 def get_admin_unassigned_url() -> str:
-    """Get environment-appropriate URL for admin unassigned page."""
-    if is_test_server():
-        return 'https://cbc-test.naturevancouver.ca/admin/unassigned'
-    else:
-        return 'https://cbc-registration.naturevancouver.ca/admin/unassigned'
+    """Get environment-appropriate URL for admin unassigned page.
+
+    DEPRECATED: Use get_organization_variables()['admin_url'] + '/unassigned' instead.
+    This function remains for backward compatibility.
+    """
+    from config.organization import get_admin_url
+    return f"{get_admin_url()}/unassigned"
 
 
 def get_leader_dashboard_url() -> str:
-    """Get environment-appropriate URL for leader dashboard."""
-    if is_test_server():
-        return 'https://cbc-test.naturevancouver.ca/leader'
-    else:
-        return 'https://cbc-registration.naturevancouver.ca/leader'
+    """Get environment-appropriate URL for leader dashboard.
+
+    DEPRECATED: Use get_organization_variables()['leader_url'] instead.
+    This function remains for backward compatibility.
+    """
+    from config.organization import get_leader_url
+    return get_leader_url()
 
 
 def get_logo_url() -> str:
-    """Get environment-appropriate URL for organization logo."""
-    if is_test_server():
-        return 'https://cbc-test.naturevancouver.ca/static/icons/NV_logo.png'
-    else:
-        return 'https://cbc-registration.naturevancouver.ca/static/icons/NV_logo.png'
+    """Get environment-appropriate URL for organization logo.
+
+    DEPRECATED: Use get_organization_variables()['logo_url'] instead.
+    This function remains for backward compatibility.
+    """
+    from config.organization import get_logo_url as org_get_logo_url
+    return org_get_logo_url()
 
 
 def get_email_branding() -> dict:
     """Get complete email branding configuration with environment-specific logo URL."""
+    from config.organization import get_logo_url as org_get_logo_url
     branding = EMAIL_BRANDING.copy()
-    branding['logo_url'] = get_logo_url()
+    branding['logo_url'] = org_get_logo_url()
     return branding
 
 

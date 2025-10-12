@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Created by Claude AI on 2025-10-12
+Updated by Claude AI on 2025-10-12
 Firestore Index Verification Script
 
 This script verifies that all required Firestore indexes exist for the current year's
@@ -35,9 +35,9 @@ import logging
 # Add parent directory to path for config imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# Google Cloud configuration
-PROJECT_ID = 'vancouver-cbc-registration'
-LOCATION_ID = 'us-west1'
+from config.cloud import GCP_PROJECT_ID, GCP_LOCATION, DATABASE_TEST, DATABASE_PRODUCTION
+
+# Current year for collection names
 CURRENT_YEAR = datetime.now().year
 
 # Required composite indexes for the application
@@ -130,23 +130,23 @@ def print_banner():
     print(" CBC Registration System - Index Verification")
     print("=" * 70)
     print(f" Year: {CURRENT_YEAR}")
-    print(f" Project: {PROJECT_ID}")
+    print(f" Project: {GCP_PROJECT_ID}")
     print("=" * 70 + "\n")
 
 
 def get_database_choice():
     """Prompt user to choose which database to check."""
     print("Which database would you like to verify?")
-    print("  1. cbc-test (test/development)")
-    print("  2. cbc-register (production)")
+    print(f"  1. {DATABASE_TEST} (test/development)")
+    print(f"  2. {DATABASE_PRODUCTION} (production)")
     print()
 
     while True:
         choice = input("Enter choice (1 or 2): ").strip()
         if choice == '1':
-            return 'cbc-test'
+            return DATABASE_TEST
         elif choice == '2':
-            return 'cbc-register'
+            return DATABASE_PRODUCTION
         else:
             print("Invalid choice. Please enter 1 or 2.")
 
@@ -163,71 +163,29 @@ def check_collection_exists(db_client, collection_name):
         return False
 
 
-def create_dummy_participant(db_client, year):
-    """Create a dummy participant to initialize the participants collection."""
-    collection_name = f'participants_{year}'
-    dummy_data = {
-        'first_name': '_DUMMY_',
-        'last_name': '_INDEX_SETUP_',
-        'email': f'dummy-{year}@example.com',
-        'phone': '000-000-0000',
-        'phone2': '',
-        'skill_level': 'Beginner',
-        'experience': 'None',
-        'preferred_area': 'UNASSIGNED',
-        'participation_type': 'regular',
-        'has_binoculars': False,
-        'spotting_scope': False,
-        'notes_to_organizers': 'Dummy participant for index setup',
-        'interested_in_leadership': False,
-        'interested_in_scribe': False,
-        'is_leader': False,
-        'assigned_area_leader': None,
-        'leadership_assigned_by': None,
-        'leadership_assigned_at': None,
-        'leadership_removed_by': None,
-        'leadership_removed_at': None,
-        'auto_assigned': False,
-        'assigned_by': None,
-        'assigned_at': None,
-        'created_at': datetime.now(),
-        'updated_at': datetime.now(),
-        'year': year
-    }
-
-    doc_ref = db_client.collection(collection_name).add(dummy_data)
-    return doc_ref[1].id
-
-
-def create_and_delete_dummy_removal(db_client, year, participant_id):
-    """Create and immediately delete a dummy removal log entry."""
+def create_dummy_removal(db_client, year):
+    """Create a permanent dummy removal log entry to prevent collection auto-deletion."""
     collection_name = f'removal_log_{year}'
     dummy_removal = {
-        'participant_name': '_DUMMY_ _INDEX_SETUP_',
-        'participant_email': f'dummy-{year}@example.com',
+        'participant_name': '_DUMMY_INDEX_SETUP_',
+        'participant_email': f'dummy-index-setup-{year}@example.com',
         'area_code': 'UNASSIGNED',
-        'removed_by': 'system',
-        'reason': 'Dummy entry for index setup',
+        'removed_by': 'verify_indexes.py',
+        'reason': 'Permanent dummy entry to prevent Firestore auto-deletion of empty collection',
         'removed_at': datetime.now(),
         'year': year,
         'emailed': False
     }
 
-    # Add the dummy removal
+    # Add the dummy removal and leave it (prevents auto-deletion)
     doc_ref = db_client.collection(collection_name).add(dummy_removal)
-    removal_id = doc_ref[1].id
-
-    # Immediately delete it (Firestore will keep the collection)
-    db_client.collection(collection_name).document(removal_id).delete()
-
-    # Also delete the dummy participant
-    db_client.collection(f'participants_{year}').document(participant_id).delete()
+    return doc_ref[1].id
 
 
 def get_existing_indexes(admin_client, database_id):
     """Get list of existing composite indexes in the database."""
     try:
-        database_name = f"projects/{PROJECT_ID}/databases/{database_id}"
+        database_name = f"projects/{GCP_PROJECT_ID}/databases/{database_id}"
         existing_indexes = {}
 
         # List all collection groups to find indexes
@@ -265,7 +223,7 @@ def index_exists(field_paths, existing_indexes):
 
 def create_missing_indexes(admin_client, database_id, existing_indexes):
     """Create any missing indexes."""
-    database_name = f"projects/{PROJECT_ID}/databases/{database_id}"
+    database_name = f"projects/{GCP_PROJECT_ID}/databases/{database_id}"
     created_count = 0
     already_exists_count = 0
     failed_count = 0
@@ -338,9 +296,9 @@ def main():
     # Get database choice
     if len(sys.argv) > 1:
         database_id = sys.argv[1]
-        if database_id not in ['cbc-test', 'cbc-register']:
+        if database_id not in [DATABASE_TEST, DATABASE_PRODUCTION]:
             print(f"❌ Error: Invalid database '{database_id}'")
-            print("   Valid options: cbc-test, cbc-register")
+            print(f"   Valid options: {DATABASE_TEST}, {DATABASE_PRODUCTION}")
             sys.exit(1)
     else:
         database_id = get_database_choice()
@@ -351,7 +309,7 @@ def main():
     # Initialize clients
     try:
         admin_client = FirestoreAdminClient()
-        db_client = firestore.Client(project=PROJECT_ID, database=database_id)
+        db_client = firestore.Client(project=GCP_PROJECT_ID, database=database_id)
     except Exception as e:
         print(f"ERROR: Could not connect to Google Cloud")
         print(f"   {e}")
@@ -383,13 +341,12 @@ def main():
 
     if not removal_log_exists:
         print(f"   WARNING: {removal_log_collection} doesn't exist yet")
-        print(f"   Creating collection with dummy data...")
+        print(f"   Creating collection with permanent dummy entry...")
         try:
-            # Create dummy participant to get an ID
-            participant_id = create_dummy_participant(db_client, CURRENT_YEAR)
-            # Create and delete dummy removal (leaves collection)
-            create_and_delete_dummy_removal(db_client, CURRENT_YEAR, participant_id)
-            print(f"   [OK] {removal_log_collection} created")
+            # Create permanent dummy removal entry (prevents Firestore auto-deletion)
+            dummy_id = create_dummy_removal(db_client, CURRENT_YEAR)
+            print(f"   [OK] {removal_log_collection} created with dummy entry (ID: {dummy_id})")
+            print(f"   NOTE: Dummy entry will remain to prevent auto-deletion of empty collection")
         except Exception as e:
             print(f"   ERROR: Failed to create collection: {e}")
             sys.exit(1)

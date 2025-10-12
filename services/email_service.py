@@ -166,7 +166,7 @@ There are {len(unassigned_participants)} participants who selected "Wherever I'm
 
         body += f"""
 Please log into the admin interface to assign these participants to areas:
-{org_vars['admin_url']}/admin
+{org_vars['admin_url']}
 
 This is an automated daily digest. You will receive this email each day until all participants are assigned.
         """
@@ -212,7 +212,7 @@ Your {org_vars['count_event_name']} team has been updated:
         body += f"""
 Please reach out to new team members to welcome them and provide count day details.
 
-For the complete current team roster, visit: {org_vars['registration_url']}/leader
+For the complete current team roster, visit: {org_vars['leader_url']}
 
 This is an automated notification from the CBC registration system.
         """

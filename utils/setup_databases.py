@@ -30,21 +30,19 @@ import logging
 # Add the parent directory to Python path to import config
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from config.cloud import GCP_PROJECT_ID, GCP_LOCATION, DATABASE_TEST, DATABASE_PRODUCTION
+
 # Database configuration
 DATABASE_CONFIG = {
-    'cbc-test': {
+    DATABASE_TEST: {
         'display_name': 'CBC Test Database',
         'description': 'Test/development database for Christmas Bird Count registration'
     },
-    'cbc-register': {
-        'display_name': 'CBC Production Database', 
+    DATABASE_PRODUCTION: {
+        'display_name': 'CBC Production Database',
         'description': 'Production database for Christmas Bird Count registration'
     }
 }
-
-# Google Cloud configuration
-PROJECT_ID = 'vancouver-cbc-registration'
-LOCATION_ID = 'us-west1'  # Oregon region
 
 # Required Firestore indexes for the application
 # Note: Single-field indexes are automatically created by Firestore and don't need to be defined here
@@ -99,7 +97,7 @@ def setup_logging(verbose=False):
 def get_existing_databases(client, logger):
     """Get list of existing databases in the project."""
     try:
-        parent = f"projects/{PROJECT_ID}"
+        parent = f"projects/{GCP_PROJECT_ID}"
         response = client.list_databases(parent=parent)
         
         databases = []
@@ -128,25 +126,25 @@ def get_existing_databases(client, logger):
 
 def create_database(client, database_id, config, logger, dry_run=False):
     """Create a Firestore database if it doesn't exist."""
-    database_name = f"projects/{PROJECT_ID}/databases/{database_id}"
-    
+    database_name = f"projects/{GCP_PROJECT_ID}/databases/{database_id}"
+
     if dry_run:
         logger.info(f"[DRY RUN] Would create database: {database_id}")
         logger.info(f"[DRY RUN]   Display name: {config['display_name']}")
-        logger.info(f"[DRY RUN]   Location: {LOCATION_ID}")
+        logger.info(f"[DRY RUN]   Location: {GCP_LOCATION}")
         return True
-    
+
     try:
         # Create database request
         # Use numeric enum values for DatabaseType and ConcurrencyMode
         database = Database(
             name=database_name,
-            location_id=LOCATION_ID,
+            location_id=GCP_LOCATION,
             type_=1,  # FIRESTORE_NATIVE
             concurrency_mode=1,  # OPTIMISTIC
         )
-        
-        parent = f"projects/{PROJECT_ID}"
+
+        parent = f"projects/{GCP_PROJECT_ID}"
         operation = client.create_database(
             parent=parent,
             database=database,
@@ -180,9 +178,9 @@ def delete_database(client, database_id, logger, dry_run=False):
     if dry_run:
         logger.info(f"[DRY RUN] Would delete database: {database_id}")
         return True
-        
+
     try:
-        database_name = f"projects/{PROJECT_ID}/databases/{database_id}"
+        database_name = f"projects/{GCP_PROJECT_ID}/databases/{database_id}"
         operation = client.delete_database(name=database_name)
         
         logger.info(f"Deleting database '{database_id}'...")
@@ -231,7 +229,7 @@ def create_database_indexes(client, database_id, logger, dry_run=False, skip_ind
                 logger.info(f"[DRY RUN]   {collection_id}: Index on fields {field_names}")
         return True
     
-    database_name = f"projects/{PROJECT_ID}/databases/{database_id}"
+    database_name = f"projects/{GCP_PROJECT_ID}/databases/{database_id}"
     success_count = 0
     total_indexes = sum(len(indexes) for indexes in REQUIRED_INDEXES.values())
     
@@ -353,8 +351,8 @@ Examples:
     
     logger.info("Firestore Database Setup for CBC Registration System")
     logger.info("=" * 55)
-    logger.info(f"Project: {PROJECT_ID}")
-    logger.info(f"Region: {LOCATION_ID}")
+    logger.info(f"Project: {GCP_PROJECT_ID}")
+    logger.info(f"Region: {GCP_LOCATION}")
     
     if args.dry_run:
         logger.info("🔍 DRY RUN MODE - No changes will be made")
@@ -381,11 +379,11 @@ Examples:
     # Filter databases based on command line flags
     databases_to_process = list(DATABASE_CONFIG.keys())
     if args.test_only:
-        databases_to_process = [db for db in databases_to_process if db == 'cbc-test']
-        logger.info("Operating in TEST-ONLY mode - only cbc-test database will be affected")
+        databases_to_process = [db for db in databases_to_process if db == DATABASE_TEST]
+        logger.info(f"Operating in TEST-ONLY mode - only {DATABASE_TEST} database will be affected")
     elif args.production_only:
-        databases_to_process = [db for db in databases_to_process if db == 'cbc-register']
-        logger.info("Operating in PRODUCTION-ONLY mode - only cbc-register database will be affected")
+        databases_to_process = [db for db in databases_to_process if db == DATABASE_PRODUCTION]
+        logger.info(f"Operating in PRODUCTION-ONLY mode - only {DATABASE_PRODUCTION} database will be affected")
     
     # Determine what needs to be done
     databases_to_create = []
