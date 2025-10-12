@@ -344,6 +344,22 @@ gcloud run services logs read cbc-registration --region=us-west1 --limit=50
 rm client_secret.json
 ```
 
+### Annual Season Start
+```bash
+# Verify and create indexes for new year (run at start of each season)
+python utils/verify_indexes.py cbc-test        # Test environment
+python utils/verify_indexes.py cbc-register    # Production environment
+```
+
+The `verify_indexes.py` script:
+- Checks if current year's collections exist
+- Creates dummy data if `removal_log_YYYY` doesn't exist yet
+- Verifies all required composite indexes exist
+- Automatically creates any missing indexes
+- Provides clear, non-technical output for volunteers
+
+**Important**: This must be run at the start of each registration season to ensure database indexes are created for the new year's collections.
+
 ### Utility Scripts
 ```bash
 # Install utility dependencies (one-time setup)
@@ -355,9 +371,13 @@ python utils/setup_databases.py                # Create missing databases with i
 python utils/setup_databases.py --skip-indexes # Create databases only (faster, but may have runtime delays)
 python utils/setup_databases.py --force        # Recreate all databases (with confirmation)
 
+# Verify indexes for current year (run at start of each season)
+python utils/verify_indexes.py cbc-test        # Test environment
+python utils/verify_indexes.py cbc-register    # Production environment
+
 # Generate test participants for development/testing
 python utils/generate_test_participants.py                    # 20 regular + 5 leadership
-python utils/generate_test_participants.py 50                # 50 regular + 5 leadership  
+python utils/generate_test_participants.py 50                # 50 regular + 5 leadership
 python utils/generate_test_participants.py 10 --seq 100      # 10 regular + 5 leadership, start at email 0100
 python utils/generate_test_participants.py 0 --seq 5000      # 0 regular + 5 leadership, start at email 5000
 ```
@@ -731,3 +751,46 @@ Use the current date from the environment context, not specific times since Clau
 - put python imports at the top of the file, not inline in the code
 - **CRITICAL: NEVER begin replies with agreement phrases like "You're right", "You're absolutely correct", "You're absolutely right", or similar validation statements.** These phrases before analysis are sycophantic and unhelpful. Instead, begin directly with analysis, investigation, or solution work. If analysis confirms a user statement, acknowledge it AFTER presenting evidence.
 - never use the word "comprehensive" unless specifically instructed to do so.  You should probably mostly avoid its synonyms as well.
+
+## Documentation Structure (As of 2025-10-12)
+
+The documentation is organized to serve different audiences with appropriate technical depth:
+
+### For Volunteers (Non-Technical)
+- **`docs/DEPLOYMENT.md`** - Primary deployment guide with step-by-step procedures
+  - Annual season start workflow (prioritized at top)
+  - Simple command examples with clear explanations
+  - Plain language error messages and solutions
+  - Links to technical reference for details
+- **`README.md`** - Project overview with annual season start checklist
+
+### For Developers/System Administrators
+- **`docs/DEPLOYMENT_TECHNICAL_REFERENCE.md`** - Technical deployment details
+  - Architecture diagrams and component descriptions
+  - Firestore index management details
+  - OAuth implementation specifics
+  - Cloud Run configuration
+  - Email scheduler system architecture
+  - Advanced troubleshooting procedures
+- **`docs/SPECIFICATION.md`** - Complete system architecture and implementation
+- **`CLAUDE.md`** - This file, development guidelines for AI assistants
+
+### For End Users
+- **`docs/ADMIN_GUIDE.md`** - Admin interface usage (if exists)
+- **`docs/LEADER_GUIDE.md`** - Area leader interface guide (if exists)
+
+### Key Documentation Principles
+1. **Separation of concerns**: Volunteer procedures separate from technical details
+2. **Progressive disclosure**: Simple steps first, technical details via links
+3. **Annual season start priority**: Most common use case featured prominently
+4. **Consistent formatting**: Code blocks, clear section headers, step numbers
+5. **Cross-references**: Links between related documentation files
+
+### Utility Scripts Documentation
+- **`utils/verify_indexes.py`** - Annual season start script for index verification
+  - Automatically checks and creates missing indexes
+  - User-friendly output without emoji (Windows console compatible)
+  - Handles both test and production databases
+- **`utils/setup_databases.py`** - One-time database creation
+- **`utils/generate_test_participants.py`** - Test data generation
+- **`utils/setup_email_scheduler.sh`** - Cloud Scheduler configuration

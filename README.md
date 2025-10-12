@@ -13,6 +13,37 @@ or code comments.  As of 10.10.2025 when I'm checking this in, I haven't yet had
 It's included in the hope that it will be useful, even if it's incomplete and occasionally inaccurate.
 </em>
 
+## Annual Season Start Checklist
+
+**Starting a new registration season?** Follow these steps to prepare your system:
+
+1. **Verify Database Indexes** (15 minutes)
+   ```bash
+   python utils/verify_indexes.py cbc-test
+   python utils/verify_indexes.py cbc-register
+   ```
+   This ensures the new year's database collections have the required indexes for fast queries.
+
+2. **Test Registration Form**
+   - Register yourself on the test site
+   - Verify you receive confirmation
+   - Check admin interface shows your registration
+
+3. **Update Admin Accounts** (if needed)
+   - Edit `config/admins.py` if coordinators changed
+   - Deploy updates to production
+
+4. **Deploy to Production**
+   ```bash
+   ./deploy.sh production
+   ```
+
+5. **Share Registration URL** with participants
+
+**Full instructions**: See [Annual Season Start](docs/DEPLOYMENT.md#annual-season-start) in the Deployment Guide.
+
+---
+
 ## Features
 
 - **Interactive Map Registration**: Participants select count areas by clicking on an interactive map or using dropdown menus
@@ -126,7 +157,8 @@ When reporting bugs, please include:
 - [Email System Specification](docs/EMAIL_SPEC.md) - Email notification architecture
 
 ### Setup and Deployment
-- [Deployment Guide](docs/DEPLOYMENT.md) - Cloud Run deployment instructions
+- [Deployment Guide](docs/DEPLOYMENT.md) - Step-by-step deployment for volunteers
+- [Technical Deployment Reference](docs/DEPLOYMENT_TECHNICAL_REFERENCE.md) - Advanced technical details
 - [Google Cloud Setup](docs/GCLOUD-SETUP.md) - Initial GCP configuration
 - [OAuth Setup](docs/OAUTH-SETUP.md) - Authentication configuration
 - [Backup System](docs/BACKUPS.md) - Automated backup setup

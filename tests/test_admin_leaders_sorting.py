@@ -17,7 +17,7 @@ sys.path.insert(0, project_root)
 
 from models.participant import ParticipantModel
 from tests.utils.database_utils import create_database_manager
-from tests.config import get_base_url
+from tests.test_config import get_base_url
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC

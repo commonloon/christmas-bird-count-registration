@@ -1,0 +1,78 @@
+# Coverage.py configuration for CBC Registration System
+# Updated by Claude AI on 2025-10-10
+
+[run]
+# Source code to measure
+source = .
+
+# Omit files from coverage measurement
+omit =
+    # Test files
+    tests/*
+
+    # Utility scripts (not deployed)
+    utils/*
+
+    # Deployment and configuration
+    deploy.sh
+    Dockerfile
+    .gcloudignore
+
+    # Virtual environments
+    venv/*
+    env/*
+    .venv/*
+
+    # Third-party
+    */site-packages/*
+
+    # Temporary and build files
+    */tmp/*
+    htmlcov/*
+    .coverage*
+
+# Enable branch coverage (more thorough than line coverage)
+branch = True
+
+# Data file location (server uses /tmp, local uses project root)
+data_file = .coverage
+
+[report]
+# Show lines that weren't executed
+show_missing = True
+
+# Precision for coverage percentages
+precision = 2
+
+# Exclude lines from coverage
+exclude_lines =
+    # Standard exclusions
+    pragma: no cover
+    def __repr__
+    raise AssertionError
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+    @abstractmethod
+    @abc.abstractmethod
+
+    # Debug-only code
+    if app.debug:
+    if settings.DEBUG
+
+    # Test-only code
+    if TEST_MODE
+
+[html]
+# Directory for HTML reports
+directory = htmlcov
+
+# Title for HTML report
+title = CBC Registration Coverage Report
+
+[paths]
+# Map server paths to local paths for coverage merging
+source =
+    C:\AndroidStudioProjects\christmas-bird-count-registration
+    /workspace
+    /app

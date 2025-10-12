@@ -5,12 +5,11 @@
   "private": true,
   "scripts": {
     "test:email-validation": "jest email_validation.test.js",
-    "test:email-validation:verbose": "jest email_validation.test.js --verbose"
+    "test:email-validation:verbose": "jest email_validation.test.js --verbose",
+    "test:coverage": "jest --coverage",
+    "test:coverage:email": "jest email_validation.test.js --coverage"
   },
   "devDependencies": {
     "jest": "^29.7.0"
-  },
-  "jest": {
-    "testEnvironment": "node"
   }
 }

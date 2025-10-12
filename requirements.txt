@@ -7,3 +7,4 @@ google-cloud-functions
 gunicorn
 python-dotenv
 pytz
+coverage>=7.3.0

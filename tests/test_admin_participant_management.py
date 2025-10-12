@@ -17,7 +17,7 @@ from datetime import datetime
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, project_root)
 
-from tests.config import get_base_url, get_database_name
+from tests.test_config import get_base_url, get_database_name
 from tests.page_objects import AdminDashboardPage, AdminParticipantsPage
 from tests.data import get_test_participant
 from models.participant import ParticipantModel

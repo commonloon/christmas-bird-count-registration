@@ -140,7 +140,7 @@ def check_test_structure():
 def check_configuration():
     """Check test configuration."""
     try:
-        from tests.config import get_base_url, get_database_name
+        from tests.test_config import get_base_url, get_database_name
         from tests.data import get_test_participant
 
         base_url = get_base_url()

@@ -9,6 +9,13 @@ tests/tmp/
 tests/reports/
 reports/
 
+# Coverage artifacts
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+tests/coverage/
+
 # Node.js / npm
 node_modules/
 package-lock.json

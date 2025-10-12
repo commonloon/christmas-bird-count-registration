@@ -1,5 +1,6 @@
 # app.py - Flask application entry point
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session, g
+# Updated by Claude AI on 2025-10-10
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session, g, send_file
 from flask_wtf.csrf import CSRFProtect
 from google.cloud import firestore
 from config.database import get_firestore_client
@@ -10,6 +11,17 @@ import os
 from datetime import datetime
 import json
 import logging
+
+# Initialize coverage if enabled (test server only)
+coverage_instance = None
+if os.environ.get('ENABLE_COVERAGE') == 'true' and os.environ.get('TEST_MODE') == 'true':
+    try:
+        import coverage
+        coverage_instance = coverage.Coverage(data_file='/tmp/.coverage', config_file='.coveragerc')
+        coverage_instance.start()
+        logging.info("Coverage measurement started")
+    except Exception as e:
+        logging.warning(f"Could not start coverage: {e}")
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -134,6 +146,48 @@ def not_found_error(error):
 @app.errorhandler(500)
 def internal_error(error):
     return render_template('errors/500.html'), 500
+
+# Coverage endpoints (test server only)
+if os.environ.get('TEST_MODE') == 'true':
+    @app.route('/test/coverage/save')
+    def save_coverage():
+        """Save and download coverage data (test server only, requires admin auth)."""
+        from routes.auth import require_admin
+
+        # Check admin authorization
+        if 'user_email' not in session:
+            return jsonify({'error': 'Authentication required'}), 401
+
+        # Verify admin role
+        from config.admins import is_admin
+        if not is_admin(session['user_email']):
+            return jsonify({'error': 'Admin access required'}), 403
+
+        if coverage_instance is None:
+            return jsonify({'error': 'Coverage not enabled. Deploy with ENABLE_COVERAGE=true'}), 400
+
+        try:
+            # Stop coverage and save data
+            coverage_instance.stop()
+            coverage_instance.save()
+            logger.info("Coverage data saved to /tmp/.coverage")
+
+            # Send the coverage file
+            return send_file('/tmp/.coverage',
+                           as_attachment=True,
+                           download_name='.coverage.server',
+                           mimetype='application/octet-stream')
+        except Exception as e:
+            logger.error(f"Error saving coverage: {e}")
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/test/coverage/status')
+    def coverage_status():
+        """Check if coverage is enabled (test server only)."""
+        return jsonify({
+            'enabled': coverage_instance is not None,
+            'data_file': '/tmp/.coverage' if coverage_instance else None
+        })
 
 if __name__ == '__main__':
     # Development server - don't use in production

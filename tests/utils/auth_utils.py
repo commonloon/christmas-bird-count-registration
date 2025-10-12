@@ -14,7 +14,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from tests.config import TEST_CONFIG
+from tests.test_config import TEST_CONFIG
 import requests
 import json
 

@@ -9,7 +9,8 @@
  * Focus: Verify RFC 5322 compliance and consistency with Python validation.
  */
 
-const { validateEmailFormat } = require('../static/js/validation.js');
+// Import from symlink so Jest coverage tracking works
+const { validateEmailFormat } = require('./validation.js');
 
 describe('Email Validation Frontend (JavaScript)', () => {
 

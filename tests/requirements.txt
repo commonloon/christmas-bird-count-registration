@@ -1,11 +1,12 @@
 # Functional Test Suite Requirements for CBC Registration System
-# Updated by Claude AI on 2025-09-25
+# Updated by Claude AI on 2025-10-10
 
 # Core testing framework
 pytest>=7.4.0
 pytest-html>=3.2.0          # HTML test reports
 pytest-xdist>=3.3.0         # Parallel test execution
 pytest-mock>=3.11.0         # Mocking support
+pytest-cov>=4.1.0           # Coverage integration with pytest
 
 # Browser automation
 selenium>=4.15.0

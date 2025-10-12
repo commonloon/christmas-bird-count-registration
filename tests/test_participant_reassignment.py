@@ -11,7 +11,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 from models.participant import ParticipantModel
-from tests.config import get_base_url, get_database_name
+from tests.test_config import get_base_url, get_database_name
 from tests.utils.auth_utils import admin_login_for_test
 
 logger = logging.getLogger(__name__)

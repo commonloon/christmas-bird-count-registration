@@ -25,7 +25,7 @@ sys.path.insert(0, project_root)
 
 # Import test utilities
 from tests.utils.database_utils import create_database_manager
-from tests.config import get_base_url
+from tests.test_config import get_base_url
 from tests.page_objects.admin_participants_page import AdminParticipantsPage
 from models.participant import ParticipantModel
 

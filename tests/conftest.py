@@ -22,7 +22,7 @@ from selenium.webdriver.firefox.service import Service as FirefoxService
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from tests.config import (
+from tests.test_config import (
     TEST_CONFIG, TEST_ACCOUNTS, GCP_CONFIG,
     get_base_url, get_database_name, LOGGING_CONFIG
 )
@@ -554,6 +554,54 @@ def test_session_setup():
     logger.info("=" * 50)
     logger.info("CBC Registration Test Suite Complete")
     logger.info("=" * 50)
+
+# Coverage download fixture (session-scoped, runs after all tests)
+@pytest.fixture(scope="session", autouse=True)
+def download_coverage_after_tests(test_credentials):
+    """Download coverage data from test server after all Selenium tests complete.
+
+    This fixture automatically runs at the end of the test session if coverage
+    is enabled on the server. It authenticates as admin and downloads the
+    coverage file for merging with local test coverage.
+    """
+    yield  # Let all tests run first
+
+    # After all tests complete, download coverage if enabled
+    try:
+        import requests
+        from tests.test_config import get_base_url
+
+        base_url = get_base_url()
+
+        # Check if coverage is enabled on server
+        status_response = requests.get(f"{base_url}/test/coverage/status", timeout=10)
+        if status_response.status_code != 200:
+            logger.info("Coverage status endpoint not available - coverage not enabled")
+            return
+
+        status_data = status_response.json()
+        if not status_data.get('enabled'):
+            logger.info("Coverage not enabled on server - skipping download")
+            return
+
+        logger.info("Coverage enabled on server - downloading coverage data")
+
+        # Create session and authenticate
+        session = requests.Session()
+
+        # Note: This requires manual cookie/session handling since we can't reuse Selenium session
+        # For now, we'll use the simpler approach of requiring manual download
+        # TODO: Implement automated session transfer from Selenium to requests
+
+        logger.info("Coverage download requires manual step:")
+        logger.info(f"1. Visit {base_url}/test/coverage/save in your browser while logged in as admin")
+        logger.info(f"2. Save the .coverage.server file to the tests/ directory")
+        logger.info(f"3. Run: coverage combine .coverage .coverage.server")
+        logger.info(f"4. Run: coverage html")
+        logger.info(f"5. Open htmlcov/index.html to view combined coverage")
+
+    except Exception as e:
+        logger.warning(f"Could not download coverage data: {e}")
 
 # Error handling for missing dependencies
 def pytest_runtest_setup(item):

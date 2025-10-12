@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 
 from google.cloud import firestore
-from tests.config import TEST_CONFIG
+from tests.test_config import TEST_CONFIG
 
 logger = logging.getLogger(__name__)
 
