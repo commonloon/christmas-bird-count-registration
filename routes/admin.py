@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2025-09-17
+# Updated by Claude AI on 2025-10-12
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response, g, current_app
 from google.cloud import firestore
 from config.database import get_firestore_client
@@ -360,6 +360,9 @@ def leaders():
 
         return response
 
+    current_year = datetime.now().year
+    is_historical = selected_year < current_year
+
     return render_template('admin/leaders.html',
                            all_leaders=normalized_leaders,
                            areas_without_leaders=areas_without_leaders,
@@ -368,6 +371,8 @@ def leaders():
                            get_area_info=get_area_info,
                            selected_year=selected_year,
                            available_years=available_years,
+                           current_year=current_year,
+                           is_historical=is_historical,
                            current_user=get_current_user())
 
 

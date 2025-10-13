@@ -1,4 +1,4 @@
-{# Updated by Claude AI on 2025-09-23 #}
+{# Updated by Claude AI on 2025-10-12 #}
 {% extends "base.html" %}
 
 {% block title %}Manage Leaders - Vancouver Christmas Bird Count{% endblock %}
@@ -38,26 +38,34 @@
     </div>
 </div>
 
-<!-- Year selector -->
+<!-- Year Tabs Navigation -->
 {% if available_years and available_years|length > 1 %}
-<div class="card mb-4">
-    <div class="card-body">
-        <h5 class="card-title">Year Selection</h5>
-        <form method="GET" class="d-inline-block">
-            <select name="year" class="form-select d-inline-block w-auto" onchange="this.form.submit()">
-                {% for year in available_years %}
-                <option value="{{ year }}" {% if year == selected_year %}selected{% endif %}>{{ year }}</option>
-                {% endfor %}
-            </select>
-        </form>
-    </div>
+<ul class="nav nav-tabs mb-4" role="tablist">
+    {% for year in available_years %}
+    <li class="nav-item" role="presentation">
+        <a class="nav-link {% if year == selected_year %}active{% endif %} {% if year < current_year %}text-warning{% endif %}"
+           href="{{ url_for('admin.leaders', year=year) }}"
+           role="tab">
+            {{ year }}
+            {% if year < current_year %}<i class="bi bi-archive ms-1" title="Historical data"></i>{% endif %}
+        </a>
+    </li>
+    {% endfor %}
+</ul>
+{% endif %}
+
+<!-- Historical Data Warning Banner -->
+{% if is_historical %}
+<div class="alert alert-warning" role="alert">
+    <i class="bi bi-info-circle-fill"></i>
+    <strong>Historical Data</strong> - This is read-only data from {{ selected_year }}. Edit and delete actions are disabled.
 </div>
 {% endif %}
 
 <!-- Current Leaders -->
 {% if all_leaders %}
-<div class="card mb-4">
-    <div class="card-header d-flex justify-content-between align-items-center">
+<div class="card mb-4{% if is_historical %} bg-warning bg-opacity-10{% endif %}">
+    <div class="card-header{% if is_historical %} bg-warning bg-opacity-25{% endif %} d-flex justify-content-between align-items-center">
         <h5 class="mb-0">Current Area Leaders ({{ all_leaders|length }})</h5>
         <a href="{{ url_for('admin.leaders', year=selected_year, format='csv') }}" class="btn btn-success btn-sm">
             <i class="fas fa-download"></i> Export CSV
@@ -73,7 +81,7 @@
                         <th>Email</th>
                         <th>Cell Phone</th>
                         <th>Secondary Phone</th>
-                        <th>Actions</th>
+                        {% if not is_historical %}<th>Actions</th>{% endif %}
                     </tr>
                 </thead>
                 <tbody>
@@ -132,6 +140,7 @@
                                 <input type="tel" class="form-control form-control-sm phone2-input" value="{{ leader.phone2 or '' }}" placeholder="(604) 555-1234">
                             </div>
                         </td>
+                        {% if not is_historical %}
                         <td>
                             <div class="btn-group btn-group-sm action-buttons">
                                 <button class="btn btn-outline-primary btn-edit" title="Edit">
@@ -147,6 +156,7 @@
                                 </button>
                             </div>
                         </td>
+                        {% endif %}
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -158,6 +168,7 @@
 
 <!-- Areas Without Leaders -->
 <!-- Manual Leader Entry Form -->
+{% if not is_historical %}
 <div class="card border-primary mb-4">
     <div class="card-header bg-primary text-white">
         <h5 class="mb-0">Add New Area Leader</h5>
@@ -254,8 +265,9 @@
         </form>
     </div>
 </div>
+{% endif %}
 
-{% if areas_without_leaders %}
+{% if areas_without_leaders and not is_historical %}
 <div class="card border-warning mb-4">
     <div class="card-header bg-warning">
         <h5 class="mb-0">⚠️ Areas Needing Leaders ({{ areas_without_leaders|length }})</h5>
@@ -280,7 +292,7 @@
 {% endif %}
 
 <!-- Participants Interested in Leadership -->
-{% if leadership_interested %}
+{% if leadership_interested and not is_historical %}
 <div class="card border-info mb-4">
     <div class="card-header bg-info">
         <h5 class="mb-0">Potential Leaders ({{ leadership_interested|length }})</h5>
