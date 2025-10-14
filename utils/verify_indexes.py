@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Updated by Claude AI on 2025-10-12
+Updated by Claude AI on 2025-10-14
 Firestore Index Verification Script
 
 This script verifies that all required Firestore indexes exist for the current year's
@@ -18,8 +18,8 @@ Usage:
     python verify_indexes.py [database_name]
 
 Examples:
-    python verify_indexes.py cbc-test        # Check test database
-    python verify_indexes.py cbc-register    # Check production database
+    python verify_indexes.py <test-db>       # Check test database
+    python verify_indexes.py <prod-db>       # Check production database
     python verify_indexes.py                 # Prompts for database choice
 """
 
@@ -35,7 +35,7 @@ import logging
 # Add parent directory to path for config imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config.cloud import GCP_PROJECT_ID, GCP_LOCATION, DATABASE_TEST, DATABASE_PRODUCTION
+from config.cloud import GCP_PROJECT_ID, GCP_LOCATION, TEST_DATABASE, PRODUCTION_DATABASE
 
 # Current year for collection names
 CURRENT_YEAR = datetime.now().year
@@ -137,16 +137,16 @@ def print_banner():
 def get_database_choice():
     """Prompt user to choose which database to check."""
     print("Which database would you like to verify?")
-    print(f"  1. {DATABASE_TEST} (test/development)")
-    print(f"  2. {DATABASE_PRODUCTION} (production)")
+    print(f"  1. {TEST_DATABASE} (test/development)")
+    print(f"  2. {PRODUCTION_DATABASE} (production)")
     print()
 
     while True:
         choice = input("Enter choice (1 or 2): ").strip()
         if choice == '1':
-            return DATABASE_TEST
+            return TEST_DATABASE
         elif choice == '2':
-            return DATABASE_PRODUCTION
+            return PRODUCTION_DATABASE
         else:
             print("Invalid choice. Please enter 1 or 2.")
 
@@ -296,9 +296,9 @@ def main():
     # Get database choice
     if len(sys.argv) > 1:
         database_id = sys.argv[1]
-        if database_id not in [DATABASE_TEST, DATABASE_PRODUCTION]:
+        if database_id not in [TEST_DATABASE, PRODUCTION_DATABASE]:
             print(f"❌ Error: Invalid database '{database_id}'")
-            print(f"   Valid options: {DATABASE_TEST}, {DATABASE_PRODUCTION}")
+            print(f"   Valid options: {TEST_DATABASE}, {PRODUCTION_DATABASE}")
             sys.exit(1)
     else:
         database_id = get_database_choice()

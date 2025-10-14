@@ -1,5 +1,5 @@
 # Club-specific settings for email customization
-# Updated by Claude AI on 2025-10-12
+# Updated by Claude AI on 2025-10-14
 
 """
 Organization configuration for Christmas Bird Count registration system.
@@ -13,7 +13,7 @@ To adapt this system for another club:
 3. Test email delivery with your contact addresses
 """
 
-from config.cloud import BASE_URL_TEST, BASE_URL_PRODUCTION
+from config.cloud import TEST_BASE_URL, PRODUCTION_BASE_URL
 
 # Organization Information
 ORGANIZATION_NAME = "Nature Vancouver"
@@ -44,9 +44,9 @@ def get_base_url():
     """Get environment-appropriate base URL."""
     from config.email_settings import is_test_server
     if is_test_server():
-        return BASE_URL_TEST
+        return TEST_BASE_URL
     else:
-        return BASE_URL_PRODUCTION
+        return PRODUCTION_BASE_URL
 
 def get_registration_url():
     """Get environment-appropriate registration URL (base URL)."""

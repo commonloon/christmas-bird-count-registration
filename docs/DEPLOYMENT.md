@@ -1,5 +1,5 @@
 # CBC Registration System - Deployment Guide
-<!-- Updated by Claude AI on 2025-10-12 -->
+<!-- Updated by Claude AI on 2025-10-14 -->
 
 ## About This Guide
 
@@ -7,7 +7,9 @@ This guide helps you deploy and maintain the Christmas Bird Count registration s
 
 **If you're starting a new registration season**, jump to [Annual Season Start](#annual-season-start) below.
 
-**If this is your first time deploying the system**, start with [Initial Setup](#initial-setup-first-time-only).
+**If this is your first time deploying the system**:
+1. Complete the [Deployment Planning Worksheet](DEPLOYMENT_WORKSHEET.md) to organize all configuration values
+2. Follow the [Initial Setup](#initial-setup-first-time-only) steps below
 
 **For technical details and troubleshooting**, see [DEPLOYMENT_TECHNICAL_REFERENCE.md](DEPLOYMENT_TECHNICAL_REFERENCE.md).
 
@@ -33,10 +35,10 @@ Database indexes ensure the registration system runs quickly. Each year, new col
 gcloud auth login
 
 # Run the index verification script for the test environment
-python utils/verify_indexes.py cbc-test
+python utils/verify_indexes.py <TEST-DATABASE>  # Example: my-club-test
 
 # If test looks good, run for production
-python utils/verify_indexes.py cbc-register
+python utils/verify_indexes.py <PROD-DATABASE>  # Example: my-club-register
 ```
 
 **What you'll see:**
@@ -57,7 +59,7 @@ SUCCESS: All indexes are ready!
 ### 2. Test the Registration Form
 
 Visit your test site and register yourself:
-- **Test site**: `https://cbc-test.naturevancouver.ca` (or your test domain)
+- **Test site**: `https://<TEST-DOMAIN>`  (Example: `https://cbc-test.myclub.org`)
 - Fill out the registration form
 - Verify you receive a confirmation
 - Check that you appear in the admin interface
@@ -84,7 +86,7 @@ Wait 2-3 minutes for deployment to complete, then test the production registrati
 ### 5. Share Registration URL
 
 Send participants to:
-- **Production**: `https://cbc-registration.naturevancouver.ca` (or your production domain)
+- **Production**: `https://<PROD-DOMAIN>`  (Example: `https://cbc-registration.myclub.org`)
 
 ---
 
@@ -115,23 +117,23 @@ If you need to troubleshoot issues:
 
 ```bash
 # View recent logs (test)
-gcloud run services logs read cbc-test --region=us-west1 --limit=50
+gcloud run services logs read <TEST-SERVICE> --region=us-west1 --limit=50
 
 # View recent logs (production)
-gcloud run services logs read cbc-registration --region=us-west1 --limit=50
+gcloud run services logs read <PROD-SERVICE> --region=us-west1 --limit=50
 
-# Watch logs in real-time
-gcloud run services logs tail cbc-test --region=us-west1
+# Watch logs in real-time (test)
+gcloud run services logs tail <TEST-SERVICE> --region=us-west1
 ```
 
 ### Checking Service Status
 
 ```bash
 # Check test service
-gcloud run services describe cbc-test --region=us-west1
+gcloud run services describe <TEST-SERVICE> --region=us-west1
 
 # Check production service
-gcloud run services describe cbc-registration --region=us-west1
+gcloud run services describe <PROD-SERVICE> --region=us-west1
 ```
 
 ### Exporting Participant Data
@@ -175,21 +177,59 @@ curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key --keyr
 sudo apt-get update && sudo apt-get install google-cloud-cli
 ```
 
-### 2. Authenticate and Configure
+### 2. Authenticate with Google Cloud
 
 ```bash
 # Log in to Google Cloud
 gcloud auth login
+```
 
-# Set your project ID
-gcloud config set project YOUR-PROJECT-ID
+### 3. Create Your Google Cloud Project
 
-# Verify
+You need to create a new project for your bird count registration system.
+
+#### Using Google Cloud Console (Recommended for beginners)
+
+1. Go to https://console.cloud.google.com
+2. Click the project dropdown at the top (or "Select a project")
+3. Click "New Project"
+4. Enter project details:
+   - **Project name**: A descriptive name (e.g., "My Club CBC Registration")
+   - **Project ID**: A unique identifier (e.g., `my-club-cbc-registration`)
+     - This ID must be globally unique across all Google Cloud
+     - Use lowercase letters, numbers, and hyphens only
+     - Cannot be changed after creation
+   - **Organization/Billing**: Select your billing account
+5. Click "Create"
+6. Wait for the project to be created (takes a few seconds)
+
+
+
+### 4. Set Your Active Project
+
+```bash
+# Set your project ID (use the Project ID from step 3)
+gcloud config set project <YOUR-PROJECT-ID>  # Example: my-club-cbc-registration
+
+# Verify the configuration
 gcloud config list
 ```
 
-### 3. Enable Required Services
+You should see output showing your project ID and account.
 
+**Update Application Default Credentials:**
+
+If you see a warning about quota project mismatch, update your Application Default Credentials:
+
+```bash
+# Update ADC quota project to match your active project
+gcloud auth application-default set-quota-project <YOUR-PROJECT-ID>
+```
+
+This ensures that local development tools (like the database setup scripts) use the correct project for billing and quotas.
+
+### 5. Enable Required Services
+Enable services for the current google cloud project:
 ```bash
 gcloud services enable run.googleapis.com
 gcloud services enable firestore.googleapis.com
@@ -198,7 +238,7 @@ gcloud services enable secretmanager.googleapis.com
 gcloud services enable cloudscheduler.googleapis.com
 ```
 
-### 4. Configure Your Organization
+### 6. Configure Your Organization
 
 Edit `config/organization.py` with your club's details:
 - Organization name
@@ -208,21 +248,19 @@ Edit `config/organization.py` with your club's details:
 
 See [DEPLOYMENT_TECHNICAL_REFERENCE.md](DEPLOYMENT_TECHNICAL_REFERENCE.md) for detailed configuration instructions.
 
-### 5. Create Firestore Databases
+### 7. Create Firestore Databases
 
 ```bash
 # Install Python dependencies
 pip install -r utils/requirements.txt
 
-# Create databases
+# Create databases (names configured in config/database.py)
 python utils/setup_databases.py
 ```
 
-This creates two databases:
-- `cbc-test`: For testing
-- `cbc-register`: For production
+This creates two databases with names you configured (e.g., `my-club-test` and `my-club-register`).
 
-### 6. Set Up OAuth Authentication
+### 8. Set Up OAuth Authentication
 
 OAuth allows admins and area leaders to log in with Google accounts.
 
@@ -235,18 +273,18 @@ OAuth allows admins and area leaders to log in with Google accounts.
 4. Delete `client_secret.json`
 5. Publish OAuth consent screen
 
-### 7. Configure Admin Accounts
+### 9. Configure Admin Accounts
 
 Edit `config/admins.py` and add admin email addresses:
 
 ```python
 PRODUCTION_ADMIN_EMAILS = [
-    'your-admin@yourclub.org',
-    'another-admin@yourclub.org'
+    'admin@myclub.org',         # Replace with your admin emails
+    'coordinator@myclub.org'
 ]
 ```
 
-### 8. Initial Deployment
+### 10. Initial Deployment
 
 ```bash
 # Deploy to test first
@@ -256,36 +294,36 @@ PRODUCTION_ADMIN_EMAILS = [
 ./deploy.sh production
 ```
 
-### 9. Configure Custom Domains
+### 11. Configure Custom Domains
 
 ```bash
-# Map test domain
+# Map test domain (use your configured service and domain names)
 gcloud run domain-mappings create \
-    --service cbc-test \
-    --domain cbc-test.yourclub.org \
+    --service <TEST-SERVICE> \
+    --domain <TEST-DOMAIN> \
     --region us-west1
 
 # Map production domain
 gcloud run domain-mappings create \
-    --service cbc-registration \
-    --domain cbc-registration.yourclub.org \
+    --service <PROD-SERVICE> \
+    --domain <PROD-DOMAIN> \
     --region us-west1
 ```
 
 Add CNAME records in your DNS provider:
 ```
-Name: cbc-test
+Name: <subdomain-for-test>      # Example: cbc-test
 Type: CNAME
 Value: ghs.googlehosted.com
 
-Name: cbc-registration
+Name: <subdomain-for-prod>      # Example: cbc-registration
 Type: CNAME
 Value: ghs.googlehosted.com
 ```
 
 SSL certificates are automatically provisioned (takes up to 24 hours).
 
-### 10. Configure Email Scheduler (Optional)
+### 12. Configure Email Scheduler (Optional)
 
 For automated email notifications to area leaders:
 
@@ -295,15 +333,15 @@ gcloud iam service-accounts create cloud-scheduler-invoker \
     --display-name="Cloud Scheduler Email Invoker"
 
 # Grant permissions to test service
-gcloud run services add-iam-policy-binding cbc-test \
+gcloud run services add-iam-policy-binding <TEST-SERVICE> \
     --region=us-west1 \
-    --member="serviceAccount:cloud-scheduler-invoker@YOUR-PROJECT-ID.iam.gserviceaccount.com" \
+    --member="serviceAccount:cloud-scheduler-invoker@<YOUR-PROJECT-ID>.iam.gserviceaccount.com" \
     --role="roles/run.invoker"
 
 # Grant permissions to production service
-gcloud run services add-iam-policy-binding cbc-registration \
+gcloud run services add-iam-policy-binding <PROD-SERVICE> \
     --region=us-west1 \
-    --member="serviceAccount:cloud-scheduler-invoker@YOUR-PROJECT-ID.iam.gserviceaccount.com" \
+    --member="serviceAccount:cloud-scheduler-invoker@<YOUR-PROJECT-ID>.iam.gserviceaccount.com" \
     --role="roles/run.invoker"
 
 # Create scheduler jobs
@@ -329,10 +367,11 @@ gcloud run services add-iam-policy-binding cbc-registration \
 - Verify you have correct project permissions
 
 **"Index creation required" in logs**
-- Run `python utils/verify_indexes.py cbc-test` (or `cbc-register`)
+- Run `python utils/verify_indexes.py <TEST-DATABASE>` (or `<PROD-DATABASE>`)
 
 ### Where to Find More Information
 
+- **Deployment planning**: [DEPLOYMENT_WORKSHEET.md](DEPLOYMENT_WORKSHEET.md)
 - **Technical details**: [DEPLOYMENT_TECHNICAL_REFERENCE.md](DEPLOYMENT_TECHNICAL_REFERENCE.md)
 - **OAuth setup**: [OAUTH-SETUP.md](OAUTH-SETUP.md)
 - **Email system**: [EMAIL_SCHEDULER_TESTING.md](EMAIL_SCHEDULER_TESTING.md)
@@ -353,22 +392,31 @@ This system is designed to be portable. To use it for your club:
 
 ### Configuration Files to Update
 
-1. **`config/organization.py`** - All organization-specific settings
-2. **`config/admins.py`** - Admin email addresses
-3. **`config/areas.py`** - Count area definitions
-4. **`static/data/area_boundaries.json`** - Geographic boundaries
+1. **`config/cloud.py`** - GCP project, databases, services, region, and domain
+2. **`config/organization.py`** - Organization name, contact emails, and timezone
+3. **`config/admins.py`** - Admin email addresses
+4. **`config/areas.py`** - Count area definitions
+5. **`static/data/area_boundaries.json`** - Geographic boundaries
 
 ### Domain and Email Setup
 
-1. Update domain references in `config/organization.py`
-2. Configure OAuth consent screen with your domain
-3. Update DNS records for your domain
-4. Configure SMTP settings in `config/email_settings.py`
+1. Update `config/cloud.py` with:
+   - `GCP_PROJECT_ID` - Your Google Cloud project ID
+   - `BASE_DOMAIN` - Your organization's domain (e.g., `myclub.org`)
+   - `TEST_SERVICE` and `PRODUCTION_SERVICE` - Cloud Run service names
+   - `TEST_DATABASE` and `PRODUCTION_DATABASE` - Firestore database names
+   - `GCP_LOCATION` - Region (default: `us-west1`)
+2. Update domain references in `config/organization.py`
+3. Configure OAuth consent screen with your domain
+4. Update DNS records for your domain
+5. Configure SMTP settings in `config/email_settings.py`
 
 ### Deployment
 
 Follow the [Initial Setup](#initial-setup-first-time-only) steps using your:
 - Google Cloud project ID
+- Custom database names
+- Custom Cloud Run service names
 - Custom domain names
 - Organization email addresses
 
@@ -382,7 +430,7 @@ Follow the [Initial Setup](#initial-setup-first-time-only) steps using your:
 
 1. **Monitor daily**: Check logs for errors
 2. **Export regularly**: Download participant lists weekly
-3. **Test changes**: Always deploy to `cbc-test` first
+3. **Test changes**: Always deploy to test environment first
 4. **Back up data**: Firestore backs up automatically (see [BACKUPS.md](BACKUPS.md))
 
 ### Off-Season

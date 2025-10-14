@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Updated by Claude AI on 2025-09-23
+Updated by Claude AI on 2025-10-14
 Firestore Database Setup Script
 
 This script creates the required Firestore databases for the Christmas Bird Count
 registration system if they don't already exist.
 
 Databases created:
-- cbc-test: For test/development environment
-- cbc-register: For production environment
+- Test database: For test/development environment
+- Production database: For production environment
 
 Usage:
     python setup_databases.py [--dry-run] [--force] [--verbose]
@@ -30,15 +30,15 @@ import logging
 # Add the parent directory to Python path to import config
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config.cloud import GCP_PROJECT_ID, GCP_LOCATION, DATABASE_TEST, DATABASE_PRODUCTION
+from config.cloud import GCP_PROJECT_ID, GCP_LOCATION, TEST_DATABASE, PRODUCTION_DATABASE
 
 # Database configuration
 DATABASE_CONFIG = {
-    DATABASE_TEST: {
+    TEST_DATABASE: {
         'display_name': 'CBC Test Database',
         'description': 'Test/development database for Christmas Bird Count registration'
     },
-    DATABASE_PRODUCTION: {
+    PRODUCTION_DATABASE: {
         'display_name': 'CBC Production Database',
         'description': 'Production database for Christmas Bird Count registration'
     }
@@ -295,8 +295,8 @@ def main():
 Examples:
     python setup_databases.py --dry-run      # Preview what would be created
     python setup_databases.py               # Create missing databases with indexes
-    python setup_databases.py --test-only   # Only operate on cbc-test database
-    python setup_databases.py --production-only # Only operate on cbc-register database
+    python setup_databases.py --test-only   # Only operate on test database
+    python setup_databases.py --production-only # Only operate on production database
     python setup_databases.py --skip-indexes # Create databases only, no indexes
     python setup_databases.py --force       # Recreate all databases (with confirmation)
     python setup_databases.py --force --test-only # Safely recreate only test database
@@ -324,14 +324,14 @@ Examples:
     
     parser.add_argument(
         '--test-only',
-        action='store_true', 
-        help='Only operate on cbc-test database (safer for development)'
+        action='store_true',
+        help='Only operate on test database (safer for development)'
     )
-    
+
     parser.add_argument(
         '--production-only',
         action='store_true',
-        help='Only operate on cbc-register database (production operations)'
+        help='Only operate on production database (production operations)'
     )
     
     parser.add_argument(
@@ -379,11 +379,11 @@ Examples:
     # Filter databases based on command line flags
     databases_to_process = list(DATABASE_CONFIG.keys())
     if args.test_only:
-        databases_to_process = [db for db in databases_to_process if db == DATABASE_TEST]
-        logger.info(f"Operating in TEST-ONLY mode - only {DATABASE_TEST} database will be affected")
+        databases_to_process = [db for db in databases_to_process if db == TEST_DATABASE]
+        logger.info(f"Operating in TEST-ONLY mode - only {TEST_DATABASE} database will be affected")
     elif args.production_only:
-        databases_to_process = [db for db in databases_to_process if db == DATABASE_PRODUCTION]
-        logger.info(f"Operating in PRODUCTION-ONLY mode - only {DATABASE_PRODUCTION} database will be affected")
+        databases_to_process = [db for db in databases_to_process if db == PRODUCTION_DATABASE]
+        logger.info(f"Operating in PRODUCTION-ONLY mode - only {PRODUCTION_DATABASE} database will be affected")
     
     # Determine what needs to be done
     databases_to_create = []

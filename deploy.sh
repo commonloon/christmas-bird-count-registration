@@ -6,11 +6,34 @@ date
 # Default: both (without coverage)
 # --coverage flag: Enable coverage measurement on test server only
 
-# Get timezone from config/organization.py
-DISPLAY_TIMEZONE=$(python3 -c "import sys; sys.path.insert(0, '.'); from config.organization import DISPLAY_TIMEZONE; print(DISPLAY_TIMEZONE)" 2>/dev/null || echo "America/Vancouver")
+# Read configuration from config files
+echo "Reading configuration from config/cloud.py and config/organization.py..."
+PYTHON_CONFIG=$(python3 -c "
+import sys
+sys.path.insert(0, '.')
+from config.cloud import GCP_PROJECT_ID, GCP_LOCATION, TEST_SERVICE, PRODUCTION_SERVICE, TEST_BASE_URL, PRODUCTION_BASE_URL
+from config.organization import DISPLAY_TIMEZONE, FROM_EMAIL
+print(f'{GCP_PROJECT_ID}|{GCP_LOCATION}|{TEST_SERVICE}|{PRODUCTION_SERVICE}|{TEST_BASE_URL}|{PRODUCTION_BASE_URL}|{DISPLAY_TIMEZONE}|{FROM_EMAIL}')
+" 2>/dev/null)
 
-echo "Deploying with display timezone: $DISPLAY_TIMEZONE"
-echo "If this timezone is incorrect for your location, update DISPLAY_TIMEZONE in config/organization.py"
+if [ -z "$PYTHON_CONFIG" ]; then
+    echo "ERROR: Failed to read configuration from config files"
+    echo "Please ensure config/cloud.py and config/organization.py are properly configured"
+    exit 1
+fi
+
+# Parse configuration
+IFS='|' read -r GCP_PROJECT_ID GCP_LOCATION TEST_SERVICE PRODUCTION_SERVICE TEST_BASE_URL PRODUCTION_BASE_URL DISPLAY_TIMEZONE FROM_EMAIL <<< "$PYTHON_CONFIG"
+
+echo "Configuration loaded:"
+echo "  GCP Project: $GCP_PROJECT_ID"
+echo "  Region: $GCP_LOCATION"
+echo "  Test Service: $TEST_SERVICE"
+echo "  Production Service: $PRODUCTION_SERVICE"
+echo "  Test URL: $TEST_BASE_URL"
+echo "  Production URL: $PRODUCTION_BASE_URL"
+echo "  Display Timezone: $DISPLAY_TIMEZONE"
+echo "  From Email: $FROM_EMAIL"
 echo ""
 
 # Parse arguments
@@ -30,14 +53,15 @@ deploy() {
     local service=$1
     local env_vars=$2
     local enable_coverage=$3
+    local service_url=$4
 
     echo "Deploying to $service environment..."
 
     # Build environment variables string
-    local full_env_vars="$env_vars,GOOGLE_CLOUD_PROJECT=vancouver-cbc-registration,EMAIL_PROVIDER=smtp2go,FROM_EMAIL=cbc@naturevancouver.ca"
+    local full_env_vars="$env_vars,GOOGLE_CLOUD_PROJECT=$GCP_PROJECT_ID,EMAIL_PROVIDER=smtp2go,FROM_EMAIL=$FROM_EMAIL"
 
     # Only add ENABLE_COVERAGE for test server when --coverage flag is used
-    if [ "$service" == "cbc-test" ] && [ "$enable_coverage" == "true" ]; then
+    if [ "$service" == "$TEST_SERVICE" ] && [ "$enable_coverage" == "true" ]; then
         full_env_vars="$full_env_vars,ENABLE_COVERAGE=true"
         echo "⚠️  Coverage measurement ENABLED for test server"
     fi
@@ -45,14 +69,14 @@ deploy() {
     if gcloud run deploy $service \
         --source . \
         --platform managed \
-        --region us-west1 \
+        --region $GCP_LOCATION \
         --allow-unauthenticated \
         --set-env-vars="$full_env_vars" \
         --set-secrets="GOOGLE_CLIENT_ID=google-oauth-client-id:latest,GOOGLE_CLIENT_SECRET=google-oauth-client-secret:latest,SECRET_KEY=flask-secret-key:latest,SMTP2GO_USERNAME=smtp2go-username:latest,SMTP2GO_PASSWORD=smtp2go-password:latest"; then
 
         echo "$service deployment complete!"
-        echo "URL: https://$service.naturevancouver.ca"
-        echo "Logs: gcloud run services logs read $service --region=us-west1 --limit=50"
+        echo "URL: $service_url"
+        echo "Logs: gcloud run services logs read $service --region=$GCP_LOCATION --limit=50"
         echo ""
         return 0
     else
@@ -63,17 +87,17 @@ deploy() {
 
 case $DEPLOY_TARGET in
     test)
-        deploy "cbc-test" "FLASK_ENV=development,TEST_MODE=true,DISPLAY_TIMEZONE=$DISPLAY_TIMEZONE" "$ENABLE_COVERAGE"
+        deploy "$TEST_SERVICE" "FLASK_ENV=development,TEST_MODE=true,DISPLAY_TIMEZONE=$DISPLAY_TIMEZONE" "$ENABLE_COVERAGE" "$TEST_BASE_URL"
         exit $?
         ;;
     production|registration)
-        deploy "cbc-registration" "FLASK_ENV=production,DISPLAY_TIMEZONE=$DISPLAY_TIMEZONE" "false"
+        deploy "$PRODUCTION_SERVICE" "FLASK_ENV=production,DISPLAY_TIMEZONE=$DISPLAY_TIMEZONE" "false" "$PRODUCTION_BASE_URL"
         exit $?
         ;;
     both)
-        deploy "cbc-test" "FLASK_ENV=development,TEST_MODE=true,DISPLAY_TIMEZONE=$DISPLAY_TIMEZONE" "$ENABLE_COVERAGE"
+        deploy "$TEST_SERVICE" "FLASK_ENV=development,TEST_MODE=true,DISPLAY_TIMEZONE=$DISPLAY_TIMEZONE" "$ENABLE_COVERAGE" "$TEST_BASE_URL"
         TEST_RESULT=$?
-        deploy "cbc-registration" "FLASK_ENV=production,DISPLAY_TIMEZONE=$DISPLAY_TIMEZONE" "false"
+        deploy "$PRODUCTION_SERVICE" "FLASK_ENV=production,DISPLAY_TIMEZONE=$DISPLAY_TIMEZONE" "false" "$PRODUCTION_BASE_URL"
         PROD_RESULT=$?
         if [ $TEST_RESULT -eq 0 ] && [ $PROD_RESULT -eq 0 ]; then
             echo "Both deployments complete!"
@@ -86,9 +110,9 @@ case $DEPLOY_TARGET in
     *)
         echo "Invalid deployment target: $DEPLOY_TARGET"
         echo "Usage: $0 [test|production|registration|both] [--coverage]"
-        echo "  test        - Deploy to cbc-test only"
-        echo "  production  - Deploy to cbc-registration only"
-        echo "  registration- Deploy to cbc-registration only (synonym for production)"
+        echo "  test        - Deploy to $TEST_SERVICE only"
+        echo "  production  - Deploy to $PRODUCTION_SERVICE only"
+        echo "  registration- Deploy to $PRODUCTION_SERVICE only (synonym for production)"
         echo "  both        - Deploy to both environments (default)"
         echo ""
         echo "Options:"

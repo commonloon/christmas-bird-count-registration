@@ -1,8 +1,8 @@
-# Updated by Claude AI on 2025-10-12
+# Updated by Claude AI on 2025-10-14
 # Database configuration helper
 import os
 from google.cloud import firestore
-from config.cloud import DATABASE_TEST, DATABASE_PRODUCTION
+from config.cloud import TEST_DATABASE, PRODUCTION_DATABASE
 
 
 def get_database_config():
@@ -12,9 +12,9 @@ def get_database_config():
 
     # Determine database ID based on environment
     if flask_env == 'production' and not test_mode:
-        database_id = DATABASE_PRODUCTION
+        database_id = PRODUCTION_DATABASE
     else:
-        database_id = DATABASE_TEST
+        database_id = TEST_DATABASE
 
     return database_id
 

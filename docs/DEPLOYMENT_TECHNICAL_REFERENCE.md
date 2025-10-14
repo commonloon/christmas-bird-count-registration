@@ -1,7 +1,11 @@
 # CBC Registration - Technical Deployment Reference
-<!-- Created by Claude AI on 2025-10-12 -->
+<!-- Updated by Claude AI on 2025-10-14 -->
 
-This document provides technical details for developers and system administrators working with the CBC Registration system. For volunteer-friendly deployment procedures, see [DEPLOYMENT.md](DEPLOYMENT.md).
+This document provides technical details for developers and system administrators working with the CBC Registration system.
+
+**Before starting**, complete the [Deployment Planning Worksheet](DEPLOYMENT_WORKSHEET.md) to organize all configuration values for your installation.
+
+**For volunteer-friendly deployment procedures**, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ---
 
@@ -29,7 +33,7 @@ This document provides technical details for developers and system administrator
 - **Hosting**: Google Cloud Run (serverless containers)
 - **Email**: SMTP2GO (configurable provider)
 - **Scheduling**: Google Cloud Scheduler
-- **Region**: us-west1 (Oregon)
+- **Region**: Configurable via `GCP_LOCATION` in `config/cloud.py` (default: `us-west1` Oregon)
 
 ### Service Architecture
 
@@ -47,30 +51,34 @@ This document provides technical details for developers and system administrator
                   └─── Leader (/leader/*)
                        │
                        ▼
-         ┌──────────────────────────────┐
-         │   Google Cloud Run Service   │
-         │   (cbc-test / cbc-register)  │
-         └──────┬───────────────────────┘
+         ┌──────────────────────────────────────┐
+         │   Google Cloud Run Service           │
+         │   (TEST_SERVICE / PRODUCTION_SERVICE)│
+         └──────┬───────────────────────────────┘
                 │
-                ├──── Google Firestore (cbc-test / cbc-register)
+                ├──── Google Firestore (TEST_DATABASE / PRODUCTION_DATABASE)
                 │     └─── Year-based collections (participants_YYYY)
                 │
                 ├──── Google Secret Manager (OAuth credentials)
                 │
-                └──── SMTP2GO (Email delivery)
+                └──── SMTP Email Provider (configurable)
 ```
 
 ### Two-Environment Strategy
 
-**Test Environment (`cbc-test`)**:
-- Domain: `cbc-test.naturevancouver.ca`
-- Database: `cbc-test`
+**Configuration**: All environment-specific values defined in `config/cloud.py`
+
+**Test Environment**:
+- Service: `TEST_SERVICE` (configured in `config/cloud.py`)
+- Domain: `TEST_BASE_URL` (e.g., `https://cbc-test.myclub.org`)
+- Database: `TEST_DATABASE` (configured in `config/cloud.py`)
 - Purpose: Development, testing, training
 - `TEST_MODE=true`: Redirects all emails to test recipient
 
-**Production Environment (`cbc-register`)**:
-- Domain: `cbc-registration.naturevancouver.ca`
-- Database: `cbc-register`
+**Production Environment**:
+- Service: `PRODUCTION_SERVICE` (configured in `config/cloud.py`)
+- Domain: `PRODUCTION_BASE_URL` (e.g., `https://cbc-registration.myclub.org`)
+- Database: `PRODUCTION_DATABASE` (configured in `config/cloud.py`)
 - Purpose: Live registration
 - `TEST_MODE=false`: Normal email delivery
 
@@ -80,28 +88,39 @@ This document provides technical details for developers and system administrator
 
 ### Environment Variables
 
-Both Cloud Run services use these environment variables:
+Both Cloud Run services use these environment variables (set by `deploy.sh` from config files):
 
 ```bash
 # Application environment
 FLASK_ENV=production|development
 TEST_MODE=true|false
-GOOGLE_CLOUD_PROJECT=vancouver-cbc-registration
-DISPLAY_TIMEZONE=America/Vancouver  # Configurable
+GOOGLE_CLOUD_PROJECT=<YOUR-PROJECT-ID>    # From config/cloud.py: GCP_PROJECT_ID
+DISPLAY_TIMEZONE=<YOUR-TIMEZONE>          # From config/organization.py: DISPLAY_TIMEZONE
+FROM_EMAIL=<YOUR-EMAIL>                   # From config/organization.py: FROM_EMAIL
 
-# Secrets (mounted from Secret Manager)
+# Secrets (mounted from Secret Manager - standard names across all installations)
 GOOGLE_CLIENT_ID=/secrets/google-oauth-client-id
 GOOGLE_CLIENT_SECRET=/secrets/google-oauth-client-secret
 SECRET_KEY=/secrets/flask-secret-key
+SMTP2GO_USERNAME=/secrets/smtp2go-username          # Or other provider
+SMTP2GO_PASSWORD=/secrets/smtp2go-password          # Or other provider
 ```
 
 ### Configuration Files
 
+**Cloud Platform Settings** (`config/cloud.py`):
+- GCP project ID and region
+- Cloud Run service names (test and production)
+- Firestore database names (test and production)
+- Base domain for URL construction
+- Secret Manager secret names (standard across installations)
+
 **Organization Settings** (`config/organization.py`):
 - Organization name and contact info
-- Domain URLs (dynamic based on environment)
+- Count event details and URLs
 - Display timezone for email timestamps
 - Test recipient email address
+- Email sender configuration
 
 **Admin Configuration** (`config/admins.py`):
 - Production admin email whitelist
@@ -110,13 +129,15 @@ SECRET_KEY=/secrets/flask-secret-key
 
 **Database Configuration** (`config/database.py`):
 - Automatic database selection based on environment
-- `TEST_MODE` or `FLASK_ENV=development` → `cbc-test`
-- Otherwise → `cbc-register`
+- Reads `TEST_DATABASE` and `PRODUCTION_DATABASE` from `config/cloud.py`
+- `TEST_MODE` or `FLASK_ENV=development` → test database
+- Otherwise → production database
 
 **Area Definitions** (`config/areas.py`):
 - Static area configuration (no year dependency)
 - Admin-assignment-only flags
 - Dynamic area code validation
+- Supports any naming scheme (letters, numbers, custom codes)
 
 ---
 
@@ -124,14 +145,15 @@ SECRET_KEY=/secrets/flask-secret-key
 
 ### Multi-Database Design
 
-The application uses **named databases** (not the default database):
+The application uses **named databases** (not the default database), configured in `config/cloud.py`:
 
 ```python
 from config.database import get_firestore_client
 
 db, database_id = get_firestore_client()
-# Returns: (firestore.Client(database='cbc-test'), 'cbc-test')
-# or:      (firestore.Client(database='cbc-register'), 'cbc-register')
+# Returns: (firestore.Client(database=TEST_DATABASE), TEST_DATABASE)
+# or:      (firestore.Client(database=PRODUCTION_DATABASE), PRODUCTION_DATABASE)
+# Database names from config/cloud.py: TEST_DATABASE and PRODUCTION_DATABASE
 ```
 
 **Critical**: Always use `firestore.Client(database=database_name)`, never `firestore.Client()` (which uses the default database).
@@ -141,7 +163,7 @@ db, database_id = get_firestore_client()
 Data is organized by year to support multi-year historical access:
 
 ```
-cbc-test/
+<TEST-DATABASE>/                    # e.g., my-club-test
 ├── participants_2025/
 │   ├── doc1 (first_name, last_name, email, is_leader, ...)
 │   ├── doc2
@@ -272,7 +294,8 @@ Without the index, Firestore returns an error with a URL to create it manually.
 
 **Automated via `verify_indexes.py`**:
 ```bash
-python utils/verify_indexes.py cbc-test
+python utils/verify_indexes.py <TEST-DATABASE>      # Example: my-club-test
+python utils/verify_indexes.py <PROD-DATABASE>      # Example: my-club-register
 ```
 
 The script:
@@ -341,10 +364,12 @@ function handleCredentialResponse(response) {
 
 1. **Application Type**: Web application
 2. **Authorized JavaScript Origins**:
-   - `https://cbc-test.naturevancouver.ca`
-   - `https://cbc-registration.naturevancouver.ca`
+   - `<TEST_BASE_URL>` (e.g., `https://cbc-test.myclub.org`)
+   - `<PRODUCTION_BASE_URL>` (e.g., `https://cbc-registration.myclub.org`)
 3. **Authorized Redirect URIs**: **None** (not used with Identity Services)
 4. **OAuth Consent Screen**: Must be **published** (not in testing mode)
+
+**Note**: URLs are automatically constructed from `SERVICE_*` + `BASE_DOMAIN` in `config/cloud.py`
 
 ### Secret Manager Storage
 
@@ -402,7 +427,7 @@ CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 app:app
 
 ```bash
 #!/bin/bash
-# Reads DISPLAY_TIMEZONE from config/organization.py
+# Reads configuration from config/cloud.py and config/organization.py
 # Deploys to specified environment(s)
 
 ./deploy.sh test        # Test only
@@ -411,26 +436,29 @@ CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 app:app
 ```
 
 **What the script does**:
-1. Extracts timezone from `config/organization.py`
-2. Builds Docker image via Cloud Build
-3. Deploys to Cloud Run with environment variables
-4. Mounts secrets from Secret Manager
-5. Enables unauthenticated access (app handles auth)
-6. Sets region to `us-west1`
+1. Reads configuration from `config/cloud.py` and `config/organization.py`
+2. Displays loaded configuration (project, region, services, domains)
+3. Builds Docker image via Cloud Build
+4. Deploys to Cloud Run with environment variables
+5. Mounts secrets from Secret Manager (standard names)
+6. Enables unauthenticated access (app handles auth)
+7. Uses region from `GCP_LOCATION` in config
 
 ### Manual Deployment
 
 ```bash
-gcloud run deploy cbc-test \
+gcloud run deploy <SERVICE-NAME> \
     --source . \
     --platform managed \
-    --region us-west1 \
+    --region <GCP-LOCATION> \
     --allow-unauthenticated \
-    --set-env-vars FLASK_ENV=development,TEST_MODE=true,DISPLAY_TIMEZONE=America/Vancouver \
+    --set-env-vars FLASK_ENV=development,TEST_MODE=true,DISPLAY_TIMEZONE=<YOUR-TIMEZONE>,GOOGLE_CLOUD_PROJECT=<YOUR-PROJECT-ID> \
     --update-secrets GOOGLE_CLIENT_ID=google-oauth-client-id:latest \
     --update-secrets GOOGLE_CLIENT_SECRET=google-oauth-client-secret:latest \
     --update-secrets SECRET_KEY=flask-secret-key:latest
 ```
+
+**Note**: Replace `<SERVICE-NAME>`, `<GCP-LOCATION>`, `<YOUR-TIMEZONE>`, and `<YOUR-PROJECT-ID>` with values from your `config/cloud.py` and `config/organization.py` files.
 
 ### Service Configuration
 
@@ -483,10 +511,15 @@ Cloud Scheduler Job → OIDC Token → Cloud Run Route
 gcloud iam service-accounts create cloud-scheduler-invoker \
     --display-name="Cloud Scheduler Email Invoker"
 
-# Grant Cloud Run Invoker role
-gcloud run services add-iam-policy-binding cbc-test \
-    --region=us-west1 \
-    --member="serviceAccount:cloud-scheduler-invoker@PROJECT.iam.gserviceaccount.com" \
+# Grant Cloud Run Invoker role (for each service)
+gcloud run services add-iam-policy-binding <TEST-SERVICE> \
+    --region=<GCP-LOCATION> \
+    --member="serviceAccount:cloud-scheduler-invoker@<YOUR-PROJECT-ID>.iam.gserviceaccount.com" \
+    --role="roles/run.invoker"
+
+gcloud run services add-iam-policy-binding <PROD-SERVICE> \
+    --region=<GCP-LOCATION> \
+    --member="serviceAccount:cloud-scheduler-invoker@<YOUR-PROJECT-ID>.iam.gserviceaccount.com" \
     --role="roles/run.invoker"
 ```
 
@@ -501,14 +534,14 @@ gcloud run services add-iam-policy-binding cbc-test \
 
 **Manual Job Creation**:
 ```bash
-gcloud scheduler jobs create http cbc-test-team-updates-morning \
-    --location=us-west1 \
+gcloud scheduler jobs create http <SERVICE-NAME>-team-updates-morning \
+    --location=<GCP-LOCATION> \
     --schedule="0 6 * * *" \
-    --time-zone="America/Vancouver" \
-    --uri="https://cbc-test.naturevancouver.ca/scheduler/team-updates" \
+    --time-zone="<YOUR-TIMEZONE>" \
+    --uri="<TEST_BASE_URL>/scheduler/team-updates" \
     --http-method=POST \
-    --oidc-service-account-email="cloud-scheduler-invoker@PROJECT.iam.gserviceaccount.com" \
-    --oidc-token-audience="https://cbc-test.naturevancouver.ca"
+    --oidc-service-account-email="cloud-scheduler-invoker@<YOUR-PROJECT-ID>.iam.gserviceaccount.com" \
+    --oidc-token-audience="<TEST_BASE_URL>"
 ```
 
 ### OIDC Authentication
@@ -629,16 +662,19 @@ const userName = {{ participant.first_name|tojson }};
 
 ### Database Connection Errors
 
-**Error**: `Database 'cbc-test' does not exist`
+**Error**: `Database '<DATABASE-NAME>' does not exist`
 
 **Solution**:
 ```bash
+# Ensure config/cloud.py has correct database names
 python utils/setup_databases.py
 ```
 
-**Cause**: Databases not created or wrong database name in code.
+**Cause**: Databases not created or wrong database name in `config/cloud.py`.
 
-**Prevention**: Always use `get_firestore_client()` helper function.
+**Prevention**:
+- Always use `get_firestore_client()` helper function
+- Verify `TEST_DATABASE` and `PRODUCTION_DATABASE` in `config/cloud.py`
 
 ---
 
@@ -648,8 +684,9 @@ python utils/setup_databases.py
 
 **Solution**:
 ```bash
-# Automated
-python utils/verify_indexes.py cbc-test
+# Automated (use your database name from config/cloud.py)
+python utils/verify_indexes.py <TEST-DATABASE>
+python utils/verify_indexes.py <PROD-DATABASE>
 
 # Manual (click URL in error message)
 https://console.firebase.google.com/project/.../indexes?create_composite=...
@@ -657,7 +694,7 @@ https://console.firebase.google.com/project/.../indexes?create_composite=...
 
 **Cause**: Missing composite index for multi-field query.
 
-**Prevention**: Run `verify_indexes.py` at season start.
+**Prevention**: Run `verify_indexes.py` for both databases at season start.
 
 ---
 
@@ -711,14 +748,14 @@ gcloud builds log BUILD_ID
 
 **Diagnosis**:
 ```bash
-# Check scheduler job status
-gcloud scheduler jobs describe cbc-test-team-updates-morning --location=us-west1
+# Check scheduler job status (use your values from config)
+gcloud scheduler jobs describe <SERVICE-NAME>-team-updates-morning --location=<GCP-LOCATION>
 
 # Check recent executions
-gcloud scheduler jobs describe JOB_NAME --location=us-west1 | grep "lastAttemptTime\|status"
+gcloud scheduler jobs describe <JOB-NAME> --location=<GCP-LOCATION> | grep "lastAttemptTime\|status"
 
 # Check application logs
-gcloud run services logs read cbc-test --region=us-west1 --limit=100 | grep "email\|scheduler"
+gcloud run services logs read <SERVICE-NAME> --region=<GCP-LOCATION> --limit=100 | grep "email\|scheduler"
 ```
 
 **Common Causes**:
@@ -735,8 +772,8 @@ gcloud run services logs read cbc-test --region=us-west1 --limit=100 | grep "ema
 
 **Diagnosis**:
 ```bash
-# Check if indexes are building
-gcloud firestore indexes composite list --database=cbc-test
+# Check if indexes are building (use your database name)
+gcloud firestore indexes composite list --database=<TEST-DATABASE>
 
 # Look for STATE=CREATING (indexes still building)
 ```
@@ -792,9 +829,9 @@ for p in participants:
 Firestore backups configured via `BACKUPS.md`:
 
 ```bash
-# Manual backup
-gcloud firestore export gs://YOUR-BUCKET/backup-$(date +%Y%m%d) \
-    --database=cbc-test
+# Manual backup (use your database name from config/cloud.py)
+gcloud firestore export gs://<YOUR-BUCKET>/backup-$(date +%Y%m%d) \
+    --database=<TEST-DATABASE>
 
 # Automated daily backups via Cloud Scheduler
 # See BACKUPS.md for setup instructions
@@ -821,15 +858,17 @@ gcloud firestore export gs://YOUR-BUCKET/backup-$(date +%Y%m%d) \
 
 ### Local Development
 
-**Note**: Cannot run locally due to Google Cloud service dependencies (Firestore, Secret Manager). All development must be done on `cbc-test` deployment.
+**Note**: Cannot run locally due to Google Cloud service dependencies (Firestore, Secret Manager). All development must be done on test deployment.
 
 **Workflow**:
 1. Make code changes locally
 2. Deploy to test: `./deploy.sh test`
-3. Test at `cbc-test.naturevancouver.ca`
-4. View logs: `gcloud run services logs tail cbc-test`
+3. Test at `<TEST_BASE_URL>` (your test domain from `config/cloud.py`)
+4. View logs: `gcloud run services logs tail <TEST-SERVICE> --region=<GCP-LOCATION>`
 5. Iterate until working
 6. Deploy to production: `./deploy.sh production`
+
+**Configuration**: Update `config/cloud.py` with your project and service names before deploying.
 
 ### Testing Strategy
 
@@ -869,6 +908,7 @@ docs/                   # Documentation
 
 ## Additional Resources
 
+- **Deployment Planning Worksheet**: [DEPLOYMENT_WORKSHEET.md](DEPLOYMENT_WORKSHEET.md)
 - **Main Deployment Guide**: [DEPLOYMENT.md](DEPLOYMENT.md)
 - **OAuth Setup**: [OAUTH-SETUP.md](OAUTH-SETUP.md)
 - **Email Testing**: [EMAIL_SCHEDULER_TESTING.md](EMAIL_SCHEDULER_TESTING.md)
