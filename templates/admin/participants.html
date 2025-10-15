@@ -179,6 +179,7 @@
                                 </div>
                                 <div class="skill-edit" style="display: none;">
                                     <select class="form-select form-select-sm skill-input">
+                                        <option value="Newbie" {% if participant.skill_level == 'Newbie' %}selected{% endif %}>Newbie</option>
                                         <option value="Beginner" {% if participant.skill_level == 'Beginner' %}selected{% endif %}>Beginner</option>
                                         <option value="Intermediate" {% if participant.skill_level == 'Intermediate' %}selected{% endif %}>Intermediate</option>
                                         <option value="Expert" {% if participant.skill_level == 'Expert' %}selected{% endif %}>Expert</option>

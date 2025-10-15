@@ -1,9 +1,34 @@
 # Test Execution Guide
-{# Updated by Claude AI on 2025-10-07 #}
+{# Updated by Claude AI on 2025-10-15 #}
 
 ## Overview
 
 This document provides instructions for running the Christmas Bird Count registration test suite. The test suite validates critical workflows, data integrity, and admin operations against cloud environments.
+
+### Test Suite Organization
+
+The test suite is organized into three main categories:
+
+**Unit Tests** (`tests/unit/`):
+- Fast local tests using Flask test client
+- No browser, no network, no OAuth required
+- Validates UI conformance (dropdowns, form fields, table columns)
+- Tests model logic and data transformations
+- Runs in seconds, ideal for development feedback
+
+**Integration Tests** (`tests/`):
+- Selenium-based tests against deployed servers
+- Real browser automation with OAuth
+- Tests complete workflows and user interactions
+- Validates JavaScript behavior and AJAX operations
+- Runs in minutes, comprehensive validation
+
+**JavaScript Tests** (`tests/*.test.js`):
+- Jest-based frontend unit tests
+- Validates client-side validation functions
+- Tests JavaScript utilities and form behaviors
+- No server required, runs locally
+- Fast execution for frontend development
 
 ## Prerequisites
 
@@ -81,6 +106,33 @@ npm run test:email-validation:verbose
 # Or run Jest directly
 npx jest email_validation.test.js
 ```
+
+#### Unit Tests (Local Flask Tests)
+```bash
+# Run all unit tests (fast, local execution, no server required)
+pytest tests/unit/ -v
+
+# Run UI conformance tests specifically
+pytest tests/unit/test_ui_conformance.py -v
+
+# Run specific UI test classes
+pytest tests/unit/test_ui_conformance.py::TestRegistrationFormUI -v
+pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI -v
+
+# Run model tests
+pytest tests/unit/test_participant_model.py -v
+pytest tests/unit/test_removal_log_model.py -v
+
+# Run all unit tests with coverage
+pytest tests/unit/ --cov=app --cov=models --cov=routes -v
+```
+
+**Unit Test Characteristics:**
+- ⚡ **Fast execution** (no browser, no network, no OAuth)
+- 🔧 **Local development** (runs against local code, not deployed server)
+- 📋 **UI validation** (dropdown options, form fields, table columns)
+- 🧪 **Model testing** (database operations, data transformations)
+- 💰 **No rate limits** (purely local execution)
 
 ### Test Categories
 
@@ -516,6 +568,180 @@ python tests/utils/update_csv_expectations.py
 ```
 
 ## Common Test Scenarios
+
+### UI Conformance Testing (Unit Tests)
+
+**Overview**: UI conformance tests validate that rendered HTML templates match the SPECIFICATION.md using Flask test client + BeautifulSoup. These tests run locally without a browser and connect to the real cbc-test database for data-driven validation.
+
+**Characteristics**:
+- ⚡ **Fast**: 46 tests in ~3.5 minutes
+- 🔧 **Local**: No browser, no OAuth, runs against local Flask app
+- 🎯 **Comprehensive**: 8 test classes covering 5 UI pages
+- 💾 **Data-driven**: Uses real test data from `tests/fixtures/test_participants_2025.csv`
+- 🐛 **Bug detection**: Catches template errors like missing dropdown options
+
+#### Run All UI Conformance Tests
+```bash
+# Run complete suite (46 tests)
+pytest tests/unit/test_ui_conformance.py -v
+
+# Run with coverage report
+pytest tests/unit/test_ui_conformance.py --cov=templates --cov=routes -v
+
+# Run fast (no verbose output)
+pytest tests/unit/test_ui_conformance.py -q
+```
+
+#### Registration Form Tests (17 tests)
+```bash
+# All registration form tests
+pytest tests/unit/test_ui_conformance.py::TestRegistrationFormUI -v
+
+# Dropdown validation tests
+pytest tests/unit/test_ui_conformance.py::TestRegistrationFormUI::test_skill_level_dropdown_has_all_four_options -v
+pytest tests/unit/test_ui_conformance.py::TestRegistrationFormUI::test_experience_dropdown_has_correct_options -v
+pytest tests/unit/test_ui_conformance.py::TestRegistrationFormUI::test_area_dropdown_has_all_public_areas -v
+pytest tests/unit/test_ui_conformance.py::TestRegistrationFormUI::test_area_dropdown_has_unassigned_option -v
+
+# Required field tests
+pytest tests/unit/test_ui_conformance.py::TestRegistrationFormUI::test_required_fields_present -v
+pytest tests/unit/test_ui_conformance.py::TestRegistrationFormUI::test_skill_level_dropdown_is_required -v
+pytest tests/unit/test_ui_conformance.py::TestRegistrationFormUI::test_area_dropdown_is_required -v
+
+# UI element presence tests
+pytest tests/unit/test_ui_conformance.py::TestRegistrationFormUI::test_guide_links_present -v
+pytest tests/unit/test_ui_conformance.py::TestRegistrationFormUI::test_privacy_section_present -v
+pytest tests/unit/test_ui_conformance.py::TestRegistrationFormUI::test_map_div_present -v
+
+# Label and field tests
+pytest tests/unit/test_ui_conformance.py::TestRegistrationFormUI::test_phone_field_label_is_cell_phone -v
+pytest tests/unit/test_ui_conformance.py::TestRegistrationFormUI::test_optional_fields_present -v
+```
+
+#### Admin Participants Page Tests (11 tests)
+```bash
+# All admin participants tests
+pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI -v
+
+# Inline edit dropdown tests (validates bug fixes)
+pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_edit_skill_level_dropdown_includes_newbie -v
+pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_edit_experience_is_dropdown_not_input -v
+pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_edit_experience_dropdown_has_correct_options -v
+
+# Table structure tests
+pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_table_has_all_required_columns -v
+pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_participant_table_displays_phone_as_cell_phone -v
+
+# Modal structure tests
+pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_delete_modal_structure -v
+pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_leader_reassignment_modal_structure -v
+
+# Navigation and UI elements
+pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_quick_actions_buttons_present -v
+pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_year_badge_displays_current_year -v
+pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_breadcrumb_navigation_present -v
+```
+
+#### Admin Leaders Page Tests (2 tests)
+```bash
+# All admin leaders tests
+pytest tests/unit/test_ui_conformance.py::TestAdminLeadersUI -v
+
+# Table validation
+pytest tests/unit/test_ui_conformance.py::TestAdminLeadersUI::test_leaders_table_has_required_columns -v
+pytest tests/unit/test_ui_conformance.py::TestAdminLeadersUI::test_potential_leaders_table_present -v
+```
+
+#### Admin Unassigned Page Tests (3 tests)
+```bash
+# All unassigned page tests (critical workflow)
+pytest tests/unit/test_ui_conformance.py::TestAdminUnassignedPage -v
+
+# Individual tests
+pytest tests/unit/test_ui_conformance.py::TestAdminUnassignedPage::test_unassigned_page_loads -v
+pytest tests/unit/test_ui_conformance.py::TestAdminUnassignedPage::test_unassigned_page_has_table -v
+pytest tests/unit/test_ui_conformance.py::TestAdminUnassignedPage::test_unassigned_table_has_assignment_controls -v
+```
+
+#### CSV Export Tests (3 tests)
+```bash
+# All CSV export validation tests (critical for data integrity)
+pytest tests/unit/test_ui_conformance.py::TestCSVExport -v
+
+# Individual tests
+pytest tests/unit/test_ui_conformance.py::TestCSVExport::test_csv_export_returns_csv_content_type -v
+pytest tests/unit/test_ui_conformance.py::TestCSVExport::test_csv_export_has_filename_with_year -v
+pytest tests/unit/test_ui_conformance.py::TestCSVExport::test_csv_export_has_required_headers -v
+```
+
+#### Data-Driven Rendering Tests (6 tests)
+```bash
+# All data-driven tests (validates actual database rendering)
+pytest tests/unit/test_ui_conformance.py::TestDataDrivenParticipantRendering -v
+
+# Individual rendering validation tests
+pytest tests/unit/test_ui_conformance.py::TestDataDrivenParticipantRendering::test_participants_render_with_data -v
+pytest tests/unit/test_ui_conformance.py::TestDataDrivenParticipantRendering::test_participant_names_display_correctly -v
+pytest tests/unit/test_ui_conformance.py::TestDataDrivenParticipantRendering::test_skill_level_badges_render -v
+pytest tests/unit/test_ui_conformance.py::TestDataDrivenParticipantRendering::test_feeder_participants_have_special_styling -v
+pytest tests/unit/test_ui_conformance.py::TestDataDrivenParticipantRendering::test_equipment_icons_display -v
+pytest tests/unit/test_ui_conformance.py::TestDataDrivenParticipantRendering::test_leader_badges_display_correctly -v
+```
+
+#### Info Pages and Dashboard Tests (6 tests)
+```bash
+# Info pages (3 tests)
+pytest tests/unit/test_ui_conformance.py::TestInfoPages -v
+pytest tests/unit/test_ui_conformance.py::TestInfoPages::test_area_leader_info_page_accessible -v
+pytest tests/unit/test_ui_conformance.py::TestInfoPages::test_scribe_info_page_accessible -v
+pytest tests/unit/test_ui_conformance.py::TestInfoPages::test_area_leader_info_preserves_form_data -v
+
+# Dashboard (3 tests)
+pytest tests/unit/test_ui_conformance.py::TestDashboardUI -v
+pytest tests/unit/test_ui_conformance.py::TestDashboardUI::test_dashboard_loads_for_admin -v
+pytest tests/unit/test_ui_conformance.py::TestDashboardUI::test_dashboard_has_statistics_section -v
+pytest tests/unit/test_ui_conformance.py::TestDashboardUI::test_dashboard_has_year_selector -v
+```
+
+#### Bug Detection Examples
+
+These tests would catch:
+```bash
+# Missing "Newbie" option (bug we fixed)
+pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_edit_skill_level_dropdown_includes_newbie -v
+
+# Wrong area codes in dropdown
+pytest tests/unit/test_ui_conformance.py::TestRegistrationFormUI::test_area_dropdown_has_all_public_areas -v
+
+# Missing CSV headers (data integrity)
+pytest tests/unit/test_ui_conformance.py::TestCSVExport::test_csv_export_has_required_headers -v
+
+# Wrong phone label ("Phone" vs "Cell Phone")
+pytest tests/unit/test_ui_conformance.py::TestRegistrationFormUI::test_phone_field_label_is_cell_phone -v
+pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_participant_table_displays_phone_as_cell_phone -v
+
+# Missing modals or buttons
+pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_delete_modal_structure -v
+pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_leader_reassignment_modal_structure -v
+```
+
+#### What These Tests Validate
+
+✅ **These tests check**:
+- Server-rendered HTML structure and content
+- Hidden elements (inline edit controls that JavaScript toggles)
+- Dropdown options match specification
+- Table structures and column headers
+- Modal HTML structure and buttons
+- Data rendering with actual database records
+- Bootstrap styling classes applied correctly
+- Configuration values (areas from `config/areas.py`)
+
+❌ **These tests DON'T check** (use Selenium for these):
+- JavaScript execution (button clicks, AJAX requests)
+- Dynamic interactions (form submission, edit mode toggle)
+- Visual rendering (CSS, layout, responsiveness)
+- Browser-specific behavior
 
 ### Minimal Functional Test Suite Execution
 ```bash

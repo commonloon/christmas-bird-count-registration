@@ -8,6 +8,11 @@ pytest-xdist>=3.3.0         # Parallel test execution
 pytest-mock>=3.11.0         # Mocking support
 pytest-cov>=4.1.0           # Coverage integration with pytest
 
+# Flask and extensions (required for unit tests that import the app)
+Flask>=3.0.0
+Flask-WTF>=1.2.0            # CSRF protection and forms
+Flask-Limiter>=3.5.0        # Rate limiting
+
 # Browser automation
 selenium>=4.15.0
 webdriver-manager>=4.0.0    # Automatic driver management
@@ -38,7 +43,7 @@ lxml>=4.9.0
 pytz>=2023.3               # Timezone handling for testing
 
 # Configuration and environment
-python-dotenv>=1.0.0       # Environment variable management
+python-dotenv>=1.0.0        # Environment variable management (also required by Flask app)
 
 # Logging and monitoring
 colorlog>=6.7.0            # Colored log output

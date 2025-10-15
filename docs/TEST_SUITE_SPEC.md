@@ -598,6 +598,123 @@ dashboard_selectors = [
 - Implement security testing and race condition validation
 - Develop performance testing under load conditions
 
+### ✅ **UI Conformance Tests (Completed 2025-10-15)**
+**Comprehensive Template and UI Element Validation (46 tests - All Passing)**:
+- **Test File**: `tests/unit/test_ui_conformance.py`
+- **Approach**: Flask test client + BeautifulSoup + real cbc-test database connection
+- **Test Data**: Uses actual participants from `tests/fixtures/test_participants_2025.csv` loaded via session fixture
+- **Execution Time**: 46 tests in ~3.5 minutes (includes database loading)
+- **Purpose**: Validate that rendered HTML conforms to SPECIFICATION.md without requiring browser automation
+
+**Test Architecture**:
+- **No Browser Required**: Uses Flask test client to render templates locally
+- **Real Database Connection**: Connects to cbc-test Firestore database for realistic data
+- **Session-Scoped Data Loading**: Test data loaded once per test session for efficiency
+- **BeautifulSoup Parsing**: Validates HTML structure, element presence, and attributes
+- **Hidden Element Testing**: Validates inline edit controls that JavaScript toggles visibility
+
+**Coverage by Page (8 test classes)**:
+
+1. **TestRegistrationFormUI (17 tests)** - Public registration page (`/`)
+   - Dropdown validation: Skill level (4 options), Experience (3 options), Areas (24 public areas A-X)
+   - UNASSIGNED option present with "wherever needed most" text
+   - Area Y (admin-only) excluded from public dropdown
+   - Required field validation and attribute checking
+   - Guide links present with target="_blank"
+   - Privacy Act compliance section present
+   - Interactive map div structure validation
+
+2. **TestAdminParticipantsUI (11 tests)** - Admin participants page (`/admin/participants`)
+   - Inline edit dropdowns (skill level includes Newbie, experience has correct options)
+   - Table column validation (Cell Phone, not Phone)
+   - Quick action buttons (Manage Unassigned, Manage Leaders, Export CSV)
+   - Delete modal structure (textarea, warning, submit button)
+   - Leader reassignment modal (move as leader/team member buttons)
+   - Year badge displays selected year
+   - Breadcrumb navigation present
+
+3. **TestAdminLeadersUI (2 tests)** - Admin leaders page (`/admin/leaders`)
+   - Leaders table has all required columns including Secondary Phone
+   - Potential Leaders section exists
+
+4. **TestInfoPages (3 tests)** - Information pages
+   - Area leader info page accessible (`/area-leader-info`)
+   - Scribe info page accessible (`/scribe-info`)
+   - Form data preservation via query parameters
+
+5. **TestDashboardUI (3 tests)** - Admin dashboard (`/admin/`)
+   - Dashboard loads successfully for admin users
+   - Statistics cards present
+   - Year selector/badge present
+
+6. **TestAdminUnassignedPage (3 tests)** - Admin unassigned page (`/admin/unassigned`)
+   - Page loads successfully
+   - Table structure present
+   - Assignment controls or "no unassigned" message
+
+7. **TestCSVExport (3 tests)** - CSV export validation (`/admin/export_csv`)
+   - Returns CSV content type
+   - Filename includes year (2025)
+   - All required headers present (first_name, last_name, email, phone, skill_level, etc.)
+
+8. **TestDataDrivenParticipantRendering (6 tests)** - Data rendering validation
+   - Participants render with actual database data
+   - Names display correctly (escaped, non-empty, not "None")
+   - Skill level badges have correct Bootstrap classes (bg-success, bg-primary, bg-info, bg-secondary)
+   - FEEDER participants have table-info class styling
+   - Equipment icons display (binoculars icon, scope image)
+   - Leader badges display with bg-success class
+
+**Key Validations**:
+- **Configuration Validation**: All 24 public areas from `config/areas.py` render correctly
+- **Template Bug Detection**: Would catch missing options like the "Newbie" bug we fixed
+- **Data Integrity**: CSV export includes all required fields per specification
+- **UI Element Presence**: Modals, buttons, navigation, badges all validated
+- **Accessibility**: Labels, required attributes, proper HTML structure
+- **Bootstrap Styling**: Badge colors, table classes, card structure
+
+**What These Tests Validate**:
+- ✅ Server-rendered HTML structure and content
+- ✅ Hidden elements that JavaScript shows/hides (inline edit controls)
+- ✅ Dropdown options match specification
+- ✅ Table structures and column headers
+- ✅ Modal HTML structure
+- ✅ Data rendering with actual database records
+- ✅ Bootstrap styling classes applied correctly
+
+**What These Tests Don't Validate** (would require Selenium):
+- ❌ JavaScript execution (button clicks, AJAX requests)
+- ❌ Dynamic interactions (form submission, edit mode toggle)
+- ❌ Visual rendering (CSS, layout, responsiveness)
+- ❌ Browser-specific behavior
+
+**Bug Prevention Examples**:
+- Missing "Newbie" from skill level dropdown (caught by test)
+- Wrong area codes in dropdown (would fail area validation test)
+- Missing CSV headers (caught by CSV export test)
+- Wrong phone label ("Phone" vs "Cell Phone") - caught by label test
+- Missing modals or buttons (caught by structure tests)
+
+**Test Execution**:
+```bash
+# Run all UI conformance tests
+python -m pytest tests/unit/test_ui_conformance.py -v
+
+# Run specific test class
+python -m pytest tests/unit/test_ui_conformance.py::TestRegistrationFormUI -v
+
+# Run with coverage
+python -m pytest tests/unit/test_ui_conformance.py --cov=templates --cov=routes
+```
+
+**Maintenance Benefits**:
+- Fast feedback (~3.5 min for 46 tests)
+- No browser setup required
+- Tests actual rendered HTML from real templates
+- Catches template errors before deployment
+- Validates against real database data
+- Easy to add new tests for new UI elements
+
 ### 🔧 **Test Framework Improvements**
 **Reliability Enhancements**:
 - Robust element clicking with scroll-into-view and wait conditions

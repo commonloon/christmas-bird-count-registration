@@ -8,7 +8,7 @@ date
 
 # Read configuration from config files
 echo "Reading configuration from config/cloud.py and config/organization.py..."
-PYTHON_CONFIG=$(python3 -c "
+PYTHON_CONFIG=$(python -c "
 import sys
 sys.path.insert(0, '.')
 from config.cloud import GCP_PROJECT_ID, GCP_LOCATION, TEST_SERVICE, PRODUCTION_SERVICE, TEST_BASE_URL, PRODUCTION_BASE_URL
