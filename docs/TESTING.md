@@ -574,15 +574,16 @@ python tests/utils/update_csv_expectations.py
 **Overview**: UI conformance tests validate that rendered HTML templates match the SPECIFICATION.md using Flask test client + BeautifulSoup. These tests run locally without a browser and connect to the real cbc-test database for data-driven validation.
 
 **Characteristics**:
-- ⚡ **Fast**: 46 tests in ~3.5 minutes
+- ⚡ **Fast**: 77 tests in ~4.5 minutes
 - 🔧 **Local**: No browser, no OAuth, runs against local Flask app
-- 🎯 **Comprehensive**: 8 test classes covering 5 UI pages
+- 🎯 **Comprehensive**: 11 test classes covering all major UI pages
 - 💾 **Data-driven**: Uses real test data from `tests/fixtures/test_participants_2025.csv`
 - 🐛 **Bug detection**: Catches template errors like missing dropdown options
+- ♿ **Accessibility**: Validates ARIA attributes, semantic HTML, and keyboard support
 
 #### Run All UI Conformance Tests
 ```bash
-# Run complete suite (46 tests)
+# Run complete suite (77 tests)
 pytest tests/unit/test_ui_conformance.py -v
 
 # Run with coverage report
@@ -592,7 +593,7 @@ pytest tests/unit/test_ui_conformance.py --cov=templates --cov=routes -v
 pytest tests/unit/test_ui_conformance.py -q
 ```
 
-#### Registration Form Tests (17 tests)
+#### Registration Form Tests (25 tests)
 ```bash
 # All registration form tests
 pytest tests/unit/test_ui_conformance.py::TestRegistrationFormUI -v
@@ -618,28 +619,25 @@ pytest tests/unit/test_ui_conformance.py::TestRegistrationFormUI::test_phone_fie
 pytest tests/unit/test_ui_conformance.py::TestRegistrationFormUI::test_optional_fields_present -v
 ```
 
-#### Admin Participants Page Tests (11 tests)
+#### Admin Participants Page Tests (14 tests)
 ```bash
 # All admin participants tests
 pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI -v
 
-# Inline edit dropdown tests (validates bug fixes)
+# Inline edit dropdown tests
 pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_edit_skill_level_dropdown_includes_newbie -v
 pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_edit_experience_is_dropdown_not_input -v
 pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_edit_experience_dropdown_has_correct_options -v
 
-# Table structure tests
-pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_table_has_all_required_columns -v
-pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_participant_table_displays_phone_as_cell_phone -v
+# Year tabs and historical warnings tests
+pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_year_tabs_present_with_multiple_years -v
+pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_historical_year_warning_banner -v
+pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_historical_year_tabs_have_distinctive_styling -v
 
-# Modal structure tests
+# Table structure and modal tests
+pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_table_has_all_required_columns -v
 pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_delete_modal_structure -v
 pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_leader_reassignment_modal_structure -v
-
-# Navigation and UI elements
-pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_quick_actions_buttons_present -v
-pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_year_badge_displays_current_year -v
-pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_breadcrumb_navigation_present -v
 ```
 
 #### Admin Leaders Page Tests (2 tests)
@@ -703,6 +701,43 @@ pytest tests/unit/test_ui_conformance.py::TestDashboardUI::test_dashboard_has_st
 pytest tests/unit/test_ui_conformance.py::TestDashboardUI::test_dashboard_has_year_selector -v
 ```
 
+#### Empty State Display Tests (5 tests)
+```bash
+# All empty state tests
+pytest tests/unit/test_ui_conformance.py::TestEmptyStateDisplays -v
+
+# Individual empty state tests
+pytest tests/unit/test_ui_conformance.py::TestEmptyStateDisplays::test_participants_page_empty_state_message -v
+pytest tests/unit/test_ui_conformance.py::TestEmptyStateDisplays::test_unassigned_page_empty_state -v
+pytest tests/unit/test_ui_conformance.py::TestEmptyStateDisplays::test_leaders_page_shows_areas_without_leaders -v
+pytest tests/unit/test_ui_conformance.py::TestEmptyStateDisplays::test_dashboard_handles_zero_participants -v
+pytest tests/unit/test_ui_conformance.py::TestEmptyStateDisplays::test_empty_area_shows_appropriate_message -v
+```
+
+#### Accessibility Tests (15 tests)
+```bash
+# All accessibility tests
+pytest tests/unit/test_ui_conformance.py::TestAccessibility -v
+
+# Semantic HTML structure tests
+pytest tests/unit/test_ui_conformance.py::TestAccessibility::test_tables_have_thead_and_tbody -v
+pytest tests/unit/test_ui_conformance.py::TestAccessibility::test_buttons_have_correct_type_attribute -v
+pytest tests/unit/test_ui_conformance.py::TestAccessibility::test_main_content_has_semantic_structure -v
+pytest tests/unit/test_ui_conformance.py::TestAccessibility::test_heading_hierarchy_exists -v
+
+# ARIA attribute tests
+pytest tests/unit/test_ui_conformance.py::TestAccessibility::test_navigation_has_aria_label -v
+pytest tests/unit/test_ui_conformance.py::TestAccessibility::test_modals_have_aria_attributes -v
+
+# Form accessibility tests
+pytest tests/unit/test_ui_conformance.py::TestAccessibility::test_form_fields_have_associated_labels -v
+pytest tests/unit/test_ui_conformance.py::TestAccessibility::test_select_fields_have_labels -v
+
+# Image accessibility tests
+pytest tests/unit/test_ui_conformance.py::TestAccessibility::test_images_have_alt_text -v
+pytest tests/unit/test_ui_conformance.py::TestAccessibility::test_scope_icon_has_alt_text -v
+```
+
 #### Bug Detection Examples
 
 These tests would catch:
@@ -736,6 +771,11 @@ pytest tests/unit/test_ui_conformance.py::TestAdminParticipantsUI::test_leader_r
 - Data rendering with actual database records
 - Bootstrap styling classes applied correctly
 - Configuration values (areas from `config/areas.py`)
+- Form validation attributes (email type, tel type, required fields)
+- Year tabs and historical warnings
+- Empty state handling across all pages
+- Accessibility compliance (ARIA attributes, semantic HTML, alt text)
+- Label associations and keyboard navigation support
 
 ❌ **These tests DON'T check** (use Selenium for these):
 - JavaScript execution (button clicks, AJAX requests)

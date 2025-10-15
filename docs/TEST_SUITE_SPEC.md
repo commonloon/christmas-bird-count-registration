@@ -599,11 +599,11 @@ dashboard_selectors = [
 - Develop performance testing under load conditions
 
 ### ✅ **UI Conformance Tests (Completed 2025-10-15)**
-**Comprehensive Template and UI Element Validation (46 tests - All Passing)**:
+**Comprehensive Template and UI Element Validation (77 tests)**:
 - **Test File**: `tests/unit/test_ui_conformance.py`
 - **Approach**: Flask test client + BeautifulSoup + real cbc-test database connection
 - **Test Data**: Uses actual participants from `tests/fixtures/test_participants_2025.csv` loaded via session fixture
-- **Execution Time**: 46 tests in ~3.5 minutes (includes database loading)
+- **Execution Time**: ~4.5 minutes (includes database loading)
 - **Purpose**: Validate that rendered HTML conforms to SPECIFICATION.md without requiring browser automation
 
 **Test Architecture**:
@@ -613,57 +613,60 @@ dashboard_selectors = [
 - **BeautifulSoup Parsing**: Validates HTML structure, element presence, and attributes
 - **Hidden Element Testing**: Validates inline edit controls that JavaScript toggles visibility
 
-**Coverage by Page (8 test classes)**:
+**Test Categories (11 test classes)**:
 
-1. **TestRegistrationFormUI (17 tests)** - Public registration page (`/`)
-   - Dropdown validation: Skill level (4 options), Experience (3 options), Areas (24 public areas A-X)
-   - UNASSIGNED option present with "wherever needed most" text
-   - Area Y (admin-only) excluded from public dropdown
-   - Required field validation and attribute checking
-   - Guide links present with target="_blank"
-   - Privacy Act compliance section present
-   - Interactive map div structure validation
+1. **TestRegistrationFormUI (25 tests)** - Public registration page
+   - Dropdown validation (skill level, experience, areas)
+   - Form validation attributes (email type, tel type, required fields, labels)
+   - Required vs optional field attributes
+   - Admin-only area exclusion from public dropdown
+   - Guide links and privacy section
 
-2. **TestAdminParticipantsUI (11 tests)** - Admin participants page (`/admin/participants`)
-   - Inline edit dropdowns (skill level includes Newbie, experience has correct options)
-   - Table column validation (Cell Phone, not Phone)
-   - Quick action buttons (Manage Unassigned, Manage Leaders, Export CSV)
-   - Delete modal structure (textarea, warning, submit button)
-   - Leader reassignment modal (move as leader/team member buttons)
-   - Year badge displays selected year
-   - Breadcrumb navigation present
+2. **TestAdminParticipantsUI (14 tests)** - Admin participants page
+   - Inline edit dropdowns and field types
+   - Table column validation
+   - Year tabs and historical warnings
+   - Modal structures (delete, reassignment)
+   - Quick action buttons
 
-3. **TestAdminLeadersUI (2 tests)** - Admin leaders page (`/admin/leaders`)
-   - Leaders table has all required columns including Secondary Phone
-   - Potential Leaders section exists
+3. **TestAdminLeadersUI (2 tests)** - Admin leaders page
+   - Leaders table columns
+   - Potential leaders section
 
 4. **TestInfoPages (3 tests)** - Information pages
-   - Area leader info page accessible (`/area-leader-info`)
-   - Scribe info page accessible (`/scribe-info`)
-   - Form data preservation via query parameters
+   - Area leader and scribe info pages
+   - Form data preservation
 
-5. **TestDashboardUI (3 tests)** - Admin dashboard (`/admin/`)
-   - Dashboard loads successfully for admin users
-   - Statistics cards present
-   - Year selector/badge present
+5. **TestDashboardUI (3 tests)** - Admin dashboard
+   - Dashboard loading and statistics
+   - Year selector
 
-6. **TestAdminUnassignedPage (3 tests)** - Admin unassigned page (`/admin/unassigned`)
-   - Page loads successfully
-   - Table structure present
-   - Assignment controls or "no unassigned" message
+6. **TestAdminUnassignedPage (3 tests)** - Unassigned participants page
+   - Page structure and controls
 
-7. **TestCSVExport (3 tests)** - CSV export validation (`/admin/export_csv`)
-   - Returns CSV content type
-   - Filename includes year (2025)
-   - All required headers present (first_name, last_name, email, phone, skill_level, etc.)
+7. **TestCSVExport (3 tests)** - CSV export validation
+   - Content type, filename, required headers
 
-8. **TestDataDrivenParticipantRendering (6 tests)** - Data rendering validation
-   - Participants render with actual database data
-   - Names display correctly (escaped, non-empty, not "None")
-   - Skill level badges have correct Bootstrap classes (bg-success, bg-primary, bg-info, bg-secondary)
-   - FEEDER participants have table-info class styling
-   - Equipment icons display (binoculars icon, scope image)
-   - Leader badges display with bg-success class
+8. **TestEmptyStateDisplays (5 tests)** - Empty state handling
+   - Participants page empty state
+   - Unassigned page empty state
+   - Leaders page areas needing leaders
+   - Dashboard with zero participants
+   - Empty area messages
+
+9. **TestAccessibility (15 tests)** - Accessibility compliance
+   - Semantic HTML structure (tables, buttons, headings)
+   - ARIA attributes (labels, navigation, modals)
+   - Form accessibility (labels, fieldsets)
+   - Image alt text
+   - Keyboard navigation support
+
+10. **TestDataDrivenParticipantRendering (6 tests)** - Data rendering validation
+    - Participant rendering with actual data
+    - Skill level badges, FEEDER styling
+    - Equipment icons, leader badges
+
+11. **Additional validation tests** distributed across classes
 
 **Key Validations**:
 - **Configuration Validation**: All 24 public areas from `config/areas.py` render correctly
