@@ -260,9 +260,36 @@ python utils/setup_databases.py
 
 This creates two databases with names you configured (e.g., `my-club-test` and `my-club-register`).
 
-### 8. Set Up OAuth Authentication
+### 8. Set Up SMTP2GO Email Secrets
+
+**IMPORTANT:** This step must be completed before OAuth setup and deployment.
+
+The application uses SMTP2GO for sending email notifications to area leaders and participants.
+
+```bash
+# Run the SMTP secrets setup script
+./utils/setup_smtp_secrets.sh
+```
+
+The script will prompt you for:
+- SMTP2GO username
+- SMTP2GO password (entered securely, not displayed)
+
+**To get SMTP2GO credentials:**
+1. Sign up for a free account at https://www.smtp2go.com
+2. Verify your sending domain
+3. Get your SMTP username and password from the SMTP2GO dashboard
+
+**Notes:**
+- If you don't have SMTP2GO credentials yet, you can use placeholder values for initial testing
+- Email functionality won't work until real credentials are configured
+- The system currently supports SMTP2GO only (other providers can be added in future)
+
+### 9. Set Up OAuth Authentication
 
 OAuth allows admins and area leaders to log in with Google accounts.
+
+**IMPORTANT:** SMTP secrets (step 8) must be created before proceeding with OAuth setup and deployment.
 
 **Detailed instructions**: See [OAUTH-SETUP.md](OAUTH-SETUP.md)
 
@@ -271,9 +298,10 @@ OAuth allows admins and area leaders to log in with Google accounts.
 2. Download `client_secret.json`
 3. Run `./utils/setup_oauth_secrets.sh`
 4. Delete `client_secret.json`
-5. Publish OAuth consent screen
+5. Deploy application (Step 10)
+6. Publish OAuth consent screen
 
-### 9. Configure Admin Accounts
+### 10. Configure Admin Accounts
 
 Edit `config/admins.py` and add admin email addresses:
 
@@ -284,7 +312,7 @@ PRODUCTION_ADMIN_EMAILS = [
 ]
 ```
 
-### 10. Initial Deployment
+### 11. Initial Deployment
 
 ```bash
 # Deploy to test first
@@ -294,36 +322,39 @@ PRODUCTION_ADMIN_EMAILS = [
 ./deploy.sh production
 ```
 
-### 11. Configure Custom Domains
+### 12. Configure Custom Domains
 
-```bash
-# Map test domain (use your configured service and domain names)
-gcloud run domain-mappings create \
-    --service <TEST-SERVICE> \
-    --domain <TEST-DOMAIN> \
-    --region us-west1
+**Map domains using Google Cloud Console:**
 
-# Map production domain
-gcloud run domain-mappings create \
-    --service <PROD-SERVICE> \
-    --domain <PROD-DOMAIN> \
-    --region us-west1
+1. Go to [Cloud Run Console](https://console.cloud.google.com/run)
+2. Click on your **test service** (configured in `config/cloud.py`)
+3. Click the **"MANAGE CUSTOM DOMAINS"** tab at the top
+4. Click **"ADD MAPPING"**
+5. Select your service from the dropdown
+6. Enter your test domain (from `config/cloud.py`)
+7. Click **"CONTINUE"**
+8. Follow DNS verification instructions (add CNAME record shown)
+9. Click **"DONE"**
+
+Repeat for your **production service** with the production domain.
+
+**Example DNS CNAME records** (add to your domain provider):
 ```
-
-Add CNAME records in your DNS provider:
-```
-Name: <subdomain-for-test>      # Example: cbc-test
+Name: cbc-test             # Or your test subdomain
 Type: CNAME
 Value: ghs.googlehosted.com
 
-Name: <subdomain-for-prod>      # Example: cbc-registration
+Name: cbc-registration     # Or your production subdomain
 Type: CNAME
 Value: ghs.googlehosted.com
 ```
 
-SSL certificates are automatically provisioned (takes up to 24 hours).
+**Notes:**
+- Domain names are configured in `config/cloud.py`
+- SSL certificates are automatically provisioned (takes up to 24 hours)
+- You must have control of the DNS for your domain
 
-### 12. Configure Email Scheduler (Optional)
+### 13. Configure Email Scheduler (Optional)
 
 For automated email notifications to area leaders:
 

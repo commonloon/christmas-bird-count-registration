@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Updated by Claude AI on 2025-09-26
+Updated by Claude AI on 2025-10-16
 Test Participant Data Generator for Christmas Bird Count Registration
 
 This script generates test participants by submitting data to the registration endpoint.
@@ -22,6 +22,7 @@ Note: 10% of all participants randomly receive scribe interest regardless of --s
 """
 
 import argparse
+import os
 import random
 import re
 import requests
@@ -31,10 +32,20 @@ from datetime import datetime
 from faker import Faker
 from bs4 import BeautifulSoup
 
-# Configuration
-BASE_URL = "https://cbc-test.naturevancouver.ca"
+# Add parent directory to path to import config modules
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from config.cloud import TEST_BASE_URL
+from config.organization import get_organization_variables
+from config.areas import get_public_areas
+
+# Configuration - dynamically loaded from config files
+BASE_URL = TEST_BASE_URL  # Automatically uses correct test URL from config/cloud.py
 REGISTRATION_URL = f"{BASE_URL}/register"
-EMAIL_DOMAIN = "naturevancouver.ca"
+
+# Get organization variables for email domain
+org_vars = get_organization_variables()
+EMAIL_DOMAIN = org_vars['count_contact'].split('@')[1]  # Extract domain from count contact email
 
 # Initialize faker for realistic names
 fake = Faker()
@@ -42,8 +53,10 @@ fake = Faker()
 # Valid form values based on the registration form
 SKILL_LEVELS = ["Newbie", "Beginner", "Intermediate", "Expert"]
 EXPERIENCE_LEVELS = ["None", "1-2 counts", "3+ counts"]
-AREAS = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", 
-         "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "UNASSIGNED"]
+
+# Dynamically load areas from config (portable across installations)
+PUBLIC_AREAS = get_public_areas()  # Only areas available for public registration
+AREAS = PUBLIC_AREAS + ["UNASSIGNED"]  # Add UNASSIGNED option for "wherever needed"
 
 # Canadian area codes for realistic phone numbers
 AREA_CODES = ["604", "778", "236"]
@@ -374,6 +387,7 @@ Note: 10% of all participants randomly receive scribe interest regardless of --s
     print(f"Christmas Bird Count Test Data Generator")
     print(f"========================================")
     print(f"Target endpoint: {REGISTRATION_URL}")
+    print(f"Available areas: {', '.join(PUBLIC_AREAS)} + UNASSIGNED ({len(PUBLIC_AREAS) + 1} total)")
     print(f"Regular participants: {num_regular}")
     print(f"Leadership-interested participants: {num_leadership}")
     print(f"Scribe-interested participants: {num_scribes}")

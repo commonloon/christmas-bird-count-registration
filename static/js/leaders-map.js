@@ -1,4 +1,5 @@
 // Map functionality for Areas Needing Leaders display
+/* Updated by Claude AI on 2025-10-16 */
 let leadersMap;
 let leadersAreaLayers = {};
 
@@ -6,14 +7,18 @@ let leadersAreaLayers = {};
 document.addEventListener('DOMContentLoaded', function() {
     const mapContainer = document.getElementById('leaders-map');
     if (mapContainer) {
-        initializeLeadersMap();
         loadAreasNeedingLeaders();
     }
 });
 
-function initializeLeadersMap() {
-    // Create map centered on Vancouver
-    leadersMap = L.map('leaders-map').setView([49.2827, -123.1207], 10);
+function initializeLeadersMap(mapConfig) {
+    // Use map configuration from area boundaries data, or fall back to default
+    const center = mapConfig.center || [49.2827, -123.1207];
+    const zoom = mapConfig.zoom || 10;
+    const bounds = mapConfig.bounds || null;
+
+    // Create map with dynamic center and zoom
+    leadersMap = L.map('leaders-map').setView(center, zoom);
 
     // Add OpenStreetMap tiles
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -22,12 +27,10 @@ function initializeLeadersMap() {
         minZoom: 8
     }).addTo(leadersMap);
 
-    // Set map bounds to Vancouver area
-    const vancouverBounds = [
-        [49.00, -123.30], // Southwest
-        [49.40, -122.80]  // Northeast
-    ];
-    leadersMap.setMaxBounds(vancouverBounds);
+    // Set map bounds if available
+    if (bounds && bounds.length === 2) {
+        leadersMap.setMaxBounds(bounds);
+    }
 }
 
 function loadAreasNeedingLeaders() {
@@ -41,9 +44,13 @@ function loadAreasNeedingLeaders() {
                 return;
             }
 
+            // Initialize map with configuration from data
+            const mapConfig = data.map_config || {};
+            initializeLeadersMap(mapConfig);
+
             // Cache area boundary data for future refreshes
             window.cachedAreaData = data.areas;
-            
+
             displayAreasNeedingLeaders(data.areas, data.areas_without_leaders);
         })
         .catch(error => {

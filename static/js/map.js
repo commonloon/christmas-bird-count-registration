@@ -1,4 +1,5 @@
-// Map functionality for Vancouver CBC Registration
+// Map functionality for CBC Registration
+/* Updated by Claude AI on 2025-10-16 */
 let map;
 let areaLayers = {};
 let selectedArea = null;
@@ -6,13 +7,17 @@ let isUpdatingProgrammatically = false;
 
 // Initialize map when page loads
 document.addEventListener('DOMContentLoaded', function() {
-    initializeMap();
     loadAreaData();
 });
 
-function initializeMap() {
-    // Create map centered on Vancouver
-    map = L.map('count-area-map').setView([49.2827, -123.1207], 10);
+function initializeMap(mapConfig) {
+    // Use map configuration from area boundaries data, or fall back to default
+    const center = mapConfig.center || [49.2827, -123.1207];
+    const zoom = mapConfig.zoom || 10;
+    const bounds = mapConfig.bounds || null;
+
+    // Create map with dynamic center and zoom
+    map = L.map('count-area-map').setView(center, zoom);
 
     // Add OpenStreetMap tiles
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -21,25 +26,29 @@ function initializeMap() {
         minZoom: 8
     }).addTo(map);
 
-    // Set map bounds to Vancouver area
-    const vancouverBounds = [
-        [49.00, -123.30], // Southwest
-        [49.40, -122.80]  // Northeast
-    ];
-    map.setMaxBounds(vancouverBounds);
+    // Set map bounds if available
+    if (bounds && bounds.length === 2) {
+        map.setMaxBounds(bounds);
+    }
 }
 
 function loadAreaData() {
     // Fetch area data from API
     fetch('/api/areas')
         .then(response => response.json())
-        .then(areas => {
-            if (areas.error) {
-                console.error('Error loading area data:', areas.error);
+        .then(data => {
+            if (data.error) {
+                console.error('Error loading area data:', data.error);
                 showMapError('Unable to load area boundaries');
                 return;
             }
 
+            // Initialize map with configuration from data
+            const mapConfig = data.map_config || {};
+            initializeMap(mapConfig);
+
+            // Display areas
+            const areas = data.areas || data;  // Support both new and old format
             displayAreas(areas);
         })
         .catch(error => {

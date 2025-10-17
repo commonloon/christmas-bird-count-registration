@@ -1,3 +1,4 @@
+# Updated by Claude AI on 2025-10-16
 from flask import Blueprint, jsonify, request
 from google.cloud import firestore
 from config.database import get_firestore_client
@@ -23,9 +24,18 @@ except Exception as e:
 def get_areas():
     """Get all areas with current registration counts for map display."""
     try:
-        # Load area boundaries
+        # Load area boundaries and map configuration
         with open('static/data/area_boundaries.json', 'r') as f:
-            areas = json.load(f)
+            data = json.load(f)
+
+        # Handle both old format (array) and new format (object with map_config)
+        if isinstance(data, dict) and 'areas' in data:
+            areas = data['areas']
+            map_config = data.get('map_config', {})
+        else:
+            # Old format - just array of areas
+            areas = data
+            map_config = {}
 
         # Get current registration counts
         if participant_model:
@@ -49,7 +59,11 @@ def get_areas():
             else:
                 area['availability'] = 'low'
 
-        return jsonify(areas)
+        # Return areas with map configuration
+        return jsonify({
+            'areas': areas,
+            'map_config': map_config
+        })
 
     except FileNotFoundError:
         return jsonify({'error': 'Area boundaries not found'}), 500
@@ -76,9 +90,18 @@ def get_area_counts():
 def get_areas_needing_leaders():
     """Get all areas with leadership status for map display."""
     try:
-        # Load area boundaries
+        # Load area boundaries and map configuration
         with open('static/data/area_boundaries.json', 'r') as f:
-            areas = json.load(f)
+            data = json.load(f)
+
+        # Handle both old format (array) and new format (object with map_config)
+        if isinstance(data, dict) and 'areas' in data:
+            areas = data['areas']
+            map_config = data.get('map_config', {})
+        else:
+            # Old format - just array of areas
+            areas = data
+            map_config = {}
 
         # Get areas without leaders from current year
         from datetime import datetime
@@ -92,7 +115,8 @@ def get_areas_needing_leaders():
 
         return jsonify({
             'areas': areas,
-            'areas_without_leaders': areas_without_leaders
+            'areas_without_leaders': areas_without_leaders,
+            'map_config': map_config
         })
 
     except FileNotFoundError:

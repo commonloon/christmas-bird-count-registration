@@ -4,6 +4,12 @@
 
 This guide provides complete instructions for setting up Google OAuth authentication for the CBC Registration Flask application deployed on Google Cloud Run. These instructions are based on successful deployment and testing.
 
+## IMPORTANT: SMTP Secrets Required
+
+**Before starting OAuth setup**, you must create SMTP2GO secrets. The deployment in Step 3 will fail without these secrets.
+
+If you haven't already created SMTP secrets, see **[DEPLOYMENT.md - Step 8: Set Up SMTP2GO Email Secrets](DEPLOYMENT.md#8-set-up-smtp2go-email-secrets)** for instructions.
+
 ## Prerequisites
 
 - Google Cloud project created (replace `vancouver-cbc-registration` with your project ID)
@@ -11,6 +17,7 @@ This guide provides complete instructions for setting up Google OAuth authentica
 - Custom domains configured (optional but recommended)
 - gcloud CLI installed and authenticated
 - Git Bash (for Windows) or similar terminal with Python available
+- **SMTP2GO secrets created** (see note above)
 
 ## Step 1: Create OAuth Client Credentials
 
@@ -99,17 +106,19 @@ The deployment script automatically includes all required environment variables 
 
 ### 4.1 Map Domains to Services
 
-```bash
-gcloud run domain-mappings create \
-    --service cbc-test \
-    --domain cbc-test.naturevancouver.ca \
-    --region us-central1
+**Using Google Cloud Console:**
 
-gcloud run domain-mappings create \
-    --service cbc-registration \
-    --domain cbc-registration.naturevancouver.ca \
-    --region us-central1
-```
+1. Go to [Cloud Run Console](https://console.cloud.google.com/run)
+2. Click on your **test service** (e.g., `cbc-test`)
+3. Click the **"MANAGE CUSTOM DOMAINS"** tab at the top
+4. Click **"ADD MAPPING"**
+5. Select your service from the dropdown
+6. Enter your domain: `cbc-test.naturevancouver.ca`
+7. Click **"CONTINUE"**
+8. Follow DNS verification instructions (add CNAME record shown)
+9. Click **"DONE"**
+
+Repeat steps 2-9 for your **production service** with domain `cbc-registration.naturevancouver.ca`
 
 ### 4.2 Update DNS Records
 
@@ -148,12 +157,12 @@ https://cbc-registration.naturevancouver.ca/auth/login
 
 Check that secrets are properly mounted:
 ```bash
-gcloud run services describe cbc-test --region us-central1 --format="export" | grep -A 10 "env:"
+gcloud run services describe cbc-test --region us-west1 --format="export" | grep -A 10 "env:"
 ```
 
 Check application logs for errors:
 ```bash
-gcloud logs read --service cbc-test --region us-central1 --limit 20
+gcloud logs read --service cbc-test --region us-west1 --limit 20
 ```
 
 ## Step 7: Flask Application Requirements
@@ -239,7 +248,12 @@ curl -I https://cbc-test.naturevancouver.ca
 
 ## Next Steps
 
-After OAuth is working:
+**OAuth setup is complete!** Return to **[DEPLOYMENT.md](DEPLOYMENT.md)** to continue with the initial setup:
+
+- **Step 12**: Configure Custom Domains (if not done in Step 4 above)
+- **Step 13**: Configure Email Scheduler (Optional)
+
+After deployment is complete:
 1. Test user registration and login flows
 2. Verify admin and area leader role assignments
 3. Test email notifications
