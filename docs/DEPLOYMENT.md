@@ -380,21 +380,41 @@ gcloud run services add-iam-policy-binding <PROD-SERVICE> \
 ./utils/setup_email_scheduler.sh production
 ```
 
-### 14. Validate Installation Configuration
+### 14. Validate Installation
 
-After completing initial setup, validate your configuration before going live:
+After completing initial setup, validate your configuration and infrastructure:
 
 ```bash
-# Run installation validation tests
+# Run all installation validation tests (37 tests)
+pytest tests/installation/ -v
+
+# Or run phases separately:
+# Phase 1: Configuration only (21 tests, no GCP required)
 pytest tests/installation/test_configuration.py -v
+
+# Phase 2: Infrastructure (16 tests, requires GCP auth)
+pytest tests/installation/test_infrastructure.py -v
 ```
 
-**Expected result**: All 21 tests should pass.
+**Expected result**: All 37 tests should pass.
 
-**If tests fail**: Error messages will guide you to fix configuration issues. Common issues include:
+**Phase 1 validates:**
+- Configuration files in `config/`
+- Area code consistency
+- Email and URL formats
+- Map configuration
+
+**Phase 2 validates:**
+- Firestore database access
+- Secret Manager secrets exist
+- Cloud Run services deployed
+- Database indexes ready
+
+**If tests fail**: Error messages will guide you to fix issues. Common problems include:
 - Missing or misconfigured files in `config/`
-- Area code mismatches between `config/areas.py` and `area_boundaries.json`
-- Invalid email addresses or URLs
+- Area code mismatches between files
+- Missing OAuth or SMTP secrets
+- Services not deployed
 
 **For detailed documentation**, see the [Installation Validation Tests](TESTING.md#installation-validation-tests) section in TESTING.md.
 

@@ -1,5 +1,5 @@
 # Test Execution Guide
-{# Updated by Claude AI on 2025-10-18 #}
+Updated by Claude AI on 2025-10-18
 
 ## Overview
 
@@ -1085,26 +1085,122 @@ pytest tests/installation/test_configuration.py -v
 21 passed in 12.85s
 ```
 
-#### Phase 2-5: Infrastructure and Functionality (Planned)
+#### Phase 2: Infrastructure Validation ✅
+**Status**: Complete (16 tests)
+**Requires**: GCP authentication, deployed services
+
+Validates GCP infrastructure:
+- Firestore database access (test and production)
+- Secret Manager secrets exist
+- Cloud Run services are deployed and accessible
+- Database indexes ready for queries
+
+**Run Phase 2:**
+```bash
+pytest tests/installation/test_infrastructure.py -v
+```
+
+**What it checks:**
+- **Firestore**: Can connect to both test and production databases
+- **Write permissions**: Can create and delete test documents
+- **Read permissions**: Can query collections
+- **Secret Manager**: API enabled and accessible
+- **OAuth secrets**: google-oauth-client-id and google-oauth-client-secret exist
+- **Flask secret**: flask-secret-key exists
+- **SMTP secrets**: smtp2go-username and smtp2go-password exist
+- **Cloud Run**: Test and production services are accessible
+- **HTTPS**: HTTP redirects to HTTPS properly
+- **Database indexes**: Can run identity-based queries
+
+**Example output:**
+```
+16 passed in 30.82s
+```
+
+#### Phase 3: Deployment Validation ✅
+**Status**: Complete (23 tests)
+**Requires**: Deployed test server, network access
+
+Validates deployed application:
+- URL accessibility and redirects
+- Static assets (JS, CSS, images)
+- API endpoints return correct data
+- Registration form rendering
+
+**Run Phase 3:**
+```bash
+pytest tests/installation/test_deployment.py -v
+```
+
+**What it checks:**
+- **URL Accessibility (5 tests)**:
+  - Registration page loads successfully
+  - Admin/leader routes redirect to login
+  - API endpoints return valid JSON
+  - Map configuration included in API response
+- **Static Assets (7 tests)**:
+  - area_boundaries.json accessible and matches config
+  - JavaScript files load (map.js, leaders-map.js, registration.js)
+  - CSS file loads (main.css)
+  - Logo accessible at configured path
+  - Favicon exists
+- **API Endpoints (4 tests)**:
+  - /api/areas returns all configured areas
+  - All areas included for map display (public + admin-only)
+  - Map config has required fields (center, bounds, zoom)
+  - API data matches area_boundaries.json
+- **Registration Form (7 tests)**:
+  - Area dropdown has all public areas
+  - Skill level dropdown complete (Newbie, Beginner, Intermediate, Expert)
+  - Experience dropdown complete (None, 1-2 counts, 3+ counts)
+  - Participation type options present (regular, FEEDER)
+  - CSRF token included
+  - "Wherever I'm needed most" option present
+  - Admin-only areas excluded from public form
+
+**Example output:**
+```
+23 passed in 16.21s
+```
+
+#### Phase 4-5: Core Functionality (Planned)
 
 Future phases will validate:
-- **Phase 2**: GCP infrastructure (Firestore, Secret Manager, Cloud Run)
-- **Phase 3**: Deployment (URLs accessible, static assets, OAuth)
-- **Phase 4**: Core functionality (registration, admin, CSV)
-- **Phase 5**: Multi-area operations
+- **Phase 4**: Core functionality (registration, admin workflows, CSV export)
+- **Phase 5**: Multi-area operations (all areas functional)
 
 ### Running Installation Tests
 
-#### Run All Configuration Tests
+#### Run All Installation Tests (All Phases)
 ```bash
 # Navigate to project root
 cd C:\AndroidStudioProjects\ladner-cbc
 
-# Run all Phase 1 tests
+# Run all installation tests (Phases 1-3: 60 tests)
+pytest tests/installation/ -v
+```
+
+#### Run Phase 1 Only (Configuration - No GCP Required)
+```bash
+# Run all Phase 1 tests (21 tests)
 pytest tests/installation/test_configuration.py -v
 ```
 
+#### Run Phase 2 Only (Infrastructure - Requires GCP Access)
+```bash
+# Run all Phase 2 tests (16 tests)
+pytest tests/installation/test_infrastructure.py -v
+```
+
+#### Run Phase 3 Only (Deployment - Requires Deployed Server)
+```bash
+# Run all Phase 3 tests (23 tests)
+pytest tests/installation/test_deployment.py -v
+```
+
 #### Run Specific Test Classes
+
+**Phase 1 (Configuration):**
 ```bash
 # Configuration file completeness
 pytest tests/installation/test_configuration.py::TestConfigurationFiles -v
@@ -1116,7 +1212,39 @@ pytest tests/installation/test_configuration.py::TestConfigurationValidity -v
 pytest tests/installation/test_configuration.py::TestConfigurationConsistency -v
 ```
 
+**Phase 2 (Infrastructure):**
+```bash
+# Firestore database access
+pytest tests/installation/test_infrastructure.py::TestFirestoreAccess -v
+
+# Secret Manager access
+pytest tests/installation/test_infrastructure.py::TestSecretManagerAccess -v
+
+# Cloud Run deployment
+pytest tests/installation/test_infrastructure.py::TestCloudRunDeployment -v
+
+# Database indexes
+pytest tests/installation/test_infrastructure.py::TestDatabaseIndexes -v
+```
+
+**Phase 3 (Deployment):**
+```bash
+# URL accessibility and redirects
+pytest tests/installation/test_deployment.py::TestURLAccessibility -v
+
+# Static asset loading
+pytest tests/installation/test_deployment.py::TestStaticAssets -v
+
+# API endpoint validation
+pytest tests/installation/test_deployment.py::TestAPIEndpoints -v
+
+# Registration form rendering
+pytest tests/installation/test_deployment.py::TestRegistrationFormRendering -v
+```
+
 #### Run Individual Tests
+
+**Phase 1 Examples:**
 ```bash
 # Test areas configuration
 pytest tests/installation/test_configuration.py::TestConfigurationFiles::test_areas_config_complete -v
@@ -1128,9 +1256,41 @@ pytest tests/installation/test_configuration.py::TestConfigurationFiles::test_ar
 pytest tests/installation/test_configuration.py::TestConfigurationValidity::test_email_addresses_valid_format -v
 ```
 
+**Phase 2 Examples:**
+```bash
+# Test Firestore access
+pytest tests/installation/test_infrastructure.py::TestFirestoreAccess::test_firestore_test_database_accessible -v
+
+# Test OAuth secrets
+pytest tests/installation/test_infrastructure.py::TestSecretManagerAccess::test_oauth_client_id_secret_exists -v
+
+# Test Cloud Run deployment
+pytest tests/installation/test_infrastructure.py::TestCloudRunDeployment::test_test_service_accessible -v
+```
+
+**Phase 3 Examples:**
+```bash
+# Test registration page loads
+pytest tests/installation/test_deployment.py::TestURLAccessibility::test_registration_page_loads -v
+
+# Test static assets load
+pytest tests/installation/test_deployment.py::TestStaticAssets::test_area_boundaries_json_accessible -v
+pytest tests/installation/test_deployment.py::TestStaticAssets::test_logo_accessible -v
+
+# Test API endpoints
+pytest tests/installation/test_deployment.py::TestAPIEndpoints::test_api_areas_has_all_configured_areas -v
+pytest tests/installation/test_deployment.py::TestAPIEndpoints::test_api_map_config_structure -v
+
+# Test form rendering
+pytest tests/installation/test_deployment.py::TestRegistrationFormRendering::test_registration_form_has_area_dropdown -v
+pytest tests/installation/test_deployment.py::TestRegistrationFormRendering::test_skill_level_dropdown_complete -v
+```
+
 ### Understanding Test Failures
 
 Installation tests provide clear error messages with fix commands:
+
+**Phase 1 Failure Examples:**
 
 **Example 1 - Missing area_boundaries.json:**
 ```
@@ -1153,6 +1313,70 @@ Then update config/areas.py to match the areas in your KML file.
 Invalid email format for count_contact: invalid-email
 Email must contain '@' symbol.
 Update config/organization.py with a valid email address.
+```
+
+**Phase 2 Failure Examples:**
+
+**Example 4 - Database doesn't exist:**
+```
+Test database 'my-club-test' does not exist in project 'my-project'
+Create the database:
+  1. Run: python utils/setup_databases.py
+  2. Or manually create via Google Cloud Console
+Database configuration is in config/cloud.py
+```
+
+**Example 5 - Missing OAuth secret:**
+```
+Secret 'google-oauth-client-id' not found in project 'my-project'
+Create it:
+  1. Set up OAuth client in Google Cloud Console
+  2. Download client_secret.json
+  3. Run: ./utils/setup_oauth_secrets.sh
+  4. Delete client_secret.json
+See docs/OAUTH-SETUP.md for detailed instructions
+```
+
+**Example 6 - Service not deployed:**
+```
+Cannot connect to test service: https://cbc-test.myclub.org
+Service may not be deployed. Deploy it:
+  ./deploy.sh test
+Or check that the URL in config/cloud.py is correct
+```
+
+**Phase 3 Failure Examples:**
+
+**Example 7 - Area mismatch in JSON:**
+```
+Area mismatch between area_boundaries.json and config/areas.py:
+Expected (from config/areas.py): ['A', 'B', 'C', 'D', 'E']
+Got from JSON: ['A', 'B', 'C', 'D']
+Missing from JSON: ['E']
+Run: python utils/parse_area_boundaries.py to regenerate
+```
+
+**Example 8 - Missing skill level option:**
+```
+Skill levels missing from dropdown:
+Expected: ['advanced', 'beginner', 'expert', 'intermediate']
+Got: ['beginner', 'expert', 'intermediate', 'newbie']
+Missing: ['advanced']
+Check templates/index.html skill_level options
+```
+
+**Example 9 - Logo not accessible:**
+```
+Logo not found at https://cbc-test.myclub.org/static/icons/logo.png
+LOGO_PATH in config/organization.py is set to: /static/icons/logo.png
+Verify the logo file exists at static/icons/logo.png
+```
+
+**Example 10 - API missing map config:**
+```
+/api/areas should include 'map_config' key
+Got keys: ['areas']
+Check routes/api.py get_areas() implementation
 ```
 
 ### Portability Verification
@@ -1182,10 +1406,27 @@ This means the same tests work for:
 - 25 areas (A-Y)
 - Domain: naturevancouver.ca
 - GCP Project: vancouver-cbc-registration
+- Test Database: cbc-test
+- Production Database: cbc-register
 
-**Phase 1 Results:**
+**Phase 1 Results (Configuration):**
 ```
 21 passed in 12.85s
+```
+
+**Phase 2 Results (Infrastructure):**
+```
+16 passed in 30.82s
+```
+
+**Phase 3 Results (Deployment):**
+```
+23 passed in 16.21s
+```
+
+**Combined Results:**
+```
+60 tests passed (Phases 1-3)
 ```
 
 All tests passing with portable, configuration-driven validation!
