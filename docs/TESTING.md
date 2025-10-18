@@ -1,5 +1,5 @@
 # Test Execution Guide
-{# Updated by Claude AI on 2025-10-15 #}
+{# Updated by Claude AI on 2025-10-18 #}
 
 ## Overview
 
@@ -1031,6 +1031,164 @@ gcloud run services logs read cbc-test --region=us-west1 --limit=20
 - **Use Visible Browser**: Set headless=False for visual debugging
 - **Check Database State**: Verify data consistency after failed tests
 - **Isolate Failures**: Run failing tests individually to understand root causes
+
+## Installation Validation Tests
+
+### Overview
+
+The installation validation test suite (`tests/installation/`) validates that a new deployment is properly configured and ready for use. These tests are **completely portable** and work with any bird count organization's configuration.
+
+**Key Design Principles:**
+- ✅ No hardcoded values (area codes, URLs, organization names)
+- ✅ Dynamic validation based on `config/*.py` files
+- ✅ Clear error messages with fix commands
+- ✅ Works with any number of areas, any naming scheme
+
+### When to Run Installation Tests
+
+**Run these tests:**
+- After initial deployment setup
+- Before going live with a new installation
+- When adapting the system for a different organization
+- After major configuration changes
+
+**Purpose:** Catch configuration errors before deployment attempts.
+
+### Test Phases
+
+#### Phase 1: Configuration Validation ✅
+**Status**: Complete (21 tests)
+**Requires**: No GCP access, local files only
+
+Validates configuration files:
+- `config/cloud.py` - GCP project, databases, URLs
+- `config/organization.py` - Organization details, emails
+- `config/areas.py` - Area definitions
+- `static/data/area_boundaries.json` - Map boundaries
+
+**Run Phase 1:**
+```bash
+pytest tests/installation/test_configuration.py -v
+```
+
+**What it checks:**
+- All required settings are present and non-empty
+- Email addresses and URLs are valid formats
+- Area codes consistent between config files and JSON
+- Database names are different for test/production
+- Map configuration exists with reasonable coordinates
+- Timezone is valid
+- GCP project ID format is valid
+
+**Example output:**
+```
+21 passed in 12.85s
+```
+
+#### Phase 2-5: Infrastructure and Functionality (Planned)
+
+Future phases will validate:
+- **Phase 2**: GCP infrastructure (Firestore, Secret Manager, Cloud Run)
+- **Phase 3**: Deployment (URLs accessible, static assets, OAuth)
+- **Phase 4**: Core functionality (registration, admin, CSV)
+- **Phase 5**: Multi-area operations
+
+### Running Installation Tests
+
+#### Run All Configuration Tests
+```bash
+# Navigate to project root
+cd C:\AndroidStudioProjects\ladner-cbc
+
+# Run all Phase 1 tests
+pytest tests/installation/test_configuration.py -v
+```
+
+#### Run Specific Test Classes
+```bash
+# Configuration file completeness
+pytest tests/installation/test_configuration.py::TestConfigurationFiles -v
+
+# Configuration value validity
+pytest tests/installation/test_configuration.py::TestConfigurationValidity -v
+
+# Cross-file consistency
+pytest tests/installation/test_configuration.py::TestConfigurationConsistency -v
+```
+
+#### Run Individual Tests
+```bash
+# Test areas configuration
+pytest tests/installation/test_configuration.py::TestConfigurationFiles::test_areas_config_complete -v
+
+# Test area consistency
+pytest tests/installation/test_configuration.py::TestConfigurationFiles::test_area_codes_consistent_with_json -v
+
+# Test email formats
+pytest tests/installation/test_configuration.py::TestConfigurationValidity::test_email_addresses_valid_format -v
+```
+
+### Understanding Test Failures
+
+Installation tests provide clear error messages with fix commands:
+
+**Example 1 - Missing area_boundaries.json:**
+```
+Missing static/data/area_boundaries.json
+Run: python utils/parse_area_boundaries.py <your-kml-file.kml>
+This will generate the area boundaries JSON file for the map.
+```
+
+**Example 2 - Area code mismatch:**
+```
+Areas in config/areas.py but missing from area_boundaries.json: ['Y', 'Z']
+Areas in area_boundaries.json but not in config/areas.py: ['AA']
+
+Re-run: python utils/parse_area_boundaries.py <your-kml-file.kml>
+Then update config/areas.py to match the areas in your KML file.
+```
+
+**Example 3 - Invalid email:**
+```
+Invalid email format for count_contact: invalid-email
+Email must contain '@' symbol.
+Update config/organization.py with a valid email address.
+```
+
+### Portability Verification
+
+The installation tests contain **zero hardcoded organization-specific values**:
+
+❌ **Will NOT find:**
+- Hardcoded area codes like `['A', 'B', 'C']`
+- Organization names like `'Nature Vancouver'`
+- Specific URLs like `'https://cbc-test.naturevancouver.ca'`
+- Specific area counts like `24 areas`
+
+✅ **Instead uses:**
+- `get_all_areas()` from `config/areas.py`
+- `get_organization_variables()` from `config/organization.py`
+- `TEST_BASE_URL` from `config/cloud.py`
+- Dynamic count: `len(get_all_areas())`
+
+This means the same tests work for:
+- **Vancouver CBC**: 25 areas (A-Y), naturevancouver.ca
+- **Ladner CBC**: 11 areas (A-K), different domain
+- **Any organization**: Different codes, counts, domains
+
+### Test Results
+
+**Current Installation (Vancouver CBC):**
+- 25 areas (A-Y)
+- Domain: naturevancouver.ca
+- GCP Project: vancouver-cbc-registration
+
+**Phase 1 Results:**
+```
+21 passed in 12.85s
+```
+
+All tests passing with portable, configuration-driven validation!
 
 ---
 

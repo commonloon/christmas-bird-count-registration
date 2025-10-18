@@ -1,5 +1,5 @@
 # CBC Registration System - Deployment Guide
-<!-- Updated by Claude AI on 2025-10-14 -->
+<!-- Updated by Claude AI on 2025-10-18 -->
 
 ## About This Guide
 
@@ -379,6 +379,24 @@ gcloud run services add-iam-policy-binding <PROD-SERVICE> \
 ./utils/setup_email_scheduler.sh test
 ./utils/setup_email_scheduler.sh production
 ```
+
+### 14. Validate Installation Configuration
+
+After completing initial setup, validate your configuration before going live:
+
+```bash
+# Run installation validation tests
+pytest tests/installation/test_configuration.py -v
+```
+
+**Expected result**: All 21 tests should pass.
+
+**If tests fail**: Error messages will guide you to fix configuration issues. Common issues include:
+- Missing or misconfigured files in `config/`
+- Area code mismatches between `config/areas.py` and `area_boundaries.json`
+- Invalid email addresses or URLs
+
+**For detailed documentation**, see the [Installation Validation Tests](TESTING.md#installation-validation-tests) section in TESTING.md.
 
 ---
 
