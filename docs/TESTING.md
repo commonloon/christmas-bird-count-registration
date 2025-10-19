@@ -1054,6 +1054,54 @@ The installation validation test suite (`tests/installation/`) validates that a 
 
 **Purpose:** Catch configuration errors before deployment attempts.
 
+### Two-Tier Test Suite: Smoke vs Comprehensive
+
+The installation test suite offers two levels of validation:
+
+#### Smoke Tests (67 tests, ~2-3 minutes)
+**Marked with:** `@pytest.mark.smoke`
+
+Quick validation of critical paths to catch major issues fast. Run before every deployment.
+
+**Coverage:**
+- All Phase 1-3 tests (Configuration, Infrastructure, Deployment)
+- Phase 4 core tests (basic registration, admin access, CSV export, map config API)
+
+**Run smoke tests only:**
+```bash
+# Quick validation - all smoke tests
+pytest tests/installation/ -m smoke -v
+
+# Smoke tests for specific phase
+pytest tests/installation/test_core_functionality.py -m smoke -v
+```
+
+#### Comprehensive Tests (80 tests total: 67 smoke + 13 detailed, ~5-10 minutes)
+**Marked with:** `@pytest.mark.installation` (includes both smoke and non-smoke)
+
+Thorough validation including detailed dropdown validation, map interaction, admin page checks, and data model validation. Run before major releases or new installations.
+
+**Additional Coverage (beyond smoke):**
+- Detailed form dropdown validation (skill levels, experience, participation types)
+- Admin-only area exclusion from public forms
+- Map polygon rendering and interaction
+- Map bounds and zoom validation
+- Admin participants and leaders page validation
+- Database model method validation (ParticipantModel, RemovalLogModel)
+
+**Run all comprehensive tests:**
+```bash
+# Complete validation - all tests
+pytest tests/installation/ -v
+
+# Only comprehensive tests (non-smoke)
+pytest tests/installation/ -m "installation and not smoke" -v
+```
+
+**Summary:**
+- **Smoke:** Fast, critical path validation (good enough for most deployments)
+- **Comprehensive:** Detailed validation (use before going live or major changes)
+
 ### Test Phases
 
 #### Phase 1: Configuration Validation ✅
@@ -1164,41 +1212,73 @@ pytest tests/installation/test_deployment.py -v
 ```
 
 #### Phase 4: Core Functionality Validation ✅
-**Status**: Complete (7 tests)
+**Status**: Complete (20 tests: 7 smoke + 13 comprehensive)
 **Requires**: Deployed test server, browser, admin credentials
 
-Validates core workflows:
-- Registration page rendering
-- Map initialization
-- Admin authentication
-- CSV export download
+Validates core workflows with two test levels:
+- **Smoke tests (7)**: Basic registration, admin access, CSV export, map config API
+- **Comprehensive tests (13)**: Detailed dropdown validation, map interaction, admin pages, data models
 
 **Run Phase 4:**
 ```bash
+# Smoke tests only (7 tests, ~1 min)
+pytest tests/installation/test_core_functionality.py -m smoke -v
+
+# All tests including comprehensive (20 tests, ~3-5 min)
 pytest tests/installation/test_core_functionality.py -v
+
+# Only comprehensive tests (13 tests)
+pytest tests/installation/test_core_functionality.py -m "installation and not smoke" -v
 ```
 
 **What it checks:**
-- **Registration Workflow (3 tests)**:
-  - Registration form loads with all required fields (first_name, last_name, email, preferred_area, skill_level)
-  - Map container renders with Leaflet initialization
-  - Area dropdown populated with all public areas from configuration
-- **Admin Access (2 tests)**:
-  - Unauthenticated users redirected to login when accessing /admin
-  - Authenticated admins can access dashboard
-- **CSV Export (1 test)**:
-  - "Export CSV" button exists in admin interface
-  - Button triggers download to browser
-  - Downloaded file has valid CSV format with required headers (first_name, last_name, email, preferred_area)
-- **Map Configuration (1 test)**:
-  - /api/areas returns valid map config with center, bounds, zoom
 
-**Example output:**
+**Smoke Tests (7):**
+- **TestRegistrationWorkflow (3)**:
+  - Registration form loads with all required fields
+  - Map container renders with Leaflet initialization
+  - Area dropdown populated with all public areas
+- **TestAdminAccess (2)**:
+  - Unauthenticated users redirected to login
+  - Authenticated admins can access dashboard
+- **TestCSVExport (1)**:
+  - CSV export button triggers valid download
+- **TestMapConfiguration (1)**:
+  - /api/areas returns valid map config
+
+**Comprehensive Tests (13):**
+- **TestRegistrationWorkflow (+4)**:
+  - Admin-only areas excluded from public dropdown
+  - Skill level dropdown complete (Newbie, Beginner, Intermediate, Expert)
+  - Experience dropdown complete (None, 1-2 counts, 3+ counts)
+  - Participation type options present (regular, FEEDER)
+- **TestMapFunctionality (4 new tests)**:
+  - Map center within bounds
+  - Map shows all area polygons
+  - Area polygons are clickable and interactive (uses JavaScript event dispatch for SVG elements)
+  - Map zoom and bounds are reasonable
+- **TestAdminAccess (+2)**:
+  - Participants page shows all areas
+  - Can view leader management page
+- **TestDataIntegrity (3 new tests)**:
+  - Database collections accessible for current year
+  - ParticipantModel methods available and functional (get_area_counts, get_leaders, get_leaders_by_area, get_areas_without_leaders)
+  - RemovalLogModel accessible and functional (get_all_removals, get_pending_removals, get_removal_stats)
+
+**Example output (smoke):**
 ```
 7 passed in 42.40s
 ```
 
-**Note**: Phase 4 requires admin credentials in Secret Manager. Tests fail with setup instructions if credentials missing.
+**Example output (comprehensive):**
+```
+20 passed in ~3-5 minutes
+```
+
+**Note**:
+- Phase 4 requires admin credentials in Secret Manager. Tests fail with setup instructions if credentials missing.
+- Skill/experience level values use Title Case (e.g., "Newbie", "None") to match form implementation
+- Polygon click test uses JavaScript MouseEvent dispatch for SVG element interaction
 
 #### Phase 5: Multi-Area Operations (Planned)
 
@@ -1212,8 +1292,14 @@ Future phase will validate:
 # Navigate to project root
 cd C:\AndroidStudioProjects\ladner-cbc
 
-# Run all installation tests (Phases 1-4: 67 tests)
+# Smoke tests only (67 tests, ~2-3 min)
+pytest tests/installation/ -m smoke -v
+
+# All comprehensive tests (80 tests: 67 smoke + 13 detailed, ~5-10 min)
 pytest tests/installation/ -v
+
+# Only non-smoke comprehensive tests (13 tests)
+pytest tests/installation/ -m "installation and not smoke" -v
 ```
 
 #### Run Phase 1 Only (Configuration - No GCP Required)
@@ -1553,13 +1639,20 @@ This means the same tests work for:
 
 **Phase 4 Results (Core Functionality):**
 ```
-7 passed in 42.40s
+Smoke: 7 passed in 42.40s
+Comprehensive: 20 passed in ~3-5 minutes
 ```
 
 **Combined Results:**
 ```
-67 tests passed (Phases 1-4)
+Smoke Tests: 67 tests (Phases 1-4 smoke only)
+Comprehensive Tests: 80 tests (67 smoke + 13 detailed)
 ```
+
+**Test Breakdown:**
+- Smoke: Fast validation (~2-3 min total)
+- Comprehensive: Thorough validation (~5-10 min total)
+- Phase 4 comprehensive tests: 13 tests (4 registration + 4 map + 2 admin + 3 data models)
 
 All tests passing with portable, configuration-driven validation!
 

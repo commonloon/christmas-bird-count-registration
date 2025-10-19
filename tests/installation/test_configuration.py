@@ -24,6 +24,8 @@ from config.cloud import (
 )
 
 
+@pytest.mark.smoke
+@pytest.mark.installation
 class TestConfigurationFiles:
     """Validate that all required configuration files exist and are complete."""
 
@@ -156,6 +158,8 @@ class TestConfigurationFiles:
             assert False, error_msg
 
 
+@pytest.mark.smoke
+@pytest.mark.installation
 class TestConfigurationValidity:
     """Validate that configuration values are in valid formats."""
 
@@ -269,6 +273,8 @@ class TestConfigurationValidity:
                 )
 
 
+@pytest.mark.smoke
+@pytest.mark.installation
 class TestConfigurationConsistency:
     """Validate consistency across different configuration files."""
 

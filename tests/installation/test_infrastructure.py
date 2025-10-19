@@ -21,6 +21,8 @@ from google.cloud import secretmanager
 from google.api_core import exceptions as gcp_exceptions
 
 
+@pytest.mark.smoke
+@pytest.mark.installation
 class TestFirestoreAccess:
     """Validate Firestore database access and permissions."""
 
@@ -161,6 +163,8 @@ class TestFirestoreAccess:
             )
 
 
+@pytest.mark.smoke
+@pytest.mark.installation
 class TestSecretManagerAccess:
     """Validate Secret Manager access and required secrets."""
 
@@ -309,6 +313,8 @@ class TestSecretManagerAccess:
             )
 
 
+@pytest.mark.smoke
+@pytest.mark.installation
 class TestCloudRunDeployment:
     """Validate Cloud Run services are deployed and accessible."""
 
@@ -425,6 +431,8 @@ class TestCloudRunDeployment:
             print(f"Note: Could not verify HTTPS enforcement: {e}")
 
 
+@pytest.mark.smoke
+@pytest.mark.installation
 class TestDatabaseIndexes:
     """Validate required Firestore indexes exist for current year."""
 

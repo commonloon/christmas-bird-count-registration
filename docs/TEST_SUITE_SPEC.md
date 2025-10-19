@@ -1,5 +1,5 @@
 # Christmas Bird Count Registration Test Suite Specification
-{# Updated by Claude AI on 2025-10-07 #}
+{# Updated by Claude AI on 2025-10-19 #}
 
 ## Overview
 
@@ -8,10 +8,10 @@ This document defines the requirements and scope for a comprehensive functional 
 ## Core Requirements
 
 ### Testing Environment
-- **Target Platform**: Cloud-based testing against `cbc-test.naturevancouver.ca`
-- **Database**: Test instance uses `cbc-test` Firestore database (isolated from production)
+- **Target Platform**: Cloud-based testing against configured test environment (URL from `config/cloud.py`)
+- **Database**: Test database instance (name from `config/cloud.py`, isolated from production)
 - **Year Strategy**: Use current year for functional testing, year 2000 for historical/isolation testing
-- **Authentication**: Real Google OAuth with dedicated test accounts
+- **Authentication**: Real Google OAuth with dedicated test accounts (configured per environment)
 - **Browser Support**: Primary testing with Firefox due to Chrome OAuth stability issues
 
 ### Test Suite Architecture
@@ -19,24 +19,76 @@ This document defines the requirements and scope for a comprehensive functional 
 #### Configuration Management
 ```
 tests/
-├── config.py                     # Non-sensitive test configuration
-├── conftest.py                   # Pytest fixtures and setup
-├── package.json                  # Jest configuration for JavaScript tests
-├── utils/                        # Test utilities and helpers
-│   ├── database_utils.py         # Database state management
-│   ├── auth_utils.py             # OAuth automation helpers
-│   └── dataset_generator.py     # Test data creation utilities
-├── test_*.py                     # Python test modules (pytest)
+├── conftest.py                   # Pytest fixtures and setup (shared across all tests)
+├── test_config.py                # Test configuration (imports from config/*.py for portability)
+├── pytest.ini                    # Pytest configuration and markers
+├── requirements.txt              # Python test dependencies
+│
+├── package.json                  # Jest/npm configuration for JavaScript tests
+├── jest.config.js                # Jest test framework configuration
+├── README_JAVASCRIPT_TESTS.md    # JavaScript test documentation
+│
+├── test_*.py                     # Functional test modules (pytest)
 ├── *.test.js                     # JavaScript test modules (Jest)
+├── validation.js                 # Frontend validation logic (used by JavaScript tests)
+│
+├── installation/                 # Installation test suite (portable, config-driven)
+│   ├── conftest.py               # Installation-specific fixtures
+│   ├── test_*.py                 # Installation test modules
+│   └── tmp/                      # Temporary files for installation tests
+│
+├── unit/                         # Unit tests (Flask test client, no browser)
+│   └── test_*.py                 # Unit test modules (models, UI conformance)
+│
+├── fixtures/                     # Test data files
+│   ├── README.md                 # Fixture documentation
+│   └── *.csv                     # Test participant data files
+│
+├── data/                         # Test configuration data
+│   ├── test_accounts.py          # Test account definitions
+│   └── test_scenarios.py         # Test scenario configurations
+│
+├── page_objects/                 # Selenium page object model classes
+│   ├── __init__.py
+│   ├── base_page.py              # Base page object with common methods
+│   ├── registration_page.py      # Public registration page
+│   ├── admin_dashboard_page.py   # Admin dashboard
+│   └── admin_participants_page.py # Admin participant management
+│
+├── utils/                        # Test utilities and helpers
+│   ├── auth_utils.py             # OAuth automation helpers
+│   ├── database_utils.py         # Database state management
+│   ├── identity_utils.py         # Identity-based testing utilities
+│   ├── load_test_data.py         # Test data loading (currently Vancouver-specific)
+│   └── sanitize_csv.py           # CSV data sanitization utility
+│
+├── tmp/                          # Temporary files for functional tests
+│   └── downloads/                # Browser download directory
+│
 └── node_modules/                 # Jest dependencies (excluded from git/deploy)
 ```
 
 **Configuration Structure:**
-- **Test URLs**: `cbc-test.naturevancouver.ca` and `cbc-registration.naturevancouver.ca`
-- **Database Names**: `cbc-test` and `cbc-register`
+- **Test URLs**: Retrieved from `config/cloud.py` (TEST_BASE_URL, PRODUCTION_BASE_URL)
+- **Database Names**: Retrieved from `config/cloud.py` (TEST_DATABASE, PRODUCTION_DATABASE)
+- **GCP Project**: Retrieved from `config/cloud.py` (GCP_PROJECT_ID, GCP_LOCATION)
+- **Test Accounts**: Retrieved from `config/admins.py` (TEST_ADMIN_EMAILS, TEST_LEADER_EMAILS)
 - **Test Years**: Current year (functional), 2000 (isolation)
 - **Retry Logic**: 3 attempts with exponential backoff
 - **Credentials**: Google Secret Manager for test account passwords
+
+#### Portability Principle
+
+**IMPORTANT**: All new tests should be designed to run against any installation of the application, not just Nature Vancouver's deployment. This enables:
+- Validation of new installations before going live
+- Testing against multiple environments (development, staging, production)
+- Reusability across different organizations using the application
+
+**Implementation Guidelines**:
+- Use configuration files (`config/organization.py`, `config/areas.py`, etc.) instead of hardcoded values
+- Retrieve organization-specific values from deployment environment
+- Design tests to work with any area configuration (not just Nature Vancouver's 24 areas)
+- Avoid assumptions about specific organization names, URLs, or contact information
 
 ### Test Data Management
 
@@ -88,13 +140,15 @@ family_members = [
 ### Authentication Testing
 
 #### Test Accounts (Google Workspace)
+
+**Environment-Specific Examples (Nature Vancouver):**
 - **Admin Accounts**:
   - `cbc-test-admin1@naturevancouver.ca`
   - `cbc-test-admin2@naturevancouver.ca`
 - **Leader Account**:
   - `cbc-test-leader1@naturevancouver.ca`
 
-**Note**: Test account passwords must be provided separately when resuming development. Passwords are NEVER stored in version-controlled files.
+**Note**: Test account emails are defined in `config/admins.py` (TEST_ADMIN_EMAILS, TEST_LEADER_EMAILS). Passwords are stored in Google Secret Manager and NEVER in version-controlled files. Other organizations will have different test accounts configured for their environment.
 
 #### OAuth Integration
 - **Real OAuth Flow**: Test against actual Google Identity Services with automated consent handling
@@ -102,6 +156,111 @@ family_members = [
 - **Automated Flow**: Handles email entry, password entry, and consent screen automatically
 - **Role Verification**: Confirm admin whitelist and leader database access
 - **Session Management**: Test login persistence and role-based redirects
+
+### Installation Test Suite
+
+#### Purpose and Goals
+
+The installation test suite provides portable, configuration-driven validation for new deployments of the application. Unlike functional tests that may include organization-specific workflows, installation tests verify that core functionality works correctly regardless of which organization is running the application.
+
+**Primary Goals:**
+- **Pre-Deployment Validation**: Verify new installations are properly configured before going live
+- **Post-Deployment Verification**: Confirm deployments completed successfully with all features working
+- **Configuration Validation**: Ensure organization-specific configuration is correctly applied
+- **Portability**: Tests work with any deployment, not just Nature Vancouver
+
+**Use Cases:**
+- New organization adopting the application
+- Major version upgrades requiring validation
+- Infrastructure changes (database migration, hosting changes)
+- Quick smoke tests before releases
+
+#### Two-Tier Testing Strategy
+
+**Smoke Tests (Fast Validation)**:
+- **Purpose**: Quick validation of critical functionality (~2-3 minutes)
+- **Scope**: Basic page rendering, configuration loading, essential workflows
+- **Execution**: Run before every deployment to catch obvious issues
+- **Marker**: `@pytest.mark.smoke`
+- **Example**: Registration page renders, map loads, admin login works
+
+**Comprehensive Tests (Thorough Validation)**:
+- **Purpose**: Detailed validation of complete functionality (~5-10 minutes)
+- **Scope**: Complete workflow coverage, edge cases, data integrity
+- **Execution**: Run before major releases or new installations
+- **Marker**: `@pytest.mark.installation` (includes both smoke and comprehensive)
+- **Example**: All dropdown options present, model APIs functional, polygon interactions work
+
+**Marker Architecture**:
+```python
+# Smoke test - fast, critical validation
+@pytest.mark.installation
+@pytest.mark.smoke
+def test_registration_page_renders(browser, installation_config):
+    # Quick check that page loads
+
+# Comprehensive test - thorough validation
+@pytest.mark.installation
+def test_skill_level_dropdown_complete(browser, installation_config):
+    # Verify all 4 skill levels present with correct values
+```
+
+**Execution Commands**:
+```bash
+# Quick smoke tests only (~2-3 minutes)
+pytest tests/installation/ -m smoke -v
+
+# All installation tests (~5-10 minutes)
+pytest tests/installation/ -v
+
+# Comprehensive tests only
+pytest tests/installation/ -m "installation and not smoke" -v
+```
+
+#### Configuration-Driven Design
+
+**Architecture Principles**:
+- **Dynamic Configuration Loading**: Tests retrieve configuration from deployment rather than hardcoding values
+- **Organization Agnostic**: No assumptions about organization name, area codes, or contact information
+- **Area Flexibility**: Tests adapt to any number of areas with any naming scheme
+- **Database Agnostic**: Works with any properly configured Firestore database
+
+**Configuration Sources**:
+- `config/organization.py`: Organization name, contact info, URLs
+- `config/areas.py`: Area definitions and codes
+- `config/settings.py`: Application behavior settings
+- Environment variables: Database connection, authentication
+
+**Example Pattern**:
+```python
+def test_area_dropdown_populated(browser, installation_config):
+    """Verify dropdown contains all configured areas."""
+    # Get areas from deployment configuration, not hardcoded
+    areas = installation_config['areas']
+    public_areas = [a for a in areas if not a.get('admin_only')]
+
+    # Verify dropdown matches configuration
+    dropdown_options = browser.find_elements(By.CSS_SELECTOR, 'select#area option')
+    assert len(dropdown_options) == len(public_areas)
+```
+
+#### Relationship to Functional Tests
+
+**Installation Tests** (Portable, Configuration-Driven):
+- Focus: Core functionality works with any configuration
+- Data: Uses configuration from deployment environment
+- Portability: Runs against any organization's installation
+- Scope: Essential features that all deployments need
+- Examples: Registration works, admin login works, map renders
+
+**Functional Tests** (Workflow-Specific):
+- Focus: Complete workflow validation with realistic scenarios
+- Data: May include organization-specific test data and workflows
+- Portability: May contain Nature Vancouver-specific assumptions
+- Scope: Comprehensive feature coverage including edge cases
+- Examples: Leader reassignment with specific workflows, CSV export validation
+
+**Overlap**: Many functional tests follow portability principles and could be used as installation tests. The distinction is primarily about intent and guarantees of portability.
 
 ## Test Suite Scope
 
@@ -294,7 +453,7 @@ family_members = [
 
 **Implementation Notes:**
 - Current email system uses SMTP, needs Google Cloud Email API
-- Test mode redirects emails to `birdcount@naturevancouver.ca`
+- Test mode redirects emails to configured test recipient (from `config/organization.py`)
 - Manual trigger buttons available in admin dashboard (test server only)
 
 ### Advanced Testing Features (Deferred)
@@ -601,14 +760,14 @@ dashboard_selectors = [
 ### ✅ **UI Conformance Tests (Completed 2025-10-15)**
 **Comprehensive Template and UI Element Validation (77 tests)**:
 - **Test File**: `tests/unit/test_ui_conformance.py`
-- **Approach**: Flask test client + BeautifulSoup + real cbc-test database connection
+- **Approach**: Flask test client + BeautifulSoup + real database connection
 - **Test Data**: Uses actual participants from `tests/fixtures/test_participants_2025.csv` loaded via session fixture
 - **Execution Time**: ~4.5 minutes (includes database loading)
 - **Purpose**: Validate that rendered HTML conforms to SPECIFICATION.md without requiring browser automation
 
 **Test Architecture**:
 - **No Browser Required**: Uses Flask test client to render templates locally
-- **Real Database Connection**: Connects to cbc-test Firestore database for realistic data
+- **Real Database Connection**: Connects to configured test Firestore database for realistic data
 - **Session-Scoped Data Loading**: Test data loaded once per test session for efficiency
 - **BeautifulSoup Parsing**: Validates HTML structure, element presence, and attributes
 - **Hidden Element Testing**: Validates inline edit controls that JavaScript toggles visibility

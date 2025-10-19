@@ -1,9 +1,17 @@
 # Test Suite Setup Instructions
-{# Updated by Claude AI on 2025-09-30 #}
+{# Updated by Claude AI on 2025-10-19 #}
 
 ## Overview
 
 This document provides complete setup instructions for the Christmas Bird Count registration system test suite. The test suite includes both Python (pytest) and JavaScript (Jest) tests that validate backend and frontend functionality.
+
+**Prerequisites**: Before running tests, complete the initial project configuration as described in `DEPLOYMENT.md`. This includes:
+- Google Cloud project setup and authentication
+- OAuth client configuration
+- Firestore database creation and indexes
+- Cloud Run deployment to test environment
+
+All test types (installation tests, functional tests, unit tests) use the same configuration. This document covers test-specific setup only.
 
 ## Prerequisites
 

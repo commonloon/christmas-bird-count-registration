@@ -2,6 +2,11 @@
 
 This directory contains test data fixtures for the CBC registration test suite.
 
+> ***NOTE: The participant records in the CSV dataset contain count areas that are 
+> specific to the Vancouver Count Circle.  A portable implementation of the test data 
+> would need to update the participant records to be compatible with the count circle being tested.***
+
+
 ## Files
 
 ### test_participants_2025.csv

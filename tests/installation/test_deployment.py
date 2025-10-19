@@ -21,6 +21,8 @@ from bs4 import BeautifulSoup
 from typing import Set, List, Dict
 
 
+@pytest.mark.smoke
+@pytest.mark.installation
 class TestURLAccessibility:
     """Validate that deployed services are accessible with correct responses."""
 
@@ -123,6 +125,8 @@ class TestURLAccessibility:
             pytest.fail(f"Invalid JSON response from {url}: {e}")
 
 
+@pytest.mark.smoke
+@pytest.mark.installation
 class TestStaticAssets:
     """Validate that static assets are accessible and have correct content."""
 
@@ -293,6 +297,8 @@ class TestStaticAssets:
             f"Add a favicon.ico to one of these locations or configure a custom path."
 
 
+@pytest.mark.smoke
+@pytest.mark.installation
 class TestAPIEndpoints:
     """Validate API endpoints return correct data matching configuration."""
 
@@ -442,6 +448,8 @@ class TestAPIEndpoints:
             pytest.fail(f"Failed to access API endpoints: {e}")
 
 
+@pytest.mark.smoke
+@pytest.mark.installation
 class TestRegistrationFormRendering:
     """Validate registration form contains all required options from config."""
 
