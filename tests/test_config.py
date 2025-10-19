@@ -1,24 +1,35 @@
 # Test Configuration for Christmas Bird Count Registration System
-# Updated by Claude AI on 2025-09-25
+# Updated by Claude AI on 2025-10-18
 
 """
 Test configuration for functional workflow testing against cloud environments.
 Updated for maintainable functional test suite with page object model.
 Credentials are stored in Google Secret Manager for security.
+
+IMPORTANT: This file now imports from config/*.py for portability.
+Update config/cloud.py and config/admins.py instead of hardcoding values here.
 """
 
 import os
 from datetime import datetime
 
+# Import deployment configuration for portability
+from config.cloud import (
+    TEST_BASE_URL, PRODUCTION_BASE_URL,
+    TEST_DATABASE, PRODUCTION_DATABASE,
+    GCP_PROJECT_ID, GCP_LOCATION
+)
+from config.admins import TEST_ADMIN_EMAILS, TEST_LEADER_EMAILS
+
 # Environment Configuration
 TEST_CONFIG = {
-    # Target URLs for testing
-    'test_url': 'https://cbc-test.naturevancouver.ca',
-    'production_url': 'https://cbc-registration.naturevancouver.ca',
+    # Target URLs for testing (imported from config/cloud.py)
+    'test_url': TEST_BASE_URL,
+    'production_url': PRODUCTION_BASE_URL,
 
-    # Database names
-    'test_database': 'cbc-test',
-    'production_database': 'cbc-register',
+    # Database names (imported from config/cloud.py)
+    'test_database': TEST_DATABASE,
+    'production_database': PRODUCTION_DATABASE,
 
     # Year strategy
     'current_year': datetime.now().year,
@@ -47,32 +58,32 @@ TEST_CONFIG = {
 }
 
 # Test Account Configuration
-# Account usernames only - passwords stored in Google Secret Manager
+# Account usernames imported from config/admins.py - passwords stored in Google Secret Manager
 TEST_ACCOUNTS = {
     'admin_primary': {
-        'email': 'cbc-test-admin1@naturevancouver.ca',
+        'email': TEST_ADMIN_EMAILS[0],
         'secret_name': 'test-admin1-password',
         'role': 'admin',
         'description': 'Primary admin account for testing'
     },
     'admin_secondary': {
-        'email': 'cbc-test-admin2@naturevancouver.ca',
+        'email': TEST_ADMIN_EMAILS[1] if len(TEST_ADMIN_EMAILS) > 1 else TEST_ADMIN_EMAILS[0],
         'secret_name': 'test-admin2-password',
         'role': 'admin',
         'description': 'Secondary admin account for concurrent testing'
     },
     'leader': {
-        'email': 'cbc-test-leader1@naturevancouver.ca',
+        'email': TEST_LEADER_EMAILS[0],
         'secret_name': 'test-leader1-password',
         'role': 'leader',
         'description': 'Area leader account for leader interface testing'
     }
 }
 
-# Google Cloud Configuration
+# Google Cloud Configuration (imported from config/cloud.py)
 GCP_CONFIG = {
-    'project_id': 'vancouver-cbc-registration',
-    'region': 'us-west1',
+    'project_id': GCP_PROJECT_ID,
+    'region': GCP_LOCATION,
     'secret_manager_enabled': True
 }
 

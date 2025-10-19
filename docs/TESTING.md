@@ -1163,11 +1163,47 @@ pytest tests/installation/test_deployment.py -v
 23 passed in 16.21s
 ```
 
-#### Phase 4-5: Core Functionality (Planned)
+#### Phase 4: Core Functionality Validation ✅
+**Status**: Complete (7 tests)
+**Requires**: Deployed test server, browser, admin credentials
 
-Future phases will validate:
-- **Phase 4**: Core functionality (registration, admin workflows, CSV export)
-- **Phase 5**: Multi-area operations (all areas functional)
+Validates core workflows:
+- Registration page rendering
+- Map initialization
+- Admin authentication
+- CSV export download
+
+**Run Phase 4:**
+```bash
+pytest tests/installation/test_core_functionality.py -v
+```
+
+**What it checks:**
+- **Registration Workflow (3 tests)**:
+  - Registration form loads with all required fields (first_name, last_name, email, preferred_area, skill_level)
+  - Map container renders with Leaflet initialization
+  - Area dropdown populated with all public areas from configuration
+- **Admin Access (2 tests)**:
+  - Unauthenticated users redirected to login when accessing /admin
+  - Authenticated admins can access dashboard
+- **CSV Export (1 test)**:
+  - "Export CSV" button exists in admin interface
+  - Button triggers download to browser
+  - Downloaded file has valid CSV format with required headers (first_name, last_name, email, preferred_area)
+- **Map Configuration (1 test)**:
+  - /api/areas returns valid map config with center, bounds, zoom
+
+**Example output:**
+```
+7 passed in 42.40s
+```
+
+**Note**: Phase 4 requires admin credentials in Secret Manager. Tests fail with setup instructions if credentials missing.
+
+#### Phase 5: Multi-Area Operations (Planned)
+
+Future phase will validate:
+- **Phase 5**: Multi-area operations (all areas functional, boundary validation)
 
 ### Running Installation Tests
 
@@ -1176,7 +1212,7 @@ Future phases will validate:
 # Navigate to project root
 cd C:\AndroidStudioProjects\ladner-cbc
 
-# Run all installation tests (Phases 1-3: 60 tests)
+# Run all installation tests (Phases 1-4: 67 tests)
 pytest tests/installation/ -v
 ```
 
@@ -1196,6 +1232,12 @@ pytest tests/installation/test_infrastructure.py -v
 ```bash
 # Run all Phase 3 tests (23 tests)
 pytest tests/installation/test_deployment.py -v
+```
+
+#### Run Phase 4 Only (Core Functionality - Requires Browser and Admin Credentials)
+```bash
+# Run all Phase 4 tests (7 tests)
+pytest tests/installation/test_core_functionality.py -v
 ```
 
 #### Run Specific Test Classes
@@ -1242,6 +1284,21 @@ pytest tests/installation/test_deployment.py::TestAPIEndpoints -v
 pytest tests/installation/test_deployment.py::TestRegistrationFormRendering -v
 ```
 
+**Phase 4 (Core Functionality):**
+```bash
+# Registration workflow validation
+pytest tests/installation/test_core_functionality.py::TestRegistrationWorkflow -v
+
+# Admin access and authentication
+pytest tests/installation/test_core_functionality.py::TestAdminAccess -v
+
+# CSV export functionality
+pytest tests/installation/test_core_functionality.py::TestCSVExport -v
+
+# Map configuration API
+pytest tests/installation/test_core_functionality.py::TestMapConfiguration -v
+```
+
 #### Run Individual Tests
 
 **Phase 1 Examples:**
@@ -1284,6 +1341,24 @@ pytest tests/installation/test_deployment.py::TestAPIEndpoints::test_api_map_con
 # Test form rendering
 pytest tests/installation/test_deployment.py::TestRegistrationFormRendering::test_registration_form_has_area_dropdown -v
 pytest tests/installation/test_deployment.py::TestRegistrationFormRendering::test_skill_level_dropdown_complete -v
+```
+
+**Phase 4 Examples:**
+```bash
+# Test registration page rendering
+pytest tests/installation/test_core_functionality.py::TestRegistrationWorkflow::test_registration_page_renders -v
+pytest tests/installation/test_core_functionality.py::TestRegistrationWorkflow::test_map_renders_on_registration_page -v
+pytest tests/installation/test_core_functionality.py::TestRegistrationWorkflow::test_area_dropdown_populated_from_config -v
+
+# Test admin authentication
+pytest tests/installation/test_core_functionality.py::TestAdminAccess::test_admin_login_redirects_when_not_authenticated -v
+pytest tests/installation/test_core_functionality.py::TestAdminAccess::test_admin_dashboard_loads_with_authentication -v
+
+# Test CSV export
+pytest tests/installation/test_core_functionality.py::TestCSVExport::test_csv_export_button_exists_and_downloads -v
+
+# Test map configuration API
+pytest tests/installation/test_core_functionality.py::TestMapConfiguration::test_map_config_api_returns_valid_data -v
 ```
 
 ### Understanding Test Failures
@@ -1379,6 +1454,58 @@ Got keys: ['areas']
 Check routes/api.py get_areas() implementation
 ```
 
+**Phase 4 Failure Examples:**
+
+**Example 11 - Admin credentials not configured:**
+```
+Admin dashboard did not load: https://cbc-test.myclub.org/admin
+Current URL: https://accounts.google.com/...
+
+Admin credentials not found in Secret Manager.
+To set up test admin credentials:
+  1. Create test admin account passwords in Secret Manager:
+     gcloud secrets create test-admin1-password --data-file=-
+     (paste password and press Ctrl+D)
+  2. Add test admin emails to config/admins.py TEST_ADMIN_EMAILS
+  3. Grant admin access to test account
+See tests/test_config.py for expected secret names
+```
+
+**Example 12 - CSV export button not found:**
+```
+CSV export button/link not found in admin interface
+Expected link text: 'Export CSV'
+Check templates/admin/dashboard.html or templates/admin/participants.html
+
+Possible causes:
+- Button text mismatch (expecting exact text 'Export CSV')
+- Button not rendered in template
+- Different route structure
+```
+
+**Example 13 - Registration form missing required fields:**
+```
+Required field 'preferred_area' not found in registration form
+Check templates/index.html
+
+Form should include these required fields:
+- first_name
+- last_name
+- email
+- preferred_area
+- skill_level
+```
+
+**Example 14 - Map failed to render:**
+```
+Map failed to render within 10 seconds
+Possible causes:
+- static/js/map.js not loading
+- static/data/area_boundaries.json not accessible
+- JavaScript error preventing map initialization
+Check browser console and network tab
+```
+
 ### Portability Verification
 
 The installation tests contain **zero hardcoded organization-specific values**:
@@ -1424,9 +1551,14 @@ This means the same tests work for:
 23 passed in 16.21s
 ```
 
+**Phase 4 Results (Core Functionality):**
+```
+7 passed in 42.40s
+```
+
 **Combined Results:**
 ```
-60 tests passed (Phases 1-3)
+67 tests passed (Phases 1-4)
 ```
 
 All tests passing with portable, configuration-driven validation!

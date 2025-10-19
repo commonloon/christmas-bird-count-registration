@@ -19,6 +19,11 @@ TEST_ADMIN_EMAILS = [
     'cbc-test-admin2@naturevancouver.ca',
 ]
 
+# Test leader emails (for testing leader workflows)
+TEST_LEADER_EMAILS = [
+    'cbc-test-leader1@naturevancouver.ca',
+]
+
 def is_test_environment():
     """Detect if running in test environment."""
     return (

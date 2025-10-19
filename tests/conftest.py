@@ -286,12 +286,12 @@ def browser(chrome_options, firefox_options):
             except Exception as e:
                 logger.warning(f"Error closing {browser_type} browser: {e}")
 
-@pytest.fixture(scope="class")
+@pytest.fixture(scope="session")
 def authenticated_browser(chrome_options, firefox_options, test_credentials):
-    """Create browser and authenticate once for all tests in the class.
+    """Create browser and authenticate once for entire test session.
 
     This fixture performs OAuth authentication once and reuses the browser
-    session across all tests in the class, avoiding repeated expensive OAuth flows.
+    session across all tests in the session, avoiding repeated expensive OAuth flows.
     Uses admin_primary credentials by default.
     """
     from tests.utils.auth_utils import admin_login_for_test

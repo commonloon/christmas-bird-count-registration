@@ -82,3 +82,21 @@ def public_areas(installation_config):
 def org_config(installation_config):
     """Shortcut fixture for organization variables."""
     return installation_config['org_vars']
+
+
+# Fixtures inherited from parent conftest.py (tests/conftest.py):
+#
+# - browser (function-scoped):
+#     Creates browser instance with download directory configured at tests/tmp/downloads
+#     Uses chrome_options/firefox_options from parent conftest
+#
+# - test_credentials (session-scoped):
+#     Retrieves test account credentials from Secret Manager.
+#     Automatically uses values from tests/test_config.py which now imports from config/*.py
+#
+# - authenticated_browser (session-scoped):
+#     Creates browser with OAuth authentication performed once for entire test session.
+#     Uses test_credentials fixture and admin_login_for_test() from tests/utils/auth_utils.py
+#     Download directory: tests/tmp/downloads (configured in parent conftest chrome_options/firefox_options)
+#
+# Installation tests can use these fixtures directly - no need to redefine them here.
