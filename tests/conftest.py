@@ -105,6 +105,7 @@ def test_credentials(secret_manager_client):
     Credentials are static for the entire test suite run.
     """
     credentials = {}
+    missing_secrets = []
 
     for account_name, account_config in TEST_ACCOUNTS.items():
         try:
@@ -120,7 +121,42 @@ def test_credentials(secret_manager_client):
             logger.info(f"Retrieved credentials for {account_config['email']}")
         except Exception as e:
             logger.error(f"Failed to retrieve credentials for {account_name}: {e}")
-            pytest.fail(f"Cannot run tests without credentials for {account_name}")
+            missing_secrets.append({
+                'name': account_config['secret_name'],
+                'email': account_config['email'],
+                'error': str(e)
+            })
+
+    if missing_secrets:
+        error_msg = "\n" + "=" * 80 + "\n"
+        error_msg += "ERROR: Test Account Credentials Not Configured\n"
+        error_msg += "=" * 80 + "\n\n"
+        error_msg += f"Project: {GCP_CONFIG['project_id']}\n\n"
+        error_msg += "Missing secrets:\n"
+        for secret in missing_secrets:
+            error_msg += f"  - {secret['name']} (for {secret['email']})\n"
+
+        error_msg += "\n" + "-" * 80 + "\n"
+        error_msg += "TO RUN PHASE 1-3 TESTS (Configuration, Infrastructure, Deployment):\n"
+        error_msg += "  These tests don't need credentials. Run them separately:\n\n"
+        error_msg += "  pytest tests/installation/test_configuration.py -m smoke -v\n"
+        error_msg += "  pytest tests/installation/test_infrastructure.py -m smoke -v\n"
+        error_msg += "  pytest tests/installation/test_deployment.py -m smoke -v\n"
+        error_msg += "\n" + "-" * 80 + "\n"
+        error_msg += "TO SET UP TEST CREDENTIALS FOR PHASE 4 (Core Functionality):\n\n"
+        error_msg += "1. Create test admin account passwords in Secret Manager:\n\n"
+        for secret in missing_secrets:
+            error_msg += f"   gcloud config set project {GCP_CONFIG['project_id']}\n"
+            error_msg += f"   echo 'YOUR_PASSWORD_HERE' | gcloud secrets create {secret['name']} --project={GCP_CONFIG['project_id']} --data-file=-\n\n"
+
+        error_msg += "2. Configure test admin emails in config/admins.py:\n"
+        error_msg += "   Update TEST_ADMIN_EMAILS and TEST_LEADER_EMAILS\n\n"
+        error_msg += "3. For detailed setup instructions, see:\n"
+        error_msg += "   - docs/TEST_SETUP.md (complete test environment setup)\n"
+        error_msg += "   - docs/DEPLOYMENT.md (admin account configuration)\n"
+        error_msg += "\n" + "=" * 80 + "\n"
+
+        pytest.fail(error_msg)
 
     return credentials
 
