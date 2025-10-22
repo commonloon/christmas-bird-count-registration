@@ -200,10 +200,11 @@
 
     <div class="footer">
         <p>This is an automated daily digest from the Vancouver CBC registration system.<br>
-        Generated on {{ current_date.strftime('%Y-%m-%d at %H:%M') }} Pacific Time</p>
+        Generated on {{ current_date.strftime('%Y-%m-%d at %H:%M') }} {{ display_timezone }}</p>
         {% if test_mode %}
         <p><strong>TEST MODE:</strong> This email was generated for testing purposes.</p>
         {% endif %}
     </div>
 </body>
 </html>
+<!-- Updated by Claude AI on 2025-10-22 -->

@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2025-10-06
+# Updated by Claude AI on 2025-10-22
 #!/usr/bin/env python3
 """
 Email Generation System for Vancouver CBC Registration
@@ -29,6 +29,7 @@ from config.email_settings import (
 from models.participant import ParticipantModel
 from models.removal_log import RemovalLogModel
 from services.email_service import email_service
+from services.datetime_utils import convert_to_display_timezone
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +166,8 @@ def generate_team_update_emails(app=None) -> Dict[str, Any]:
     try:
         db, _ = get_firestore_client()
         current_year = datetime.now().year
-        current_time = datetime.utcnow()  # Race condition prevention: pick timestamp first
+        utc_now = datetime.now(timezone.utc)  # Race condition prevention: pick timestamp first
+        current_time, display_timezone = convert_to_display_timezone(utc_now)
         
         participant_model = ParticipantModel(db, current_year)
         timestamp_model = EmailTimestampModel(db, current_year)
@@ -223,6 +225,7 @@ def generate_team_update_emails(app=None) -> Dict[str, Any]:
                     'removed_participants': removed_participants,
                     'current_team': current_team,
                     'current_date': current_time,
+                    'display_timezone': display_timezone,
                     'leader_dashboard_url': get_leader_dashboard_url(),
                     'test_mode': is_test_server(),
                     'branding': get_email_branding()
@@ -272,7 +275,8 @@ def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
     try:
         db, _ = get_firestore_client()
         current_year = datetime.now().year
-        current_time = datetime.utcnow()
+        utc_now = datetime.now(timezone.utc)
+        current_time, display_timezone = convert_to_display_timezone(utc_now)
 
         participant_model = ParticipantModel(db, current_year)
         timestamp_model = EmailTimestampModel(db, current_year)
@@ -333,6 +337,7 @@ def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
                     'experience_breakdown': experience_breakdown,
                     'leadership_interest_count': leadership_interest_count,
                     'current_date': current_time,
+                    'display_timezone': display_timezone,
                     'leader_dashboard_url': get_leader_dashboard_url(),
                     'test_mode': is_test_server(),
                     'branding': get_email_branding()
@@ -382,8 +387,10 @@ def generate_admin_digest_email(app=None) -> Dict[str, Any]:
     try:
         db, _ = get_firestore_client()
         current_year = datetime.now().year
-        current_time = datetime.utcnow()
-        
+        utc_now = datetime.now(timezone.utc)
+        current_time, display_timezone = convert_to_display_timezone(utc_now)
+        utc_for_calcs = utc_now  # Keep UTC version for calculations
+
         participant_model = ParticipantModel(db, current_year)
         
         results = {
@@ -407,10 +414,6 @@ def generate_admin_digest_email(app=None) -> Dict[str, Any]:
         days_waiting = []
         total_wait_days = 0
         
-        # Ensure current_time is timezone-aware (UTC)
-        if current_time.tzinfo is None:
-            current_time = current_time.replace(tzinfo=timezone.utc)
-        
         for participant in unassigned_participants:
             created_at = participant.get('created_at')
             if created_at:
@@ -418,8 +421,8 @@ def generate_admin_digest_email(app=None) -> Dict[str, Any]:
                 if created_at.tzinfo is None:
                     # If naive, assume UTC
                     created_at = created_at.replace(tzinfo=timezone.utc)
-                
-                days_wait = (current_time - created_at).days
+
+                days_wait = (utc_for_calcs - created_at).days
                 days_waiting.append(days_wait)
                 total_wait_days += days_wait
             else:
@@ -434,6 +437,7 @@ def generate_admin_digest_email(app=None) -> Dict[str, Any]:
             'days_waiting': days_waiting,
             'average_wait_days': average_wait_days,
             'current_date': current_time,
+            'display_timezone': display_timezone,
             'admin_unassigned_url': get_admin_unassigned_url(),
             'test_mode': is_test_server(),
             'branding': get_email_branding()
