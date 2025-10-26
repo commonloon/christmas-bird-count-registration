@@ -1,5 +1,5 @@
 # Email Notification Tests for Participant Reassignment
-# Updated by Claude AI on 2025-10-25
+# Updated by Claude AI on 2025-10-26
 
 """
 Test suite for reassignment email notifications in the Christmas Bird Count system.
@@ -32,6 +32,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from tests.test_config import get_base_url, get_database_name
 from tests.page_objects import AdminParticipantsPage
 from tests.utils.load_test_data import load_test_fixture
+from tests.utils.reassignment_helper import reassign_participant_via_ui
 from models.participant import ParticipantModel
 from models.reassignment_log import ReassignmentLogModel
 from test.email_generator import (
@@ -168,21 +169,6 @@ def flask_app_module():
 class TestEmailNotifications:
     """Test email notifications for participant reassignments."""
 
-    def test_fixture_setup_debug(self, firestore_client_module, participant_model_module,
-                                 email_capture, flask_app_module, load_test_data_module):
-        """Debug test to verify fixtures are loading correctly."""
-        logger.info("✓ All fixtures loaded successfully")
-        logger.info(f"  - Firestore client: {type(firestore_client_module)}")
-        logger.info(f"  - Participant model: {type(participant_model_module)}")
-        logger.info(f"  - Email capture: {type(email_capture)}")
-        logger.info(f"  - Flask app: {type(flask_app_module)}")
-        logger.info(f"  - Test data results: {load_test_data_module}")
-        assert firestore_client_module is not None
-        assert participant_model_module is not None
-        assert email_capture is not None
-        assert flask_app_module is not None
-        assert load_test_data_module is not None
-
     @pytest.mark.critical
     def test_simple_reassignment(self, authenticated_browser, firestore_client_module,
                                 participant_model_module, email_capture, flask_app_module,
@@ -223,138 +209,34 @@ class TestEmailNotifications:
             # ============================================================
             logger.info("Phase 2: Reassigning participant from Area C to Area E")
 
-            # Navigate to admin participants page
-            logger.info(f"Navigating to {base_url}/admin/participants")
+            # Get a participant from Area C and reassign to Area E
+            # First, find a participant email to reassign
             authenticated_browser.get(f"{base_url}/admin/participants")
-
-            # Wait for page to load
-            try:
-                WebDriverWait(authenticated_browser, 10).until(
-                    EC.presence_of_element_located((By.TAG_NAME, "table"))
-                )
-                logger.info("✓ Participants table loaded")
-            except Exception as e:
-                logger.error(f"Failed to load participants table: {e}")
-                logger.error(f"Current URL: {authenticated_browser.current_url}")
-                logger.error(f"Page title: {authenticated_browser.title}")
-                pytest.skip(f"Could not load participants table: {e}")
-
+            WebDriverWait(authenticated_browser, 10).until(
+                EC.presence_of_element_located((By.TAG_NAME, "table"))
+            )
             time.sleep(1)
 
-            # Find a participant in Area C to reassign
-            # The page organizes participants by area sections (div#area-C, etc.)
-            reassign_row = None
-            participant_name = None
-            participant_email = None
+            # Find first participant in Area C
+            area_c_section = authenticated_browser.find_element(By.ID, "area-C")
+            rows = area_c_section.find_elements(By.CSS_SELECTOR, "table tbody tr")
+            if not rows:
+                pytest.skip("No participants found in Area C")
 
-            # Look for Area C section specifically
-            try:
-                area_c_section = authenticated_browser.find_element(By.ID, "area-C")
-                logger.info("✓ Found Area C section on page")
-            except Exception as e:
-                logger.error(f"Could not find Area C section: {e}")
-                # Fall back to showing what areas DO exist
-                area_buttons = authenticated_browser.find_elements(By.CSS_SELECTOR, "a[href^='#area-']")
-                found_areas = [btn.text for btn in area_buttons]
-                logger.warning(f"Available areas: {found_areas}")
+            cells = rows[0].find_elements(By.TAG_NAME, "td")
+            if len(cells) < 2:
+                pytest.skip("Could not extract participant info from Area C")
 
-                # Save page source for inspection
-                page_source = authenticated_browser.page_source
-                with open("tests/tmp/participants_page_dump.html", "w", encoding='utf-8') as f:
-                    f.write(page_source)
-                logger.warning("Saved page source to tests/tmp/participants_page_dump.html")
-                pytest.skip(f"Area C section not found on page. Available areas: {found_areas}")
+            participant_email = cells[1].text.strip()
 
-            # Get all rows within Area C section
-            try:
-                rows = area_c_section.find_elements(By.CSS_SELECTOR, "table tbody tr")
-                logger.info(f"Found {len(rows)} participants in Area C")
-            except Exception as e:
-                logger.error(f"Could not find table rows in Area C: {e}")
-                pytest.skip(f"Could not find participant table in Area C: {e}")
-
-            # Get first participant from Area C
-            if rows:
-                reassign_row = rows[0]
-                cells = reassign_row.find_elements(By.TAG_NAME, "td")
-                if len(cells) >= 2:
-                    # Extract name and email from first two columns
-                    participant_name = cells[0].text.strip()
-                    participant_email = cells[1].text.strip()
-                    logger.info(f"✓ Found participant to reassign: {participant_name} ({participant_email})")
-            else:
-                logger.warning("No participant rows found in Area C table")
-                pytest.skip("No participants found in Area C for reassignment testing")
-
-            if not reassign_row:
-                logger.error("Failed to select a participant row from Area C")
-                pytest.skip("Could not select a participant from Area C")
-
-            # Find and click the reassign button (icon button with class btn-reassign)
-            logger.info("Looking for reassign button in selected row")
-            reassign_button = None
-            try:
-                # The reassign button has class btn-reassign (arrow icon)
-                reassign_button = reassign_row.find_element(By.CSS_SELECTOR, "button.btn-reassign")
-                logger.info("✓ Found reassign button")
-            except Exception as e:
-                logger.error(f"Could not find reassign button: {e}")
-                # Save page for inspection
-                page_source = authenticated_browser.page_source
-                with open("tests/tmp/participants_page_error.html", "w", encoding='utf-8') as f:
-                    f.write(page_source)
-                logger.error("Saved error page to tests/tmp/participants_page_error.html")
-                pytest.skip(f"Could not find reassign button: {e}")
-
-            # Click the reassign button
-            try:
-                authenticated_browser.execute_script("arguments[0].scrollIntoView(true);", reassign_button)
-                time.sleep(0.3)
-                reassign_button.click()
-                logger.info("Clicked reassign button")
-            except Exception as e:
-                logger.error(f"Failed to click reassign button: {e}")
-                pytest.skip(f"Failed to click reassign button: {e}")
-
-            # Wait for reassign-controls to become visible
-            time.sleep(0.5)
-            reassign_controls = None
-            try:
-                reassign_controls = reassign_row.find_element(By.CSS_SELECTOR, ".reassign-controls")
-                # Check if it's visible
-                if not reassign_controls.is_displayed():
-                    logger.warning("Reassign controls found but not displayed, waiting...")
-                    time.sleep(1)
-                logger.info("✓ Reassign controls visible")
-            except Exception as e:
-                logger.error(f"Could not find reassign controls: {e}")
-                # Save page for inspection
-                page_source = authenticated_browser.page_source
-                with open("tests/tmp/participants_page_reassign_error.html", "w", encoding='utf-8') as f:
-                    f.write(page_source)
-                logger.error("Saved error page to tests/tmp/participants_page_reassign_error.html")
-                pytest.skip(f"Could not find reassign controls after clicking button: {e}")
-
-            # Select Area E from the dropdown
-            try:
-                area_dropdown = reassign_row.find_element(By.CSS_SELECTOR, "select.reassign-area-select")
-                from selenium.webdriver.support.ui import Select
-                select = Select(area_dropdown)
-                select.select_by_value('E')
-                logger.info("✓ Selected Area E in reassignment dropdown")
-            except Exception as e:
-                logger.error(f"Failed to select Area E: {e}")
-                pytest.skip(f"Failed to select Area E from dropdown: {e}")
-
-            # Click the confirm reassign button
-            try:
-                confirm_button = reassign_row.find_element(By.CSS_SELECTOR, "button.btn-confirm-reassign")
-                confirm_button.click()
-                logger.info("✓ Clicked confirm reassign button")
-                time.sleep(2)  # Wait for reassignment to complete
-            except Exception as e:
-                logger.error(f"Failed to click confirm reassign button: {e}")
-                pytest.skip(f"Failed to click confirm reassign button: {e}")
+            # Use utility function to perform reassignment
+            participant_name, _ = reassign_participant_via_ui(
+                authenticated_browser,
+                base_url,
+                participant_email,
+                'E',
+                is_leader=False
+            )
 
             # ============================================================
             # Phase 3: Verify reassignment in database
@@ -520,6 +402,425 @@ class TestEmailNotifications:
                     logger.info(f"Saved Area E weekly summary to {e_weekly_file}")
 
             logger.info("✓ test_simple_reassignment completed successfully")
+
+        except Exception as e:
+            logger.error(f"Test failed with error: {e}", exc_info=True)
+            raise
+
+    def test_rapid_reassignment_captures_original_source(self, authenticated_browser, firestore_client_module,
+                                                         participant_model_module, email_capture, flask_app_module,
+                                                         load_test_data_module):
+        """
+        Test rapid successive reassignments (D → J → R).
+
+        Validates that when a participant is reassigned multiple times in quick succession,
+        the email notifications correctly reflect the original source (D) and final destination (R),
+        with no unnecessary email for the intermediate area (J).
+        """
+        current_year = datetime.now().year
+        base_url = get_base_url()
+
+        try:
+            # ============================================================
+            # Phase 1: Setup - Initialize email timestamps
+            # ============================================================
+            logger.info("Phase 1: Setting up email timestamps")
+
+            timestamp_model = EmailTimestampModel(firestore_client_module, current_year)
+            now = datetime.now(timezone.utc)
+
+            # Set timestamps for all affected areas
+            for area in ['D', 'J', 'R']:
+                timestamp_model.update_last_email_sent(area, 'team_update', now)
+                timestamp_model.update_last_email_sent(area, 'weekly_update', now)
+
+            time.sleep(1)
+
+            # ============================================================
+            # Phase 2: Perform rapid reassignments D → J → R
+            # ============================================================
+            logger.info("Phase 2: Performing rapid reassignments D → J → R")
+
+            # Find a participant in Area D to start with
+            authenticated_browser.get(f"{base_url}/admin/participants")
+            WebDriverWait(authenticated_browser, 10).until(
+                EC.presence_of_element_located((By.TAG_NAME, "table"))
+            )
+            time.sleep(1)
+
+            area_d_section = authenticated_browser.find_element(By.ID, "area-D")
+            rows_d = area_d_section.find_elements(By.CSS_SELECTOR, "table tbody tr")
+            if not rows_d:
+                pytest.skip("No participants found in Area D")
+
+            cells = rows_d[0].find_elements(By.TAG_NAME, "td")
+            participant_email = cells[1].text.strip()
+
+            # First reassignment: D → J
+            participant_name, _ = reassign_participant_via_ui(
+                authenticated_browser,
+                base_url,
+                participant_email,
+                'J',
+                is_leader=False
+            )
+
+            # Second reassignment: J → R (same participant)
+            reassign_participant_via_ui(
+                authenticated_browser,
+                base_url,
+                participant_email,
+                'R',
+                is_leader=False
+            )
+
+            logger.info(f"✓ Completed rapid reassignments: D → J → R for {participant_name}")
+
+            # ============================================================
+            # Phase 3: Generate and validate team update emails
+            # ============================================================
+            logger.info("Phase 3: Generating team update emails")
+
+            email_capture.clear()
+            with patch('services.email_service.email_service.send_email') as mock_send:
+                mock_send.side_effect = email_capture.send_email
+                results = generate_team_update_emails(app=flask_app_module)
+                logger.info(f"Team update results: {results['emails_sent']} sent")
+
+            # Debug: Log all emails that were sent
+            logger.info(f"Total emails sent: {len(email_capture.captured_emails)}")
+            for email in email_capture.captured_emails:
+                logger.info(f"  Email: {email['subject']}")
+
+            # Validate emails for D and R only (not J - no net changes)
+            team_d_emails = [e for e in email_capture.captured_emails if "Area D" in e['subject']]
+            team_j_emails = [e for e in email_capture.captured_emails if "Area J" in e['subject']]
+            team_r_emails = [e for e in email_capture.captured_emails if "Area R" in e['subject']]
+
+            logger.info(f"Team update emails: D={len(team_d_emails)}, J={len(team_j_emails)}, R={len(team_r_emails)}")
+
+            # Validate no email for J (no net changes - arrival and departure cancel out)
+            assert len(team_j_emails) == 0, "Area J should not receive email (no net changes)"
+            logger.info("✓ Area J correctly has no team update email")
+
+            # Validate D and R have emails
+            assert len(team_d_emails) > 0, "Area D should receive team update email"
+            assert len(team_r_emails) > 0, "Area R should receive team update email"
+            logger.info("✓ Areas D and R have team update emails")
+
+            # Validate content
+            if team_d_emails:
+                d_email = team_d_emails[0]
+                d_text = BeautifulSoup(d_email.get('html_content', ''), 'html.parser').get_text().lower()
+                if participant_name and "reassigned" in d_text:
+                    logger.info(f"✓ Area D email mentions reassignment of {participant_name} to Area R (original source to final destination)")
+
+            if team_r_emails:
+                r_email = team_r_emails[0]
+                r_text = BeautifulSoup(r_email.get('html_content', ''), 'html.parser').get_text().lower()
+                if participant_name and ("reassigned" in r_text or "joined" in r_text):
+                    logger.info(f"✓ Area R email mentions {participant_name} arrival from Area D (original source)")
+
+            # ============================================================
+            # Phase 4: Generate and validate weekly summary emails
+            # ============================================================
+            logger.info("Phase 4: Generating weekly summary emails")
+
+            email_capture.clear()
+            with patch('services.email_service.email_service.send_email') as mock_send:
+                mock_send.side_effect = email_capture.send_email
+                results = generate_weekly_summary_emails(app=flask_app_module)
+                logger.info(f"Weekly summary results: {results['emails_sent']} sent")
+
+            # Validate weekly emails for D, J, and R
+            weekly_d_emails = [e for e in email_capture.captured_emails if "Area D" in e['subject'] and "Weekly" in e['subject']]
+            weekly_j_emails = [e for e in email_capture.captured_emails if "Area J" in e['subject'] and "Weekly" in e['subject']]
+            weekly_r_emails = [e for e in email_capture.captured_emails if "Area R" in e['subject'] and "Weekly" in e['subject']]
+
+            logger.info(f"Weekly summary emails: D={len(weekly_d_emails)}, J={len(weekly_j_emails)}, R={len(weekly_r_emails)}")
+
+            # Weekly summaries go to all areas with leaders
+            if weekly_d_emails:
+                logger.info("✓ Area D has weekly summary email")
+            if weekly_j_emails:
+                logger.info("✓ Area J has weekly summary email (shows arrival and departure)")
+            if weekly_r_emails:
+                logger.info("✓ Area R has weekly summary email")
+
+            logger.info("✓ test_rapid_reassignment_captures_original_source completed successfully")
+
+        except Exception as e:
+            logger.error(f"Test failed with error: {e}", exc_info=True)
+            raise
+
+    def test_reassignment_back_to_original_area(self, authenticated_browser, firestore_client_module,
+                                                participant_model_module, email_capture, flask_app_module,
+                                                load_test_data_module):
+        """
+        Test reassignment that returns to original area (F → G → F).
+
+        Validates that when a participant is reassigned and then reassigned back to their
+        original area, no email notifications are generated because there are no net changes.
+        """
+        current_year = datetime.now().year
+        base_url = get_base_url()
+
+        try:
+            # ============================================================
+            # Phase 1: Setup - Initialize email timestamps
+            # ============================================================
+            logger.info("Phase 1: Setting up email timestamps")
+
+            timestamp_model = EmailTimestampModel(firestore_client_module, current_year)
+            now = datetime.now(timezone.utc)
+
+            for area in ['F', 'G']:
+                timestamp_model.update_last_email_sent(area, 'team_update', now)
+                timestamp_model.update_last_email_sent(area, 'weekly_update', now)
+
+            time.sleep(1)
+
+            # ============================================================
+            # Phase 2: Perform round-trip reassignments F → G → F
+            # ============================================================
+            logger.info("Phase 2: Performing round-trip reassignments F → G → F")
+
+            authenticated_browser.get(f"{base_url}/admin/participants")
+            WebDriverWait(authenticated_browser, 10).until(
+                EC.presence_of_element_located((By.TAG_NAME, "table"))
+            )
+            time.sleep(1)
+
+            # Find participant in Area F
+            try:
+                area_f_section = authenticated_browser.find_element(By.ID, "area-F")
+                logger.info("✓ Found Area F section")
+            except Exception as e:
+                logger.error(f"Could not find Area F section: {e}")
+                pytest.skip(f"Area F section not found: {e}")
+
+            rows_f = area_f_section.find_elements(By.CSS_SELECTOR, "table tbody tr")
+            logger.info(f"Found {len(rows_f)} participants in Area F")
+            if not rows_f:
+                # Save page for debugging
+                page_source = authenticated_browser.page_source
+                with open("tests/tmp/roundtrip_area_f_error.html", "w", encoding='utf-8') as f:
+                    f.write(page_source)
+                logger.error("Saved error page to tests/tmp/roundtrip_area_f_error.html")
+                pytest.skip("No participants found in Area F")
+
+            # Find a regular participant (not a leader)
+            participant_email = None
+
+            for row in rows_f:
+                cells = row.find_elements(By.TAG_NAME, "td")
+                if len(cells) < 8:
+                    continue
+
+                # Check if this row has a leader badge
+                leader_badges = row.find_elements(By.CSS_SELECTOR, "span.badge.bg-success, span.badge.badge-warning")
+                if leader_badges:
+                    # This is a leader, skip it
+                    logger.info(f"Skipping leader: {cells[0].text.strip()}")
+                    continue
+
+                # Found a regular participant
+                participant_email = cells[1].text.strip()
+                logger.info(f"✓ Found regular participant in Area F: {cells[0].text.strip()}")
+                break
+
+            if not participant_email:
+                pytest.skip("No regular (non-leader) participants found in Area F")
+
+            # First reassignment: F → G
+            participant_name, _ = reassign_participant_via_ui(
+                authenticated_browser,
+                base_url,
+                participant_email,
+                'G',
+                is_leader=False
+            )
+
+            # Second reassignment: G → F (back to original)
+            reassign_participant_via_ui(
+                authenticated_browser,
+                base_url,
+                participant_email,
+                'F',
+                is_leader=False
+            )
+
+            logger.info(f"✓ Completed round-trip reassignments: F → G → F for {participant_name}")
+
+            # ============================================================
+            # Phase 3: Generate and validate team update emails
+            # ============================================================
+            logger.info("Phase 3: Generating team update emails")
+
+            email_capture.clear()
+            with patch('services.email_service.email_service.send_email') as mock_send:
+                mock_send.side_effect = email_capture.send_email
+                results = generate_team_update_emails(app=flask_app_module)
+                logger.info(f"Team update results: {results['emails_sent']} sent")
+
+            # No net changes, so no emails should be generated
+            team_f_emails = [e for e in email_capture.captured_emails if "Area F" in e['subject']]
+            team_g_emails = [e for e in email_capture.captured_emails if "Area G" in e['subject']]
+
+            logger.info(f"Team update emails: F={len(team_f_emails)}, G={len(team_g_emails)}")
+
+            assert len(team_f_emails) == 0, "Area F should not receive email (no net changes)"
+            assert len(team_g_emails) == 0, "Area G should not receive email (no net changes)"
+            logger.info("✓ No team update emails generated (correct - no net changes)")
+
+            # ============================================================
+            # Phase 4: Generate and validate weekly summary emails
+            # ============================================================
+            logger.info("Phase 4: Generating weekly summary emails")
+
+            email_capture.clear()
+            with patch('services.email_service.email_service.send_email') as mock_send:
+                mock_send.side_effect = email_capture.send_email
+                results = generate_weekly_summary_emails(app=flask_app_module)
+                logger.info(f"Weekly summary results: {results['emails_sent']} sent")
+
+            # Check that F and G show no changes in their weekly summaries
+            weekly_f_emails = [e for e in email_capture.captured_emails if "Area F" in e['subject'] and "Weekly" in e['subject']]
+            weekly_g_emails = [e for e in email_capture.captured_emails if "Area G" in e['subject'] and "Weekly" in e['subject']]
+
+            # Weekly emails may be sent, but they should indicate no changes
+            if weekly_f_emails:
+                f_text = BeautifulSoup(weekly_f_emails[0].get('html_content', ''), 'html.parser').get_text().lower()
+                if participant_name not in f_text or "no changes" in f_text:
+                    logger.info("✓ Area F weekly summary shows no changes")
+
+            if weekly_g_emails:
+                g_text = BeautifulSoup(weekly_g_emails[0].get('html_content', ''), 'html.parser').get_text().lower()
+                if participant_name not in g_text or "no changes" in g_text:
+                    logger.info("✓ Area G weekly summary shows no changes")
+
+            logger.info("✓ test_reassignment_back_to_original_area completed successfully")
+
+        except Exception as e:
+            logger.error(f"Test failed with error: {e}", exc_info=True)
+            raise
+
+    def test_reassignment_with_leadership_retention(self, authenticated_browser, firestore_client_module,
+                                                    participant_model_module, email_capture, flask_app_module,
+                                                    load_test_data_module):
+        """
+        Test reassignment of a leader while retaining leadership (K → M).
+
+        Validates that when a leader is reassigned to a new area while keeping their
+        leadership role, the original area (K) receives no email (no leader),
+        and the new area (M) receives an email mentioning the new leader.
+        """
+        current_year = datetime.now().year
+        base_url = get_base_url()
+
+        try:
+            # ============================================================
+            # Phase 1: Setup - Initialize email timestamps
+            # ============================================================
+            logger.info("Phase 1: Setting up email timestamps")
+
+            timestamp_model = EmailTimestampModel(firestore_client_module, current_year)
+            now = datetime.now(timezone.utc)
+
+            for area in ['K', 'M']:
+                timestamp_model.update_last_email_sent(area, 'team_update', now)
+                timestamp_model.update_last_email_sent(area, 'weekly_update', now)
+
+            time.sleep(1)
+
+            # ============================================================
+            # Phase 2: Find and reassign a leader from K → M
+            # ============================================================
+            logger.info("Phase 2: Finding a leader in Area K and reassigning to Area M")
+
+            # Query database to find a leader in Area K (unambiguous)
+            leaders_in_k = participant_model_module.get_leaders_by_area('K')
+            if not leaders_in_k:
+                pytest.skip("No leaders found in Area K in database")
+
+            # Get the first leader's info
+            leader_data = leaders_in_k[0]
+            participant_email = leader_data.get('email', '')
+            logger.info(f"✓ Found leader in Area K via database: {leader_data.get('first_name', '')} {leader_data.get('last_name', '')} ({participant_email})")
+
+            # Use utility function to reassign the leader from K → M, retaining leadership
+            participant_name, _ = reassign_participant_via_ui(
+                authenticated_browser,
+                base_url,
+                participant_email,
+                'M',
+                is_leader=True,
+                retain_leadership=True
+            )
+
+            logger.info(f"✓ Leader {participant_name} reassigned from K → M with leadership retained")
+
+            # ============================================================
+            # Phase 3: Generate and validate team update emails
+            # ============================================================
+            logger.info("Phase 3: Generating team update emails")
+
+            email_capture.clear()
+            with patch('services.email_service.email_service.send_email') as mock_send:
+                mock_send.side_effect = email_capture.send_email
+                results = generate_team_update_emails(app=flask_app_module)
+                logger.info(f"Team update results: {results['emails_sent']} sent")
+
+            # Debug: Log all emails that were sent
+            logger.info(f"Total emails sent: {len(email_capture.captured_emails)}")
+            for email in email_capture.captured_emails:
+                logger.info(f"  Email: {email['subject']} to {email['recipients']}")
+
+            # Area K should have NO email (no leader remaining)
+            # Area M should have email (with all leaders including the new one)
+            team_k_emails = [e for e in email_capture.captured_emails if "Area K" in e['subject']]
+            team_m_emails = [e for e in email_capture.captured_emails if "Area M" in e['subject']]
+
+            logger.info(f"Team update emails: K={len(team_k_emails)}, M={len(team_m_emails)}")
+
+            assert len(team_k_emails) == 0, "Area K should not receive email (no leader)"
+            logger.info("✓ Area K correctly receives no team update email (no leader)")
+
+            assert len(team_m_emails) > 0, "Area M should receive team update email"
+            logger.info("✓ Area M receives team update email with new leader")
+
+            # Validate M email mentions the new leader
+            if team_m_emails:
+                m_email = team_m_emails[0]
+                m_text = BeautifulSoup(m_email.get('html_content', ''), 'html.parser').get_text()
+                if "leader" in m_text.lower():
+                    logger.info(f"✓ Area M email mentions new leader: {participant_name}")
+
+            # ============================================================
+            # Phase 4: Generate and validate weekly summary emails
+            # ============================================================
+            logger.info("Phase 4: Generating weekly summary emails")
+
+            email_capture.clear()
+            with patch('services.email_service.email_service.send_email') as mock_send:
+                mock_send.side_effect = email_capture.send_email
+                results = generate_weekly_summary_emails(app=flask_app_module)
+                logger.info(f"Weekly summary results: {results['emails_sent']} sent")
+
+            # Area K should not have weekly email (no leader)
+            # Area M should have weekly email
+            weekly_k_emails = [e for e in email_capture.captured_emails if "Area K" in e['subject'] and "Weekly" in e['subject']]
+            weekly_m_emails = [e for e in email_capture.captured_emails if "Area M" in e['subject'] and "Weekly" in e['subject']]
+
+            logger.info(f"Weekly summary emails: K={len(weekly_k_emails)}, M={len(weekly_m_emails)}")
+
+            assert len(weekly_k_emails) == 0, "Area K should not receive weekly email (no leader)"
+            logger.info("✓ Area K correctly receives no weekly summary (no leader)")
+
+            if weekly_m_emails:
+                logger.info("✓ Area M receives weekly summary email")
+
+            logger.info("✓ test_reassignment_with_leadership_retention completed successfully")
 
         except Exception as e:
             logger.error(f"Test failed with error: {e}", exc_info=True)

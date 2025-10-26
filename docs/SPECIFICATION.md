@@ -1,5 +1,5 @@
 # Vancouver Christmas Bird Count Registration App - Complete Specification
-{# Updated by Claude AI on 2025-10-24 #}
+{# Updated by Claude AI on 2025-10-26 #}
 
 ## Overview
 Web application for Nature Vancouver's annual Christmas Bird Count registration with interactive map-based area selection. Users can register by clicking count areas on a map or using a dropdown menu, with automatic assignment to areas needing volunteers.
@@ -334,10 +334,28 @@ def get_admin_emails():
 - **Change Detection**: Participant diff tracking (additions/removals/modifications) + explicit reassignment log queries
 - **Error Handling**: Graceful failure with detailed logging, continues processing other areas
 
-**Reassignment Change Tracking**:
-- **Logging**: When a participant's area changes, a record is created in `reassignments_YYYY` collection with old_area, new_area, and timestamps
-- **Query Strategy**: Single-field year query + in-memory filtering by affected areas (no composite indexes needed)
-- **Email Context**: Email generators query both participant changes AND reassignments, categorizing as:
+**Reassignment Email Requirements**:
+
+When a participant is reassigned from one area to another, emails must reflect the NET change (original source → final destination), not intermediate steps:
+
+- **Simple Reassignment (A → B)**:
+  - Area A leader notified: "participant reassigned to Area B"
+  - Area B leader notified: "participant reassigned from Area A"
+
+- **Rapid Multi-Step Reassignment (A → B → C)**:
+  - Area A leader notified: "participant reassigned to Area C" (final destination, not intermediate B)
+  - Area C leader notified: "participant reassigned from Area A" (original source, not intermediate B)
+  - Area B receives NO email (participant arrived and departed with no net change)
+
+- **Round-Trip Reassignment (A → B → A)**:
+  - No emails generated for either area (participant returned to original area = no net change)
+
+- **Leader Reassignment**:
+  - Original area receives no email if it has no remaining leaders
+  - New area receives email mentioning the new leader joined the team
+
+**Email Change Categories**:
+Email notifications categorize team changes as:
   - **Arrivals**: Participants reassigned TO this area (displayed as "joined from Area X")
   - **Departures**: Participants reassigned FROM this area (displayed as "reassigned to Area Y")
   - **New members**: Participants newly registering in this area

@@ -71,6 +71,70 @@ class EmailTimestampModel:
             return False
 
 
+def calculate_net_changes(all_reassignments: List[Dict], area_code: str) -> Tuple[List[Dict], List[Dict]]:
+    """Calculate net changes for an area, handling multi-step reassignments.
+
+    For each participant who was reassigned multiple times, this function traces their
+    complete journey (original source → final destination) and filters out round-trips.
+
+    Args:
+        all_reassignments: List of all reassignment records since last email
+        area_code: The area to filter by
+
+    Returns:
+        Tuple of (arrivals, departures) where each entry shows original_source→final_destination
+        Round-trips (original == final) are excluded.
+    """
+    # Group reassignments by participant_id
+    participant_moves = {}
+
+    for reassignment in all_reassignments:
+        participant_id = reassignment.get('participant_id')
+        if not participant_id:
+            continue
+
+        if participant_id not in participant_moves:
+            participant_moves[participant_id] = []
+        participant_moves[participant_id].append(reassignment)
+
+    arrivals = []
+    departures = []
+
+    # For each participant, calculate original source and final destination
+    for participant_id, moves in participant_moves.items():
+        # Sort by timestamp to get chronological order
+        sorted_moves = sorted(moves, key=lambda x: x.get('changed_at', datetime.now(timezone.utc)))
+
+        if not sorted_moves:
+            continue
+
+        # Original source is the old_area of the first move
+        original_source = sorted_moves[0].get('old_area')
+        # Final destination is the new_area of the last move
+        final_destination = sorted_moves[-1].get('new_area')
+
+        # Skip round-trips (original == final)
+        if original_source == final_destination:
+            logger.debug(f"Skipping round-trip for {participant_id}: {original_source} → {final_destination}")
+            continue
+
+        # Create a synthetic reassignment record showing original source to final destination
+        # Use the last reassignment's data as base, but update old_area to original source
+        final_reassignment = sorted_moves[-1].copy()
+        final_reassignment['old_area'] = original_source
+        # new_area is already correct (from the last move)
+
+        # Determine if this is an arrival or departure relative to the area_code
+        if final_destination == area_code:
+            # Participant arrived at this area
+            arrivals.append(final_reassignment)
+        elif original_source == area_code:
+            # Participant departed from this area
+            departures.append(final_reassignment)
+
+    return arrivals, departures
+
+
 def get_area_leaders_emails(participant_model: ParticipantModel, area_code: str) -> List[str]:
     """Get all email addresses for leaders of a specific area."""
     try:
@@ -198,11 +262,31 @@ def generate_team_update_emails(app=None) -> Dict[str, Any]:
                     participant_model, area_code, last_email_sent
                 )
 
-                # Get reassignments affecting this area
+                # Get reassignments affecting this area (with net change calculation)
                 reassignment_model = ReassignmentLogModel(db, current_year)
-                arrivals, departures = reassignment_model.get_reassignments_for_area_since(area_code, last_email_sent)
+                all_reassignments = reassignment_model.get_reassignments_since(last_email_sent)
+                arrivals, departures = calculate_net_changes(all_reassignments, area_code)
 
-                # Only send email if there are changes
+                # Filter out participants from "updated" list if they were round-trip reassignments
+                # A participant is a round-trip if they appear in all_reassignments but not in arrivals/departures
+                reassigned_participant_ids = set()
+                for reassignment in all_reassignments:
+                    reassigned_participant_ids.add(reassignment.get('participant_id'))
+
+                # Get net change participant IDs (those that aren't round-trips)
+                net_change_participant_ids = set()
+                for arrival in arrivals:
+                    net_change_participant_ids.add(arrival.get('participant_id'))
+                for departure in departures:
+                    net_change_participant_ids.add(departure.get('participant_id'))
+
+                # Remove updated participants that were reassigned but have no net change
+                updated_participants = [
+                    p for p in updated_participants
+                    if p.get('id') not in (reassigned_participant_ids - net_change_participant_ids)
+                ]
+
+                # Only send email if there are changes (including net reassignments only)
                 if not new_participants and not updated_participants and not removed_participants and not arrivals and not departures:
                     logger.info(f"No changes for area {area_code}, skipping team update email")
                     continue
@@ -313,9 +397,28 @@ def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
                     participant_model, area_code, last_weekly_summary
                 )
 
-                # Get reassignments affecting this area
+                # Get reassignments affecting this area (with net change calculation)
                 reassignment_model = ReassignmentLogModel(db, current_year)
-                arrivals, departures = reassignment_model.get_reassignments_for_area_since(area_code, last_weekly_summary)
+                all_reassignments = reassignment_model.get_reassignments_since(last_weekly_summary)
+                arrivals, departures = calculate_net_changes(all_reassignments, area_code)
+
+                # Filter out participants from "updated" list if they were round-trip reassignments
+                reassigned_participant_ids = set()
+                for reassignment in all_reassignments:
+                    reassigned_participant_ids.add(reassignment.get('participant_id'))
+
+                # Get net change participant IDs (those that aren't round-trips)
+                net_change_participant_ids = set()
+                for arrival in arrivals:
+                    net_change_participant_ids.add(arrival.get('participant_id'))
+                for departure in departures:
+                    net_change_participant_ids.add(departure.get('participant_id'))
+
+                # Remove updated participants that were reassigned but have no net change
+                updated_participants = [
+                    p for p in updated_participants
+                    if p.get('id') not in (reassigned_participant_ids - net_change_participant_ids)
+                ]
 
                 has_changes = bool(new_participants or updated_participants or removed_participants or arrivals or departures)
 
