@@ -1,9 +1,10 @@
 # app.py - Flask application entry point
-# Updated by Claude AI on 2025-10-10
+# Updated by Claude AI on 2025-10-26
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session, g, send_file
 from flask_wtf.csrf import CSRFProtect
 from google.cloud import firestore
 from config.database import get_firestore_client
+from config.organization import get_organization_variables
 from services.limiter import limiter
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
@@ -117,12 +118,26 @@ def load_area_boundaries():
 # Make area boundaries and common data available to templates
 @app.context_processor
 def inject_common_data():
+    org_vars = get_organization_variables()
     return {
         'areas': load_area_boundaries(),
         'current_year': datetime.now().year,
         'user_role': getattr(g, 'user_role', 'public'),
         'user_email': getattr(g, 'user_email', None),
-        'is_authenticated': 'user_email' in session
+        'is_authenticated': 'user_email' in session,
+        # Organization variables
+        'organization_name': org_vars['organization_name'],
+        'organization_website': org_vars['organization_website'],
+        'organization_contact': org_vars['organization_contact'],
+        'count_contact': org_vars['count_contact'],
+        'count_event_name': org_vars['count_event_name'],
+        'count_info_url': org_vars['count_info_url'],
+        'from_email': org_vars['from_email'],
+        'registration_url': org_vars['registration_url'],
+        'admin_url': org_vars['admin_url'],
+        'leader_url': org_vars['leader_url'],
+        'logo_url': org_vars['logo_url'],
+        'display_timezone': org_vars['display_timezone']
     }
 
 # Before request handler for authentication context

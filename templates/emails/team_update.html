@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Team Update - Vancouver CBC Area {{ area_code }}</title>
+    <title>Team Update - {{ count_event_name }} Area {{ area_code }}</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -172,7 +172,7 @@
         {% endif %}
         <div class="header-text">
             <h1>{{ branding.organization_name }}</h1>
-            <h2>Vancouver Christmas Bird Count</h2>
+            <h2>{{ count_event_name }}</h2>
             <h3>Area {{ area_code }} Team Update</h3>
         </div>
     </div>
@@ -318,7 +318,7 @@
 
 
     <div class="footer">
-        <p>This is an automated notification from the Vancouver CBC registration system.<br>
+        <p>This is an automated notification from the {{ count_event_name }} registration system.<br>
         Generated on {{ current_date.strftime('%Y-%m-%d at %H:%M') }} {{ display_timezone }}</p>
         {% if test_mode %}
         <p><strong>TEST MODE:</strong> This email was generated for testing purposes.</p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Weekly Summary - Vancouver CBC Area {{ area_code }}</title>
+    <title>Weekly Summary - {{ count_event_name }} Area {{ area_code }}</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -196,7 +196,7 @@
         {% endif %}
         <div class="header-text">
             <h1>{{ branding.organization_name }}</h1>
-            <h2>Vancouver Christmas Bird Count</h2>
+            <h2>{{ count_event_name }}</h2>
             <h3>Area {{ area_code }} Weekly Summary</h3>
         </div>
     </div>

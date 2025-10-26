@@ -1,11 +1,11 @@
-{# Updated by Claude AI on 2025-09-17 #}
+{# Updated by Claude AI on 2025-10-26 #}
 {% extends "base.html" %}
 
 {% block content %}
 <div class="row">
     <div class="col-lg-6">
-        <h1>Register for Vancouver Christmas Bird Count</h1>
-        <p class="lead">Join Nature Vancouver's annual Christmas Bird Count and help us track bird populations in the Vancouver area.</p>
+        <h1>Register for {{ count_event_name }}</h1>
+        <p class="lead">Join {{ organization_name }}'s annual {{ count_event_name }} and help us track bird populations in the area.</p>
         
         <form method="POST" action="{{ url_for('main.register') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -120,8 +120,8 @@
 
             <div class="mb-4 p-3 bg-light border rounded">
                 <h6 class="fw-bold">Privacy Information</h6>
-                <p class="mb-2"><strong>Compliance with Provincial Privacy Act:</strong> In accordance with Section 2 of the Provincial Privacy Act, the email address and phone number you provide when you sign up to be an Area Leader or a member of a Survey Team will only be made available to the CBC Coordinator and Compiler, as well as to the members of the team surveying the Area for which you've signed up, and this information is to be used strictly for ease of communication for Vancouver Christmas Bird Counts. Lists of Area Participants will be sent to Area Leaders once per week or upon request.</p>
-                <p class="mb-0"><strong>Note:</strong> Please direct any questions, suggestions, etc., to <a href="mailto:{{ count_contact }}">{{ count_contact }}</a></p>
+                <p class="mb-2"><strong>Compliance with Provincial Privacy Act:</strong> In accordance with Section 2 of the Provincial Privacy Act, the email address and phone number you provide when you sign up to be an Area Leader or a member of a Survey Team will only be made available to the CBC Coordinator and Compiler, as well as to the members of the team surveying the Area for which you've signed up, and this information is to be used strictly for ease of communication for {{ count_event_name }}. Lists of Area Participants will be sent to Area Leaders at least once per week.</p>
+                <p class="mb-0"><strong>Note:</strong> Please direct any questions, suggestions, etc., to <a href="mailto:{{ count_contact|e }}">{{ count_contact|e }}</a></p>
             </div>
 
             <button type="submit" class="btn btn-primary btn-lg">Register</button>
