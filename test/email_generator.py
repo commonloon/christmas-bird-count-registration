@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2025-10-22
+# Updated by Claude AI on 2025-10-24
 #!/usr/bin/env python3
 """
 Email Generation System for Vancouver CBC Registration
@@ -28,6 +28,7 @@ from config.email_settings import (
 )
 from models.participant import ParticipantModel
 from models.removal_log import RemovalLogModel
+from models.reassignment_log import ReassignmentLogModel
 from services.email_service import email_service
 from services.datetime_utils import convert_to_display_timezone
 
@@ -191,14 +192,18 @@ def generate_team_update_emails(app=None) -> Dict[str, Any]:
                 if not last_email_sent:
                     # First time sending - use 24 hours ago as baseline
                     last_email_sent = current_time - timedelta(days=1)
-                
+
                 # Get changes since last email
                 new_participants, updated_participants, removed_participants = get_participants_changes_since(
                     participant_model, area_code, last_email_sent
                 )
 
+                # Get reassignments affecting this area
+                reassignment_model = ReassignmentLogModel(db, current_year)
+                arrivals, departures = reassignment_model.get_reassignments_for_area_since(area_code, last_email_sent)
+
                 # Only send email if there are changes
-                if not new_participants and not updated_participants and not removed_participants:
+                if not new_participants and not updated_participants and not removed_participants and not arrivals and not departures:
                     logger.info(f"No changes for area {area_code}, skipping team update email")
                     continue
                 
@@ -223,6 +228,8 @@ def generate_team_update_emails(app=None) -> Dict[str, Any]:
                     'new_participants': new_participants,
                     'updated_participants': updated_participants,
                     'removed_participants': removed_participants,
+                    'arrivals': arrivals,
+                    'departures': departures,
                     'current_team': current_team,
                     'current_date': current_time,
                     'display_timezone': display_timezone,
@@ -305,7 +312,12 @@ def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
                 new_participants, updated_participants, removed_participants = get_participants_changes_since(
                     participant_model, area_code, last_weekly_summary
                 )
-                has_changes = bool(new_participants or updated_participants or removed_participants)
+
+                # Get reassignments affecting this area
+                reassignment_model = ReassignmentLogModel(db, current_year)
+                arrivals, departures = reassignment_model.get_reassignments_for_area_since(area_code, last_weekly_summary)
+
+                has_changes = bool(new_participants or updated_participants or removed_participants or arrivals or departures)
 
                 # Send weekly summary to ALL leaders regardless of changes
                 # Get leader emails and names
@@ -331,6 +343,8 @@ def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
                     'new_participants': new_participants,
                     'updated_participants': updated_participants,
                     'removed_participants': removed_participants,
+                    'arrivals': arrivals,
+                    'departures': departures,
                     'current_team': current_team,
                     'has_changes': has_changes,
                     'skill_breakdown': skill_breakdown,
