@@ -1,9 +1,9 @@
-# Updated by Claude AI on 2025-10-03
+# Updated by Claude AI on 2025-10-30
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g
 from config.database import get_firestore_client
 from models.participant import ParticipantModel
 from config.areas import get_area_info, get_all_areas, get_public_areas
-from config.organization import COUNT_CONTACT
+from config.organization import COUNT_CONTACT, get_count_date
 from services.email_service import email_service
 from services.security import (
     sanitize_name, sanitize_email, sanitize_phone, sanitize_notes,
@@ -33,7 +33,48 @@ def index():
     public_areas = get_public_areas()
     # Pass all query parameters to template for form restoration
     form_data = dict(request.args)
-    return render_template('index.html', public_areas=public_areas, get_area_info=get_area_info, form_data=form_data, count_contact=COUNT_CONTACT)
+
+    # Fetch area leaders from database
+    all_areas = get_all_areas()
+    area_leaders = {}  # Maps area_code -> list of leaders
+
+    try:
+        if g.db:
+            current_year = datetime.now().year
+            participant_model = ParticipantModel(g.db, current_year)
+
+            # Get all leaders for current year
+            leaders = participant_model.get_leaders()
+
+            # Organize leaders by assigned area
+            for leader in leaders:
+                assigned_area = leader.get('assigned_area_leader')
+                if assigned_area:
+                    if assigned_area not in area_leaders:
+                        area_leaders[assigned_area] = []
+                    area_leaders[assigned_area].append(leader)
+
+            # Sort leaders within each area by first name
+            for area in area_leaders:
+                area_leaders[area].sort(key=lambda x: x.get('first_name', ''))
+    except Exception as e:
+        print(f"Warning: Could not fetch area leaders: {e}")
+
+    # Ensure all areas are represented (with empty list if no leaders)
+    for area_code in all_areas:
+        if area_code not in area_leaders:
+            area_leaders[area_code] = []
+
+    count_date = get_count_date()
+
+    return render_template('index.html',
+                         public_areas=public_areas,
+                         get_area_info=get_area_info,
+                         form_data=form_data,
+                         count_contact=COUNT_CONTACT,
+                         all_areas=all_areas,
+                         area_leaders=area_leaders,
+                         count_date=count_date)
 
 
 @main_bp.route('/register', methods=['POST'])
@@ -140,10 +181,46 @@ def register():
         form_data = request.form.to_dict()
 
         public_areas = get_public_areas()
+        all_areas = get_all_areas()
+        area_leaders = {}  # Maps area_code -> list of leaders
+
+        try:
+            if g.db:
+                current_year = datetime.now().year
+                participant_model = ParticipantModel(g.db, current_year)
+
+                # Get all leaders for current year
+                leaders = participant_model.get_leaders()
+
+                # Organize leaders by assigned area
+                for leader in leaders:
+                    assigned_area = leader.get('assigned_area_leader')
+                    if assigned_area:
+                        if assigned_area not in area_leaders:
+                            area_leaders[assigned_area] = []
+                        area_leaders[assigned_area].append(leader)
+
+                # Sort leaders within each area by first name
+                for area in area_leaders:
+                    area_leaders[area].sort(key=lambda x: x.get('first_name', ''))
+        except Exception as e:
+            print(f"Warning: Could not fetch area leaders: {e}")
+
+        # Ensure all areas are represented (with empty list if no leaders)
+        for area_code in all_areas:
+            if area_code not in area_leaders:
+                area_leaders[area_code] = []
+
+        count_date = get_count_date()
+
         return render_template('index.html',
                              public_areas=public_areas,
                              get_area_info=get_area_info,
-                             form_data=form_data)
+                             form_data=form_data,
+                             count_contact=COUNT_CONTACT,
+                             all_areas=all_areas,
+                             area_leaders=area_leaders,
+                             count_date=count_date)
 
 
     # Create participant record

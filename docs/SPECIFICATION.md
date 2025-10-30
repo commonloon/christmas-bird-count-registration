@@ -1,5 +1,5 @@
 # Vancouver Christmas Bird Count Registration App - Complete Specification
-{# Updated by Claude AI on 2025-10-26 #}
+<!-- Updated by Claude AI on 2025-10-30 -->
 
 ## Overview
 Web application for Nature Vancouver's annual Christmas Bird Count registration with interactive map-based area selection. Users can register by clicking count areas on a map or using a dropdown menu, with automatic assignment to areas needing volunteers.
@@ -117,6 +117,7 @@ def get_admin_emails():
 ## Core Features
 
 ### Registration System
+- **Count Date Display**: Prominent display of the upcoming count date (e.g., "Saturday, December 14, 2024") configured annually via `config/organization.py`
 - **Personal Information**: First name, last name, email, primary phone number (labeled "Cell Phone"), optional secondary phone number
 - **Experience Data**: Birding skill level (Newbie|Beginner|Intermediate|Expert), CBC experience (None|1-2 counts|3+ counts)
 - **Participation Options**:
@@ -130,6 +131,11 @@ def get_admin_emails():
 - **Role Interest Options**:
   - **Leadership Interest**: Checkbox tracking interest only (actual leadership assigned exclusively by admins) with clickable link to detailed responsibilities
   - **Scribe Interest**: Checkbox for new pilot role with clickable link to detailed information and eBird preparation guide
+- **Area Leaders Table**: Dynamic table showing current assigned area leaders for each count area, populated from the database
+  - Displays all configured areas with their assigned leaders
+  - Shows "TBD" for areas without assigned leaders
+  - Multiple leaders per area display on separate lines within the same table cell
+  - No contact information displayed (privacy consideration)
 - **FEEDER Participant Constraints**:
   - Cannot select "UNASSIGNED" (must choose specific area)
   - Cannot indicate leadership interest (disabled automatically)
@@ -750,7 +756,7 @@ config/
   database.py                   # Database configuration helper for environment-specific databases
   fields.py                     # Centralized field definitions for participants with defaults and ordering
   email_settings.py             # Email service configuration and SMTP settings
-  organization.py               # Club-specific settings for contact emails and organization details
+  organization.py               # Club-specific settings for contact emails, organization details, and year-specific count dates (YEARLY_COUNT_DATES)
   rate_limits.py                # Rate limiting configuration with TEST_MODE-aware settings
 
 models/

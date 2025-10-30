@@ -1,5 +1,5 @@
 # CBC Registration System - Deployment Guide
-<!-- Updated by Claude AI on 2025-10-18 -->
+<!-- Updated by Claude AI on 2025-10-30 -->
 
 ## About This Guide
 
@@ -64,7 +64,25 @@ Visit your test site and register yourself:
 - Verify you receive a confirmation
 - Check that you appear in the admin interface
 
-### 3. Update Admin Accounts (if needed)
+### 3. Update Count Date
+
+The count date displayed on the registration form must be updated each year:
+
+1. Edit `config/organization.py`
+2. Update the `YEARLY_COUNT_DATES` dictionary with your count's date for the current year
+   - Format: `YYYY-MM-DD` (e.g., `'2025': '2025-12-20'`)
+   - The system will automatically format it as "Saturday, December 20, 2025" on the registration page
+3. Deploy the updated code (see [Deploying Updates](#deploying-updates))
+
+**Example:**
+```python
+YEARLY_COUNT_DATES = {
+    2024: '2024-12-14',
+    2025: '2025-12-20',  # Add the current year's count date here
+}
+```
+
+### 4. Update Admin Accounts (if needed)
 
 If your coordinators have changed, update the admin list:
 
@@ -72,7 +90,7 @@ If your coordinators have changed, update the admin list:
 2. Update the `PRODUCTION_ADMIN_EMAILS` list
 3. Deploy the updated code (see [Deploying Updates](#deploying-updates))
 
-### 4. Deploy to Production
+### 5. Deploy to Production
 
 Once testing is complete:
 
@@ -83,7 +101,7 @@ Once testing is complete:
 
 Wait 2-3 minutes for deployment to complete, then test the production registration form.
 
-### 5. Share Registration URL
+### 6. Share Registration URL
 
 Send participants to:
 - **Production**: `https://<PROD-DOMAIN>`  (Example: `https://cbc-registration.myclub.org`)

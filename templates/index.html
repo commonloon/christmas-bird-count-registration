@@ -1,4 +1,4 @@
-{# Updated by Claude AI on 2025-10-26 #}
+{# Updated by Claude AI on 2025-10-30 #}
 {% extends "base.html" %}
 
 {% block content %}
@@ -6,7 +6,10 @@
     <div class="col-lg-6">
         <h1>Register for {{ count_event_name }}</h1>
         <p class="lead">Join {{ organization_name }}'s annual {{ count_event_name }} and help us track bird populations in the area.</p>
-        
+        <div class="alert alert-info" role="alert">
+            <strong>Count Date:</strong> {{ count_date }}
+        </div>
+
         <form method="POST" action="{{ url_for('main.register') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="mb-3">
@@ -138,6 +141,37 @@
                 <span class="color-box med-count"></span> 4-8 registered
                 <span class="color-box high-count"></span> 8+ registered
             </small>
+        </div>
+
+        <div class="mt-5">
+            <h3>Area Leaders</h3>
+            <p class="text-muted">The following area leaders will coordinate the count in their areas:</p>
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Area</th>
+                            <th>Leader(s)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for area_code in all_areas %}
+                        <tr>
+                            <td><strong>Area {{ area_code }}</strong> - {{ get_area_info(area_code).name }}</td>
+                            <td>
+                                {% if area_leaders[area_code] %}
+                                    {% for leader in area_leaders[area_code] %}
+                                        {{ leader.first_name|e }} {{ leader.last_name|e }}{% if not loop.last %}<br>{% endif %}
+                                    {% endfor %}
+                                {% else %}
+                                    TBD
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>

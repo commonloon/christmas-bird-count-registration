@@ -1,5 +1,5 @@
 # CBC Registration - Technical Deployment Reference
-<!-- Updated by Claude AI on 2025-10-14 -->
+<!-- Updated by Claude AI on 2025-10-30 -->
 
 This document provides technical details for developers and system administrators working with the CBC Registration system.
 
@@ -118,9 +118,11 @@ SMTP2GO_PASSWORD=/secrets/smtp2go-password          # Or other provider
 **Organization Settings** (`config/organization.py`):
 - Organization name and contact info
 - Count event details and URLs
+- **Year-specific count dates** (`YEARLY_COUNT_DATES` dictionary, updated annually)
 - Display timezone for email timestamps
 - Test recipient email address
 - Email sender configuration
+- Helper function `get_count_date(year)` formats dates for display (e.g., "Saturday, December 14, 2024")
 
 **Admin Configuration** (`config/admins.py`):
 - Production admin email whitelist
