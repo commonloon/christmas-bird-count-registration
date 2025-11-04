@@ -36,6 +36,34 @@ echo "  Display Timezone: $DISPLAY_TIMEZONE"
 echo "  From Email: $FROM_EMAIL"
 echo ""
 
+# Safety check: Verify gcloud is configured for the correct project
+echo "Checking gcloud project configuration..."
+CURRENT_PROJECT=$(gcloud config get-value project 2>/dev/null || echo "")
+
+if [ -z "$CURRENT_PROJECT" ]; then
+    echo "ERROR: gcloud is not configured with a project"
+    echo "Please run: gcloud config set project <PROJECT_ID>"
+    exit 1
+fi
+
+if [ "$CURRENT_PROJECT" != "$GCP_PROJECT_ID" ]; then
+    echo ""
+    echo "⚠️  PROJECT MISMATCH DETECTED!"
+    echo ""
+    echo "  Config file expects: $GCP_PROJECT_ID"
+    echo "  gcloud is set to:    $CURRENT_PROJECT"
+    echo ""
+    echo "This could deploy code to the WRONG project. To fix:"
+    echo "  gcloud config set project $GCP_PROJECT_ID"
+    echo ""
+    read -p "Continue anyway? (type 'yes' to confirm): " CONFIRM
+    if [ "$CONFIRM" != "yes" ]; then
+        echo "Deployment cancelled."
+        exit 1
+    fi
+    echo ""
+fi
+
 # Parse arguments
 DEPLOY_TARGET=${1:-both}
 ENABLE_COVERAGE=false
