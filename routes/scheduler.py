@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2025-10-07
+# Updated by Claude AI on 2025-11-04
 """
 Scheduler routes for automated email triggers.
 
@@ -55,14 +55,16 @@ def require_cloud_scheduler(f):
             )
 
             # Verify the service account email
+            # Built dynamically from GCP_PROJECT_ID to support multiple deployments
             email = claims.get('email', '')
-            expected_sa = 'cloud-scheduler-invoker@vancouver-cbc-registration.iam.gserviceaccount.com'
+            from config.cloud import GCP_PROJECT_ID
+            expected_sa = f'cloud-scheduler-invoker@{GCP_PROJECT_ID}.iam.gserviceaccount.com'
 
             if email == expected_sa:
                 logger.info(f"Authenticated Cloud Scheduler request from {email}")
                 return f(*args, **kwargs)
             else:
-                logger.warning(f"Invalid service account in token: {email}")
+                logger.warning(f"Invalid service account in token: {email}, expected: {expected_sa}")
                 return jsonify({'error': 'Unauthorized service account'}), 403
 
         except ValueError as e:
