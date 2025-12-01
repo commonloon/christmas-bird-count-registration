@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2025-10-06
+# Updated by Claude AI on 2025-10-24
 #!/usr/bin/env python3
 """
 Email Generation System for Vancouver CBC Registration
@@ -28,7 +28,9 @@ from config.email_settings import (
 )
 from models.participant import ParticipantModel
 from models.removal_log import RemovalLogModel
+from models.reassignment_log import ReassignmentLogModel
 from services.email_service import email_service
+from services.datetime_utils import convert_to_display_timezone
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +69,70 @@ class EmailTimestampModel:
         except Exception as e:
             logger.error(f"Error updating last email sent for {area_code}_{email_type}: {e}")
             return False
+
+
+def calculate_net_changes(all_reassignments: List[Dict], area_code: str) -> Tuple[List[Dict], List[Dict]]:
+    """Calculate net changes for an area, handling multi-step reassignments.
+
+    For each participant who was reassigned multiple times, this function traces their
+    complete journey (original source → final destination) and filters out round-trips.
+
+    Args:
+        all_reassignments: List of all reassignment records since last email
+        area_code: The area to filter by
+
+    Returns:
+        Tuple of (arrivals, departures) where each entry shows original_source→final_destination
+        Round-trips (original == final) are excluded.
+    """
+    # Group reassignments by participant_id
+    participant_moves = {}
+
+    for reassignment in all_reassignments:
+        participant_id = reassignment.get('participant_id')
+        if not participant_id:
+            continue
+
+        if participant_id not in participant_moves:
+            participant_moves[participant_id] = []
+        participant_moves[participant_id].append(reassignment)
+
+    arrivals = []
+    departures = []
+
+    # For each participant, calculate original source and final destination
+    for participant_id, moves in participant_moves.items():
+        # Sort by timestamp to get chronological order
+        sorted_moves = sorted(moves, key=lambda x: x.get('changed_at', datetime.now(timezone.utc)))
+
+        if not sorted_moves:
+            continue
+
+        # Original source is the old_area of the first move
+        original_source = sorted_moves[0].get('old_area')
+        # Final destination is the new_area of the last move
+        final_destination = sorted_moves[-1].get('new_area')
+
+        # Skip round-trips (original == final)
+        if original_source == final_destination:
+            logger.debug(f"Skipping round-trip for {participant_id}: {original_source} → {final_destination}")
+            continue
+
+        # Create a synthetic reassignment record showing original source to final destination
+        # Use the last reassignment's data as base, but update old_area to original source
+        final_reassignment = sorted_moves[-1].copy()
+        final_reassignment['old_area'] = original_source
+        # new_area is already correct (from the last move)
+
+        # Determine if this is an arrival or departure relative to the area_code
+        if final_destination == area_code:
+            # Participant arrived at this area
+            arrivals.append(final_reassignment)
+        elif original_source == area_code:
+            # Participant departed from this area
+            departures.append(final_reassignment)
+
+    return arrivals, departures
 
 
 def get_area_leaders_emails(participant_model: ParticipantModel, area_code: str) -> List[str]:
@@ -165,7 +231,8 @@ def generate_team_update_emails(app=None) -> Dict[str, Any]:
     try:
         db, _ = get_firestore_client()
         current_year = datetime.now().year
-        current_time = datetime.utcnow()  # Race condition prevention: pick timestamp first
+        utc_now = datetime.now(timezone.utc)  # Race condition prevention: pick timestamp first
+        current_time, display_timezone = convert_to_display_timezone(utc_now)
         
         participant_model = ParticipantModel(db, current_year)
         timestamp_model = EmailTimestampModel(db, current_year)
@@ -189,14 +256,38 @@ def generate_team_update_emails(app=None) -> Dict[str, Any]:
                 if not last_email_sent:
                     # First time sending - use 24 hours ago as baseline
                     last_email_sent = current_time - timedelta(days=1)
-                
+
                 # Get changes since last email
                 new_participants, updated_participants, removed_participants = get_participants_changes_since(
                     participant_model, area_code, last_email_sent
                 )
 
-                # Only send email if there are changes
-                if not new_participants and not updated_participants and not removed_participants:
+                # Get reassignments affecting this area (with net change calculation)
+                reassignment_model = ReassignmentLogModel(db, current_year)
+                all_reassignments = reassignment_model.get_reassignments_since(last_email_sent)
+                arrivals, departures = calculate_net_changes(all_reassignments, area_code)
+
+                # Filter out participants from "updated" list if they were round-trip reassignments
+                # A participant is a round-trip if they appear in all_reassignments but not in arrivals/departures
+                reassigned_participant_ids = set()
+                for reassignment in all_reassignments:
+                    reassigned_participant_ids.add(reassignment.get('participant_id'))
+
+                # Get net change participant IDs (those that aren't round-trips)
+                net_change_participant_ids = set()
+                for arrival in arrivals:
+                    net_change_participant_ids.add(arrival.get('participant_id'))
+                for departure in departures:
+                    net_change_participant_ids.add(departure.get('participant_id'))
+
+                # Remove updated participants that were reassigned but have no net change
+                updated_participants = [
+                    p for p in updated_participants
+                    if p.get('id') not in (reassigned_participant_ids - net_change_participant_ids)
+                ]
+
+                # Only send email if there are changes (including net reassignments only)
+                if not new_participants and not updated_participants and not removed_participants and not arrivals and not departures:
                     logger.info(f"No changes for area {area_code}, skipping team update email")
                     continue
                 
@@ -221,8 +312,11 @@ def generate_team_update_emails(app=None) -> Dict[str, Any]:
                     'new_participants': new_participants,
                     'updated_participants': updated_participants,
                     'removed_participants': removed_participants,
+                    'arrivals': arrivals,
+                    'departures': departures,
                     'current_team': current_team,
                     'current_date': current_time,
+                    'display_timezone': display_timezone,
                     'leader_dashboard_url': get_leader_dashboard_url(),
                     'test_mode': is_test_server(),
                     'branding': get_email_branding()
@@ -272,7 +366,8 @@ def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
     try:
         db, _ = get_firestore_client()
         current_year = datetime.now().year
-        current_time = datetime.utcnow()
+        utc_now = datetime.now(timezone.utc)
+        current_time, display_timezone = convert_to_display_timezone(utc_now)
 
         participant_model = ParticipantModel(db, current_year)
         timestamp_model = EmailTimestampModel(db, current_year)
@@ -301,7 +396,31 @@ def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
                 new_participants, updated_participants, removed_participants = get_participants_changes_since(
                     participant_model, area_code, last_weekly_summary
                 )
-                has_changes = bool(new_participants or updated_participants or removed_participants)
+
+                # Get reassignments affecting this area (with net change calculation)
+                reassignment_model = ReassignmentLogModel(db, current_year)
+                all_reassignments = reassignment_model.get_reassignments_since(last_weekly_summary)
+                arrivals, departures = calculate_net_changes(all_reassignments, area_code)
+
+                # Filter out participants from "updated" list if they were round-trip reassignments
+                reassigned_participant_ids = set()
+                for reassignment in all_reassignments:
+                    reassigned_participant_ids.add(reassignment.get('participant_id'))
+
+                # Get net change participant IDs (those that aren't round-trips)
+                net_change_participant_ids = set()
+                for arrival in arrivals:
+                    net_change_participant_ids.add(arrival.get('participant_id'))
+                for departure in departures:
+                    net_change_participant_ids.add(departure.get('participant_id'))
+
+                # Remove updated participants that were reassigned but have no net change
+                updated_participants = [
+                    p for p in updated_participants
+                    if p.get('id') not in (reassigned_participant_ids - net_change_participant_ids)
+                ]
+
+                has_changes = bool(new_participants or updated_participants or removed_participants or arrivals or departures)
 
                 # Send weekly summary to ALL leaders regardless of changes
                 # Get leader emails and names
@@ -327,12 +446,15 @@ def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
                     'new_participants': new_participants,
                     'updated_participants': updated_participants,
                     'removed_participants': removed_participants,
+                    'arrivals': arrivals,
+                    'departures': departures,
                     'current_team': current_team,
                     'has_changes': has_changes,
                     'skill_breakdown': skill_breakdown,
                     'experience_breakdown': experience_breakdown,
                     'leadership_interest_count': leadership_interest_count,
                     'current_date': current_time,
+                    'display_timezone': display_timezone,
                     'leader_dashboard_url': get_leader_dashboard_url(),
                     'test_mode': is_test_server(),
                     'branding': get_email_branding()
@@ -382,8 +504,10 @@ def generate_admin_digest_email(app=None) -> Dict[str, Any]:
     try:
         db, _ = get_firestore_client()
         current_year = datetime.now().year
-        current_time = datetime.utcnow()
-        
+        utc_now = datetime.now(timezone.utc)
+        current_time, display_timezone = convert_to_display_timezone(utc_now)
+        utc_for_calcs = utc_now  # Keep UTC version for calculations
+
         participant_model = ParticipantModel(db, current_year)
         
         results = {
@@ -407,10 +531,6 @@ def generate_admin_digest_email(app=None) -> Dict[str, Any]:
         days_waiting = []
         total_wait_days = 0
         
-        # Ensure current_time is timezone-aware (UTC)
-        if current_time.tzinfo is None:
-            current_time = current_time.replace(tzinfo=timezone.utc)
-        
         for participant in unassigned_participants:
             created_at = participant.get('created_at')
             if created_at:
@@ -418,8 +538,8 @@ def generate_admin_digest_email(app=None) -> Dict[str, Any]:
                 if created_at.tzinfo is None:
                     # If naive, assume UTC
                     created_at = created_at.replace(tzinfo=timezone.utc)
-                
-                days_wait = (current_time - created_at).days
+
+                days_wait = (utc_for_calcs - created_at).days
                 days_waiting.append(days_wait)
                 total_wait_days += days_wait
             else:
@@ -434,6 +554,7 @@ def generate_admin_digest_email(app=None) -> Dict[str, Any]:
             'days_waiting': days_waiting,
             'average_wait_days': average_wait_days,
             'current_date': current_time,
+            'display_timezone': display_timezone,
             'admin_unassigned_url': get_admin_unassigned_url(),
             'test_mode': is_test_server(),
             'branding': get_email_branding()

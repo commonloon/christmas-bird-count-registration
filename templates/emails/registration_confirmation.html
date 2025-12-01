@@ -123,14 +123,14 @@
         {% endif %}
         <div class="header-text">
             <h1>{{ branding.organization_name }}</h1>
-            <h2>Vancouver Christmas Bird Count</h2>
+            <h2>{{ count_event_name }}</h2>
             <h3>Registration Confirmed!</h3>
         </div>
     </div>
 
     <div class="content">
         <p style="font-size: 14px; color: #666; margin: 0 0 20px 0; text-align: center;">
-            Registered on {{ registration_date.strftime('%B %d, %Y at %H:%M') }} Pacific Time
+            Registered on {{ registration_date.strftime('%B %d, %Y at %H:%M') }} {{ display_timezone }}
         </p>
 
         <div class="success-box">
@@ -246,4 +246,4 @@
     </div>
 </body>
 </html>
-<!-- Updated by Claude AI on 2025-09-15 -->
+<!-- Updated by Claude AI on 2025-10-22 -->

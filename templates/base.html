@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Vancouver Christmas Bird Count Registration{% endblock %}</title>
+    <title>{% block title %}{{ count_event_name }} Registration{% endblock %}</title>
 
     <!-- Favicon -->
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
@@ -19,11 +19,11 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary" aria-label="Main navigation">
         <div class="container">
             {% if request.endpoint and request.endpoint.startswith('admin.') %}
-                <a class="navbar-brand" href="{{ url_for('admin.dashboard', year=selected_year) }}">Vancouver CBC Registration Admin</a>
+                <a class="navbar-brand" href="{{ url_for('admin.dashboard', year=selected_year) }}">{{ count_event_name }} Admin</a>
             {% elif request.endpoint and request.endpoint.startswith('leader.') %}
-                <a class="navbar-brand" href="{{ url_for('leader.dashboard') }}">Vancouver CBC Area Leader</a>
+                <a class="navbar-brand" href="{{ url_for('leader.dashboard') }}">{{ count_event_name }} Area Leader</a>
             {% else %}
-                <a class="navbar-brand" href="{{ url_for('main.index') }}">Vancouver CBC Registration</a>
+                <a class="navbar-brand" href="{{ url_for('main.index') }}">{{ count_event_name }} Registration</a>
             {% endif %}
             <div class="navbar-nav ms-auto">
             </div>

@@ -117,6 +117,7 @@ def get_admin_emails():
 ## Core Features
 
 ### Registration System
+- **Count Date Display**: Prominent display of the upcoming count date (e.g., "Saturday, December 14, 2024") configured annually via `config/organization.py`
 - **Personal Information**: First name, last name, email, primary phone number (labeled "Cell Phone"), optional secondary phone number
 - **Experience Data**: Birding skill level (Newbie|Beginner|Intermediate|Expert), CBC experience (None|1-2 counts|3+ counts)
 - **Participation Options**:
@@ -130,6 +131,11 @@ def get_admin_emails():
 - **Role Interest Options**:
   - **Leadership Interest**: Checkbox tracking interest only (actual leadership assigned exclusively by admins) with clickable link to detailed responsibilities
   - **Scribe Interest**: Checkbox for new pilot role with clickable link to detailed information and eBird preparation guide
+- **Area Leaders Table**: Dynamic table showing current assigned area leaders for each count area, populated from the database
+  - Displays all configured areas with their assigned leaders
+  - Shows "TBD" for areas without assigned leaders
+  - Multiple leaders per area display on separate lines within the same table cell
+  - No contact information displayed (privacy consideration)
 - **FEEDER Participant Constraints**:
   - Cannot select "UNASSIGNED" (must choose specific area)
   - Cannot indicate leadership interest (disabled automatically)
@@ -322,15 +328,17 @@ def get_admin_emails():
 1. **Twice-Daily Team Updates**:
    - Recipients: Area leaders when team composition changes
    - Subject: "CBC Area X Team Update"
-   - Content: New members, removed members, complete current team roster
+   - Content: New members, members joining from other areas, members reassigned to other areas, removed members, complete current team roster
    - Triggers: Participant additions, removals, area reassignments, email changes
    - Frequency: Automated checks twice daily (production scheduling pending)
+   - **Reassignment handling**: When a participant is moved from Area A to Area B, Area A leader is notified of departure, Area B leader is notified of arrival (separate from "new members")
 
 2. **Weekly Team Summary (No Changes)**:
    - Recipients: Area leaders with no team changes in past week
    - When: Every Friday at 11pm Pacific
    - Subject: "CBC Area X Weekly Summary"
    - Content: "No changes this week" + complete team roster with contact details
+   - **Reassignment handling**: Weekly summaries include arrivals and departures in change tracking
 
 3. **Daily Admin Digest**:
    - Recipients: All admins (from `config/admins.py`)
@@ -339,22 +347,53 @@ def get_admin_emails():
 
 **Implementation Architecture:**
 - **Email Generation**: Core logic in `test/email_generator.py` with Flask app context support
-- **Email Templates**: HTML templates in `templates/emails/` directory
+- **Email Templates**: HTML templates in `templates/emails/` directory with separate sections for arrivals/departures
 - **Email Service**: `services/email_service.py` with test mode support (requires Google Cloud Email API)
+- **Reassignment Tracking**: Explicit `reassignments_YYYY` collection logs all area changes with timestamp-based queries
 - **Environment-Based Security**: Test email routes only registered when `TEST_MODE=true`
 - **Test Mode Behavior**: All emails redirect to `birdcount@naturevancouver.ca` with modified subjects
 - **Timezone Support**: Configurable display timezone via `DISPLAY_TIMEZONE` environment variable
 - **Race Condition Prevention**: Timestamp selection before queries, update after successful send
-- **Change Detection**: Participant diff tracking with detailed logging of additions/removals
+- **Change Detection**: Participant diff tracking (additions/removals/modifications) + explicit reassignment log queries
 - **Error Handling**: Graceful failure with detailed logging, continues processing other areas
 
+**Reassignment Email Requirements**:
+
+When a participant is reassigned from one area to another, emails must reflect the NET change (original source → final destination), not intermediate steps:
+
+- **Simple Reassignment (A → B)**:
+  - Area A leader notified: "participant reassigned to Area B"
+  - Area B leader notified: "participant reassigned from Area A"
+
+- **Rapid Multi-Step Reassignment (A → B → C)**:
+  - Area A leader notified: "participant reassigned to Area C" (final destination, not intermediate B)
+  - Area C leader notified: "participant reassigned from Area A" (original source, not intermediate B)
+  - Area B receives NO email (participant arrived and departed with no net change)
+
+- **Round-Trip Reassignment (A → B → A)**:
+  - No emails generated for either area (participant returned to original area = no net change)
+
+- **Leader Reassignment**:
+  - Original area receives no email if it has no remaining leaders
+  - New area receives email mentioning the new leader joined the team
+
+**Email Change Categories**:
+Email notifications categorize team changes as:
+  - **Arrivals**: Participants reassigned TO this area (displayed as "joined from Area X")
+  - **Departures**: Participants reassigned FROM this area (displayed as "reassigned to Area Y")
+  - **New members**: Participants newly registering in this area
+  - **Modifications**: Existing participants with updated contact info/preferences
+  - **Removals**: Participants deleted from the system
+
 **Current Implementation Status:**
-- ✅ **Email Generation Logic**: Complete implementation with timezone-aware datetime handling
-- ✅ **Email Templates**: HTML templates created for all three email types
+- ✅ **Email Generation Logic**: Complete with reassignment tracking and separate arrival/departure handling
+- ✅ **Email Templates**: HTML templates created for all three email types with reassignment sections
 - ✅ **Security**: Production servers do not expose test email routes
 - ✅ **Timezone Handling**: UTC storage with configurable display timezone conversion
 - ✅ **Test Interface**: Manual trigger buttons in admin dashboard (test server only)
 - ✅ **Package Structure**: Proper Python imports and deployment-safe directory structure
+- ✅ **Reassignment Logging**: Explicit change log in `reassignments_YYYY` collection, no indexes required
+- ✅ **Dual Email Processing**: Both twice-daily and weekly emails independently track reassignments
 - ❌ **Email Service**: Currently uses SMTP, needs Google Cloud Email API configuration
 - ❌ **Production Automation**: Cloud Scheduler configuration pending for automated triggers
 
@@ -476,6 +515,24 @@ python utils/generate_test_participants.py 20 --scribes 5
   emailed_at: timestamp
 }
 ```
+
+### Reassignments Log Collection (per year: reassignments_YYYY)
+```
+{
+  id: auto_generated,
+  participant_id: string,                    // Participant being reassigned
+  first_name: string,                        // Denormalized for audit trail
+  last_name: string,                         // Denormalized for audit trail
+  email: string,                             // Denormalized for audit trail
+  old_area: string,                          // Area code reassigned FROM
+  new_area: string,                          // Area code reassigned TO
+  changed_by: string,                        // Email of admin who performed reassignment
+  changed_at: timestamp,                     // When reassignment occurred
+  year: integer                              // Explicit year field for data integrity
+}
+```
+
+**Purpose**: Tracks all participant area reassignments to enable accurate email notifications to both source and destination area leaders. Queries use single-field year filter + in-memory area matching (no composite indexes required).
 
 ## Area Configuration
 
@@ -723,12 +780,13 @@ config/
   database.py                   # Database configuration helper for environment-specific databases
   fields.py                     # Centralized field definitions for participants with defaults and ordering
   email_settings.py             # Email service configuration and SMTP settings
-  organization.py               # Club-specific settings for contact emails and organization details
+  organization.py               # Club-specific settings for contact emails, organization details, and year-specific count dates (YEARLY_COUNT_DATES)
   rate_limits.py                # Rate limiting configuration with TEST_MODE-aware settings
 
 models/
   participant.py                # Year-aware participant operations with Firestore (includes leadership data)
   removal_log.py               # Year-aware removal tracking for audit
+  reassignment_log.py          # Year-aware reassignment tracking for area changes and email notifications
 
 routes/
   main.py                      # Public registration routes including information pages (/area-leader-info, /scribe-info)
@@ -983,6 +1041,14 @@ rm client_secret.json             # Remove sensitive file
 - Email deduplication logic prevents duplicate registrations within same year
 - **Consistent Field Names**: All participant records use standardized schema with leadership data integrated
 
+**Email Notification and Reassignment Logging:**
+- **Reassignment Tracking**: Create `reassignments_YYYY` collection entries whenever `preferred_area` changes in `edit_participant()`
+- **No Composite Indexes Needed**: Query by year only (`FieldFilter('year', '==', year)`), filter by area in memory
+- **Dual Email Processing**: Both twice-daily and weekly emails independently query reassignments using timestamp comparison
+- **Arrival/Departure Distinction**: Email context includes separate `arrivals` and `departures` lists derived from reassignment log
+- **Denormalized Data**: Store `first_name`, `last_name`, `email` in reassignment log for audit trail clarity
+- **Timestamp-Based Queries**: All reassignment queries use `changed_at > since_timestamp` for flexible schedule independence
+
 **Security Architecture:**
 - No admin links visible to public users (security by obscurity)
 - Authentication decorators on all protected routes
@@ -1031,6 +1097,13 @@ rm client_secret.json             # Remove sensitive file
    - **NEVER** use default database `firestore.Client()` - causes "database does not exist" errors
    - Test environment detection: Use `get_database_name()` from `tests.config`
    - Test data isolation: Current year for functional tests, year 2000 for isolated tests
+
+7. **Reassignment Logging (CRITICAL for Email Notifications)**
+   - **Always log reassignments**: Call `ReassignmentLogModel.log_reassignment()` when `preferred_area` changes
+   - **Both email types need visibility**: Twice-daily and weekly emails independently query reassignment logs
+   - **Timestamp-based queries only**: Never add composite indexes - use single-field year query + in-memory filtering
+   - **Denormalized names**: Store name data at log time to preserve audit trail if names are later changed
+   - **Check both areas**: Destination area sees arrivals, source area sees departures from same log entry
 
 ### Database Setup
 For initial project setup or after database deletion:

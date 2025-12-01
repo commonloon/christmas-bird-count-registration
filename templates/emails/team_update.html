@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Team Update - Vancouver CBC Area {{ area_code }}</title>
+    <title>Team Update - {{ count_event_name }} Area {{ area_code }}</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -172,7 +172,7 @@
         {% endif %}
         <div class="header-text">
             <h1>{{ branding.organization_name }}</h1>
-            <h2>Vancouver Christmas Bird Count</h2>
+            <h2>{{ count_event_name }}</h2>
             <h3>Area {{ area_code }} Team Update</h3>
         </div>
     </div>
@@ -200,6 +200,24 @@
         </div>
         {% endif %}
 
+        {% if arrivals %}
+        <div class="changes-section new-members">
+            <h4>➡️ Joined From Other Areas ({{ arrivals|length }})</h4>
+            {% for arrival in arrivals %}
+            <p><strong>{{ arrival.first_name|e }} {{ arrival.last_name|e }} ({{ arrival.email|e }})</strong> joined from Area {{ arrival.old_area|e }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if departures %}
+        <div class="changes-section removed-members">
+            <h4>⬅️ Reassigned To Other Areas ({{ departures|length }})</h4>
+            {% for departure in departures %}
+            <p><strong>{{ departure.first_name|e }} {{ departure.last_name|e }} ({{ departure.email|e }})</strong> was reassigned to Area {{ departure.new_area|e }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+
         {% if updated_participants %}
         <div class="changes-section" style="background-color: #fff3cd; border-left: 4px solid {{ branding.badge_warning }};">
             <h4>📝 Updated Team Members ({{ updated_participants|length }})</h4>
@@ -220,8 +238,8 @@
 
         <h4>📋 Next Steps</h4>
         <ul>
-            {% if new_participants %}
-                <li><strong>Welcome new members to the team.</strong> <ul><li>Ideally new members should hear from you within a few days of joining your team, even if it's just a quick greeting and a note to say you'll send details later.</li></ul></li>
+            {% if new_participants or arrivals %}
+                <li><strong>Welcome new and arriving members to the team.</strong> <ul><li>Ideally they should hear from you within a few days of joining your team, even if it's just a quick greeting and a note to say you'll send details later.</li></ul></li>
             {% endif %}
             <li>Share meeting location and time information</li>
             <li>Coordinate any special equipment or preparation needs</li>
@@ -300,11 +318,12 @@
 
 
     <div class="footer">
-        <p>This is an automated notification from the Vancouver CBC registration system.<br>
-        Generated on {{ current_date.strftime('%Y-%m-%d at %H:%M') }} Pacific Time</p>
+        <p>This is an automated notification from the {{ count_event_name }} registration system.<br>
+        Generated on {{ current_date.strftime('%Y-%m-%d at %H:%M') }} {{ display_timezone }}</p>
         {% if test_mode %}
         <p><strong>TEST MODE:</strong> This email was generated for testing purposes.</p>
         {% endif %}
     </div>
 </body>
 </html>
+<!-- Updated by Claude AI on 2025-10-24 -->

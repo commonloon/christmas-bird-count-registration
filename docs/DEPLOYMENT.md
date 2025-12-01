@@ -65,6 +65,44 @@ Visit your test site and register yourself:
 - Verify you receive a confirmation
 - Check that you appear in the admin interface
 
+
+### 3. Update Count Date
+
+The count date displayed on the registration form must be updated each year:
+
+1. Edit `config/organization.py`
+2. Update the `YEARLY_COUNT_DATES` dictionary with your count's date for the current year
+   - Format: `YYYY-MM-DD` (e.g., `'2025': '2025-12-20'`)
+   - The system will automatically format it as "Saturday, December 20, 2025" on the registration page
+3. Deploy the updated code (see [Deploying Updates](#deploying-updates))
+
+**Example:**
+```python
+YEARLY_COUNT_DATES = {
+    2024: '2024-12-14',
+    2025: '2025-12-20',  # Add the current year's count date here
+}
+```
+
+### 4. Update Admin Accounts (if needed)
+
+If your coordinators have changed, update the admin list:
+
+1. Edit `config/admins.py`
+2. Update the `PRODUCTION_ADMIN_EMAILS` list
+3. Deploy the updated code (see [Deploying Updates](#deploying-updates))
+
+### 5. Deploy to Production
+
+Once testing is complete:
+
+```bash
+# Deploy to production
+./deploy.sh production
+```
+
+Wait 2-3 minutes for deployment to complete, then test the production registration form.
+
 ### 3. Configure Area Signup Types
 
 By default, all count areas allow participant self-registration. However, you may need to restrict some areas to admin-only assignment (for example, areas accessible only by boat or requiring special permits like airports).
@@ -87,25 +125,6 @@ By default, all count areas allow participant self-registration. However, you ma
 - **Areas with limited volunteer capacity**: Set to "Admin Only" to manage assignments manually
 - **Area Leader doesn't want more volunteers**: Set to "Admin Only" to manage assignments manually
 - **Regular areas**: Leave as "Open"
-
-### 4. Update Admin Accounts (if needed)
-
-If your coordinators have changed, update the admin list:
-
-1. Edit `config/admins.py`
-2. Update the `PRODUCTION_ADMIN_EMAILS` list
-3. Deploy the updated code (see [Deploying Updates](#deploying-updates))
-
-### 5. Deploy to Production
-
-Once testing is complete:
-
-```bash
-# Deploy to production
-./deploy.sh production
-```
-
-Wait 2-3 minutes for deployment to complete, then test the production registration form.
 
 ### 6. Share Registration URL
 

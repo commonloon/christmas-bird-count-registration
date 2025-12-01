@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2025-10-12
+# Updated by Claude AI on 2025-10-24
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response, g, current_app
 from google.cloud import firestore
 from config.database import get_firestore_client
@@ -7,6 +7,7 @@ from models.participant import ParticipantModel
 from models.removal_log import RemovalLogModel
 from models.area_signup_type import AreaSignupTypeModel
 from config.areas import get_area_info, get_all_areas
+from models.reassignment_log import ReassignmentLogModel
 from config.fields import (
     normalize_participant_record, get_participant_csv_fields,
     get_participant_field_default, get_participant_display_name
@@ -956,10 +957,15 @@ def edit_participant():
             updates['interested_in_leadership'] = interested_in_leadership
         if 'interested_in_scribe' in data:
             updates['interested_in_scribe'] = interested_in_scribe
+        # Track if area changed for reassignment logging
+        area_changed = False
+        old_area = None
         if 'preferred_area' in data:
+            old_area = current_participant.get('preferred_area')
+            area_changed = preferred_area != old_area
             updates['preferred_area'] = preferred_area
             # If participant was a leader and area changed, remove leadership
-            if current_participant.get('is_leader') and preferred_area != current_participant.get('preferred_area'):
+            if current_participant.get('is_leader') and area_changed:
                 updates['is_leader'] = False
                 updates['assigned_area_leader'] = None
                 updates['leadership_removed_by'] = user['email']
@@ -967,6 +973,22 @@ def edit_participant():
 
         if not participant_model.update_participant(participant_id, updates):
             return jsonify({'success': False, 'message': 'Failed to update participant'})
+
+        # Log reassignment if area changed
+        if area_changed and old_area and preferred_area:
+            try:
+                reassignment_log = ReassignmentLogModel(g.db, selected_year)
+                reassignment_log.log_reassignment(
+                    participant_id, first_name, last_name, email,
+                    old_area, preferred_area, user['email']
+                )
+            except Exception as e:
+                logging.error(f"Error logging reassignment for participant {participant_id}: {e}")
+                # Don't fail the reassignment if logging fails, but log the error
+                return jsonify({
+                    'success': True,
+                    'message': f'Participant updated but reassignment logging failed: {str(e)}'
+                })
 
         return jsonify({'success': True, 'message': 'Participant updated successfully'})
 

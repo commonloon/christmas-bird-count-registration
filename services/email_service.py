@@ -1,10 +1,10 @@
-# Updated by Claude AI on 2025-09-29
+# Updated by Claude AI on 2025-10-22
 import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import List, Dict, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 from config.email_settings import get_email_config, get_available_providers
 from config.organization import TEST_RECIPIENT, get_organization_variables
@@ -225,9 +225,11 @@ This is an automated notification from the CBC registration system.
         from config.email_settings import get_email_branding, is_test_server
         from config.areas import get_area_info
         from models.participant import ParticipantModel
+        from services.datetime_utils import convert_to_display_timezone
 
         current_year = datetime.now().year
-        registration_date = datetime.now()
+        utc_now = datetime.now(timezone.utc)
+        registration_date, display_timezone = convert_to_display_timezone(utc_now)
 
         # Get area information
         if assigned_area != 'UNASSIGNED':
@@ -252,6 +254,7 @@ This is an automated notification from the CBC registration system.
         email_context = {
             'count_event_name': f'{current_year} {org_vars["count_event_name"]}',
             'registration_date': registration_date,
+            'display_timezone': display_timezone,
             'assigned_area': assigned_area,
             'area_info': area_info,
             'area_leaders': area_leaders,

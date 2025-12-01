@@ -1,5 +1,5 @@
 #!/bin/bash
-# Updated by Claude AI on 2025-10-07
+# Updated by Claude AI on 2025-10-26
 #
 # Setup Google Cloud Scheduler jobs for automated email delivery
 #
@@ -10,12 +10,20 @@
 
 set -e
 
-PROJECT_ID="vancouver-cbc-registration"
-REGION="us-west1"
-SERVICE_ACCOUNT="cloud-scheduler-invoker@vancouver-cbc-registration.iam.gserviceaccount.com"
+# Get configuration from config/cloud.py and config/organization.py
+PROJECT_ID=$(python -c "import sys; sys.path.insert(0, '.'); from config.cloud import GCP_PROJECT_ID; print(GCP_PROJECT_ID)" 2>/dev/null || echo "")
+REGION=$(python -c "import sys; sys.path.insert(0, '.'); from config.cloud import GCP_LOCATION; print(GCP_LOCATION)" 2>/dev/null || echo "us-west1")
+SERVICE_ACCOUNT="cloud-scheduler-invoker@${PROJECT_ID}.iam.gserviceaccount.com"
+TIMEZONE=$(python -c "import sys; sys.path.insert(0, '.'); from config.organization import DISPLAY_TIMEZONE; print(DISPLAY_TIMEZONE)" 2>/dev/null || echo "America/Vancouver")
+TEST_SERVICE=$(python -c "import sys; sys.path.insert(0, '.'); from config.cloud import TEST_SERVICE, BASE_DOMAIN; print(f'https://{TEST_SERVICE}.{BASE_DOMAIN}')" 2>/dev/null || echo "")
+PROD_SERVICE=$(python -c "import sys; sys.path.insert(0, '.'); from config.cloud import PRODUCTION_SERVICE, BASE_DOMAIN; print(f'https://{PRODUCTION_SERVICE}.{BASE_DOMAIN}')" 2>/dev/null || echo "")
 
-# Get timezone from config/organization.py
-TIMEZONE=$(python3 -c "import sys; sys.path.insert(0, '.'); from config.organization import DISPLAY_TIMEZONE; print(DISPLAY_TIMEZONE)" 2>/dev/null || echo "America/Vancouver")
+# Validate configuration
+if [ -z "$PROJECT_ID" ] || [ -z "$TEST_SERVICE" ] || [ -z "$PROD_SERVICE" ]; then
+    echo "ERROR: Failed to load configuration from config/cloud.py"
+    echo "Make sure config/cloud.py exists and is properly formatted"
+    exit 1
+fi
 
 # Color codes for output
 RED='\033[0;31m'
@@ -34,6 +42,19 @@ print_warning() {
 
 print_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+}
+
+# Print loaded configuration
+print_config() {
+    echo ""
+    print_info "Loaded Configuration:"
+    echo "  Project ID: ${PROJECT_ID}"
+    echo "  Region: ${REGION}"
+    echo "  Service Account: ${SERVICE_ACCOUNT}"
+    echo "  Timezone: ${TIMEZONE}"
+    echo "  Test Service URL: ${TEST_SERVICE}"
+    echo "  Prod Service URL: ${PROD_SERVICE}"
+    echo ""
 }
 
 # Function to create scheduler jobs for an environment
@@ -134,19 +155,22 @@ delete_jobs() {
 # Main script logic
 COMMAND=${1:-both}
 
+# Show configuration before proceeding
+print_config
+
 case $COMMAND in
     test)
         print_info "Setting up Cloud Scheduler for TEST environment only"
-        create_scheduler_jobs "test" "https://cbc-test.naturevancouver.ca"
+        create_scheduler_jobs "test" "${TEST_SERVICE}"
         ;;
     production)
         print_info "Setting up Cloud Scheduler for PRODUCTION environment only"
-        create_scheduler_jobs "prod" "https://cbc-registration.naturevancouver.ca"
+        create_scheduler_jobs "prod" "${PROD_SERVICE}"
         ;;
     both)
         print_info "Setting up Cloud Scheduler for BOTH environments"
-        create_scheduler_jobs "test" "https://cbc-test.naturevancouver.ca"
-        create_scheduler_jobs "prod" "https://cbc-registration.naturevancouver.ca"
+        create_scheduler_jobs "test" "${TEST_SERVICE}"
+        create_scheduler_jobs "prod" "${PROD_SERVICE}"
         ;;
     list)
         list_jobs

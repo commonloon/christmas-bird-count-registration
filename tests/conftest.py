@@ -247,9 +247,16 @@ def firefox_options():
 
     # OAuth and popup handling
     options.set_preference('dom.popup_maximum', 0)
-    options.set_preference('privacy.clearOnShutdown.offlineApps', True)
-    options.set_preference('privacy.clearOnShutdown.passwords', True)
-    options.set_preference('privacy.clearOnShutdown.siteSettings', True)
+
+    # Cookie handling for OAuth (CRITICAL for login flow)
+    options.set_preference('network.cookie.cookieBehavior', 0)  # Accept all cookies
+    options.set_preference('network.cookie.lifetimePolicy', 0)  # Use default cookie lifetime
+    options.set_preference('privacy.clearOnShutdown.cookies', False)  # Don't clear cookies on shutdown
+
+    # Don't clear site settings that are needed for OAuth flow
+    options.set_preference('privacy.clearOnShutdown.offlineApps', False)
+    options.set_preference('privacy.clearOnShutdown.passwords', False)
+    options.set_preference('privacy.clearOnShutdown.siteSettings', False)
 
     # Disable various Firefox features that can interfere with testing
     options.set_preference('app.update.enabled', False)
