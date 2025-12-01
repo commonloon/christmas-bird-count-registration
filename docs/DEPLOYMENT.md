@@ -1,5 +1,5 @@
 # CBC Registration System - Deployment Guide
-<!-- Updated by Claude AI on 2025-10-18 -->
+<!-- Updated by Claude AI on 2025-11-30 -->
 
 ## About This Guide
 
@@ -33,6 +33,7 @@ Database indexes ensure the registration system runs quickly. Each year, new col
 ```bash
 # Make sure you're logged in to Google Cloud
 gcloud auth login
+gcloud auth application-default login
 
 # Run the index verification script for the test environment
 python utils/verify_indexes.py <TEST-DATABASE>  # Example: my-club-test
@@ -64,7 +65,30 @@ Visit your test site and register yourself:
 - Verify you receive a confirmation
 - Check that you appear in the admin interface
 
-### 3. Update Admin Accounts (if needed)
+### 3. Configure Area Signup Types
+
+By default, all count areas allow participant self-registration. However, you may need to restrict some areas to admin-only assignment (for example, areas accessible only by boat or requiring special permits like airports).
+
+**To configure areas:**
+
+1. Log in to the admin interface using an admin account
+2. Go to the **Open/Close Areas** page (found in Quick Actions on the Dashboard, or in the Admin Navigation)
+3. On this page you'll see:
+   - An interactive map showing area status (green = open, yellow = admin-only)
+   - A table with all areas and radio buttons to set their registration status
+4. For each area:
+   - Select **Open** if participants can register directly for this area
+   - Select **Admin Only** if only admins should assign participants to this area
+5. Changes take effect immediately - no deployment required
+
+**Common scenarios:**
+- **Boat-based areas** (like marine boundary surveys): Set to "Admin Only"
+- **Airport areas** (requiring special access): Set to "Admin Only"
+- **Areas with limited volunteer capacity**: Set to "Admin Only" to manage assignments manually
+- **Area Leader doesn't want more volunteers**: Set to "Admin Only" to manage assignments manually
+- **Regular areas**: Leave as "Open"
+
+### 4. Update Admin Accounts (if needed)
 
 If your coordinators have changed, update the admin list:
 
@@ -72,7 +96,7 @@ If your coordinators have changed, update the admin list:
 2. Update the `PRODUCTION_ADMIN_EMAILS` list
 3. Deploy the updated code (see [Deploying Updates](#deploying-updates))
 
-### 4. Deploy to Production
+### 5. Deploy to Production
 
 Once testing is complete:
 
@@ -83,7 +107,7 @@ Once testing is complete:
 
 Wait 2-3 minutes for deployment to complete, then test the production registration form.
 
-### 5. Share Registration URL
+### 6. Share Registration URL
 
 Send participants to:
 - **Production**: `https://<PROD-DOMAIN>`  (Example: `https://cbc-registration.myclub.org`)

@@ -1,5 +1,5 @@
 // Map functionality for CBC Registration
-/* Updated by Claude AI on 2025-10-16 */
+/* Updated by Claude AI on 2025-11-30 */
 let map;
 let areaLayers = {};
 let selectedArea = null;
@@ -78,7 +78,13 @@ function displayAreas(areas) {
 
         // Add click handler
         polygon.on('click', function(e) {
-            selectAreaOnMap(areaCode, area.name, polygon);
+            if (area.admin_assignment_only) {
+                // Show message for admin-only areas
+                showAdminOnlyMessage(areaCode, area.name);
+            } else {
+                // Select open areas normally
+                selectAreaOnMap(areaCode, area.name, polygon);
+            }
         });
 
         // Store reference for later use
@@ -117,6 +123,15 @@ function selectAreaOnMap(areaCode, areaName, polygon) {
             areaLayers[selectedArea].data.current_count
         );
         areaLayers[selectedArea].polygon.setStyle(prevStyle);
+    }
+
+    // Clear any admin-only area messages
+    const formContainer = document.querySelector('.col-lg-6');
+    if (formContainer) {
+        const existingAlert = formContainer.querySelector('.alert-warning');
+        if (existingAlert) {
+            existingAlert.remove();
+        }
     }
 
     // Highlight selected area
@@ -199,6 +214,30 @@ function showMapError(message) {
             </div>
         </div>
     `;
+}
+
+function showAdminOnlyMessage(areaCode, areaName) {
+    // Show an alert for admin-only areas
+    const alertDiv = document.createElement('div');
+    alertDiv.className = 'alert alert-warning alert-dismissible fade show';
+    alertDiv.innerHTML = `
+        <strong>Area ${areaCode} - ${areaName}</strong><br>
+        Only organizers can assign volunteers to this area.<br>
+        To request assignment, choose <strong>"Wherever I'm needed most"</strong> and put your request in the
+        <strong>Notes to Organizers</strong> field.
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+
+    // Find the form container and insert the alert
+    const formContainer = document.querySelector('.col-lg-6');
+    if (formContainer) {
+        // Remove any existing admin-only alerts
+        const existingAlert = formContainer.querySelector('.alert-warning');
+        if (existingAlert) {
+            existingAlert.remove();
+        }
+        formContainer.insertBefore(alertDiv, formContainer.firstChild);
+    }
 }
 
 // Function to highlight area from dropdown selection

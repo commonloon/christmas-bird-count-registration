@@ -1,0 +1,266 @@
+{# Updated by Claude AI on 2025-11-30 #}
+{% extends "base.html" %}
+
+{% block title %}Area Signup Type - Vancouver Christmas Bird Count{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Area Signup Type</h1>
+    <div>
+        <span class="badge bg-info">{{ selected_year }}</span>
+        {% if current_user.email %}
+        <span class="text-muted ms-3">{{ current_user.email }}</span>
+        <a href="{{ url_for('auth.logout') }}" class="btn btn-sm btn-outline-secondary ms-2">Logout</a>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Information Card -->
+<div class="alert alert-info mb-4">
+    <strong>Control which areas accept public registration:</strong><br>
+    <span class="badge bg-success me-2">Open</span> Participants can register directly<br>
+    <span class="badge bg-warning text-dark">Admin Only</span> Only admins can assign participants (airports, boat-based areas, limited capacity)
+</div>
+
+<!-- Map Section -->
+<div class="row mb-4">
+    <div class="col-lg-8">
+        <div id="signup-type-map" style="height: 500px; border: 1px solid #ddd; border-radius: 5px;"></div>
+    </div>
+    <div class="col-lg-4">
+        <div class="card h-100">
+            <div class="card-header bg-light">
+                <h5 class="mb-0">Status Summary</h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <span class="badge bg-success p-2 d-inline-block mb-2">
+                        <span id="open-count">-</span> Open Areas
+                    </span>
+                    <div class="small text-muted">Accept participant self-registration</div>
+                </div>
+                <div>
+                    <span class="badge bg-warning text-dark p-2 d-inline-block mb-2">
+                        <span id="admin-only-count">-</span> Admin Only
+                    </span>
+                    <div class="small text-muted">Admin assigns participants</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Configuration Table - Compact Layout -->
+<div class="card">
+    <div class="card-header">
+        <h5 class="mb-0">Configure Area Signup Types</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 8%;">Area</th>
+                        <th style="width: 40%;">Name</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for area_code in all_areas %}
+                    {% set area_info = get_area_info(area_code) %}
+                    {% set is_admin_only = signup_types[area_code].get('admin_assignment_only', False) %}
+                    <tr data-area-code="{{ area_code }}" class="align-middle">
+                        <td class="fw-bold">{{ area_code }}</td>
+                        <td class="text-muted small">{{ area_info.name }}</td>
+                        <td>
+                            <div class="btn-group btn-group-sm" role="group">
+                                <input type="radio" class="btn-check signup-type-radio"
+                                       name="signup_type_{{ area_code }}" id="open_{{ area_code }}"
+                                       value="open" data-area-code="{{ area_code }}"
+                                       {% if not is_admin_only %}checked{% endif %}>
+                                <label class="btn btn-outline-success" for="open_{{ area_code }}">Open</label>
+
+                                <input type="radio" class="btn-check signup-type-radio"
+                                       name="signup_type_{{ area_code }}" id="admin_only_{{ area_code }}"
+                                       value="admin_only" data-area-code="{{ area_code }}"
+                                       {% if is_admin_only %}checked{% endif %}>
+                                <label class="btn btn-outline-warning" for="admin_only_{{ area_code }}">Admin Only</label>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+<script>
+let signupTypeMap;
+let signupTypeAreaLayers = {};
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadSignupTypeMap();
+
+    // Add event listeners for radio button changes
+    document.querySelectorAll('.signup-type-radio').forEach(radio => {
+        radio.addEventListener('change', function() {
+            const areaCode = this.dataset.areaCode;
+            const adminOnly = this.value === 'admin_only';
+            updateAreaSignupType(areaCode, adminOnly);
+        });
+    });
+});
+
+function loadSignupTypeMap() {
+    // Fetch area data and boundaries
+    fetch('/api/areas')
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                console.error('Error loading area data:', data.error);
+                return;
+            }
+
+            const mapConfig = data.map_config || {};
+            const center = mapConfig.center || [49.2827, -123.1207];
+            const zoom = mapConfig.zoom || 10;
+
+            // Initialize map
+            signupTypeMap = L.map('signup-type-map').setView(center, zoom);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 15,
+                minZoom: 8
+            }).addTo(signupTypeMap);
+
+            // Get current signup types
+            const signupTypes = {{ signup_types | tojson }};
+
+            // Add area polygons
+            if (data.areas && Array.isArray(data.areas)) {
+                data.areas.forEach(area => {
+                    if (area.geometry && area.geometry.coordinates) {
+                        const areaCode = area.letter_code;
+                        const isAdminOnly = signupTypes[areaCode]?.admin_assignment_only || false;
+
+                        const coordinates = area.geometry.coordinates[0];
+                        const leafletCoords = coordinates.map(coord => [coord[1], coord[0]]);
+
+                        const style = {
+                            color: isAdminOnly ? '#ffc107' : '#28a745',
+                            weight: 2,
+                            opacity: 0.9,
+                            fillOpacity: 0.6,
+                            fillColor: isAdminOnly ? '#ffc107' : '#28a745'
+                        };
+
+                        const polygon = L.polygon(leafletCoords, style)
+                            .bindTooltip(`Area ${areaCode}: ${isAdminOnly ? 'Admin Only' : 'Open'}`, {
+                                permanent: false,
+                                direction: 'center'
+                            })
+                            .addTo(signupTypeMap);
+
+                        signupTypeAreaLayers[areaCode] = polygon;
+                    }
+                });
+            }
+
+            updateStatusSummary();
+        })
+        .catch(error => console.error('Error loading map:', error));
+}
+
+function updateAreaSignupType(areaCode, adminOnly) {
+    const csrfToken = '{{ csrf_token() }}';
+
+    fetch('{{ url_for("admin.update_area_signup_type_api") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify({
+            area_code: areaCode,
+            admin_assignment_only: adminOnly
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Update local signupTypes object to reflect changes
+            const signupTypesObj = {{ signup_types | tojson }};
+            signupTypesObj[areaCode].admin_assignment_only = adminOnly;
+
+            // Update map color
+            if (signupTypeAreaLayers[areaCode]) {
+                const newColor = adminOnly ? '#ffc107' : '#28a745';
+                signupTypeAreaLayers[areaCode].setStyle({
+                    color: newColor,
+                    fillColor: newColor
+                });
+
+                // Update tooltip
+                signupTypeAreaLayers[areaCode].unbindTooltip();
+                signupTypeAreaLayers[areaCode].bindTooltip(
+                    `Area ${areaCode}: ${adminOnly ? 'Admin Only' : 'Open'}`,
+                    { permanent: false, direction: 'center' }
+                );
+            }
+
+            updateStatusSummary(signupTypesObj);
+            showSuccessMessage(data.message);
+        } else {
+            showErrorMessage(data.error || 'Failed to update');
+            // Revert radio button
+            const currentValue = adminOnly ? 'open' : 'admin_only';
+            document.querySelector(`input[data-area-code="${areaCode}"][value="${currentValue}"]`).checked = true;
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showErrorMessage('Error updating area');
+    });
+}
+
+function updateStatusSummary(signupTypes) {
+    // Use passed-in signupTypes if provided, otherwise use default from page load
+    if (!signupTypes) {
+        signupTypes = {{ signup_types | tojson }};
+    }
+    const openCount = Object.values(signupTypes).filter(s => !s.admin_assignment_only).length;
+    const adminCount = Object.values(signupTypes).filter(s => s.admin_assignment_only).length;
+
+    document.getElementById('open-count').textContent = openCount;
+    document.getElementById('admin-only-count').textContent = adminCount;
+}
+
+function showSuccessMessage(message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = 'alert alert-success alert-dismissible fade show';
+    alertDiv.innerHTML = `${message}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
+
+    document.querySelector('.page-content, main, .container-fluid, .container')?.insertBefore(alertDiv, document.querySelector('h1'));
+
+    setTimeout(() => alertDiv.remove(), 4000);
+}
+
+function showErrorMessage(message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = 'alert alert-danger alert-dismissible fade show';
+    alertDiv.innerHTML = `${message}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>`;
+
+    document.querySelector('.page-content, main, .container-fluid, .container')?.insertBefore(alertDiv, document.querySelector('h1'));
+
+    setTimeout(() => alertDiv.remove(), 4000);
+}
+</script>
+{% endblock %}

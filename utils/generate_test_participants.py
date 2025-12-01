@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Updated by Claude AI on 2025-10-16
+Updated by Claude AI on 2025-11-30
 Test Participant Data Generator for Christmas Bird Count Registration
 
 This script generates test participants by submitting data to the registration endpoint.
@@ -37,7 +37,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 from config.cloud import TEST_BASE_URL
 from config.organization import get_organization_variables
-from config.areas import get_public_areas
+from config.areas import get_all_areas
 
 # Configuration - dynamically loaded from config files
 BASE_URL = TEST_BASE_URL  # Automatically uses correct test URL from config/cloud.py
@@ -54,9 +54,10 @@ fake = Faker()
 SKILL_LEVELS = ["Newbie", "Beginner", "Intermediate", "Expert"]
 EXPERIENCE_LEVELS = ["None", "1-2 counts", "3+ counts"]
 
-# Dynamically load areas from config (portable across installations)
-PUBLIC_AREAS = get_public_areas()  # Only areas available for public registration
-AREAS = PUBLIC_AREAS + ["UNASSIGNED"]  # Add UNASSIGNED option for "wherever needed"
+# Dynamically load all areas from config (server validates which are open for registration)
+# Note: admin_assignment_only status is now managed in Firestore and validated on registration
+ALL_AREAS = get_all_areas()
+AREAS = ALL_AREAS + ["UNASSIGNED"]  # Add UNASSIGNED option for "wherever needed"
 
 # Canadian area codes for realistic phone numbers
 AREA_CODES = ["604", "778", "236"]

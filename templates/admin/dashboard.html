@@ -1,4 +1,4 @@
-{# Updated by Claude AI on 2025-09-29 #}
+{# Updated by Claude AI on 2025-11-30 #}
 {% extends "base.html" %}
 
 {% block title %}Admin Dashboard - Vancouver Christmas Bird Count{% endblock %}
@@ -82,6 +82,7 @@
                 <a href="{{ url_for('admin.participants', year=selected_year) }}" class="btn btn-primary me-2">View All Participants</a>
                 <a href="{{ url_for('admin.unassigned', year=selected_year) }}" class="btn btn-warning me-2">Manage Unassigned ({{ total_unassigned|default(0) }})</a>
                 <a href="{{ url_for('admin.leaders', year=selected_year) }}" class="btn btn-info me-2">Manage Leaders</a>
+                <a href="{{ url_for('admin.area_signup_type', year=selected_year) }}" class="btn btn-secondary me-2">Open/Close Areas</a>
                 <a href="{{ url_for('admin.export_csv', year=selected_year) }}" class="btn btn-success">Export CSV</a>
             </div>
         </div>

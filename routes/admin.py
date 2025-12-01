@@ -5,7 +5,8 @@ from config.database import get_firestore_client
 from config.email_settings import is_test_server
 from models.participant import ParticipantModel
 from models.removal_log import RemovalLogModel
-from config.areas import get_area_info, get_all_areas, get_public_areas
+from models.area_signup_type import AreaSignupTypeModel
+from config.areas import get_area_info, get_all_areas
 from config.fields import (
     normalize_participant_record, get_participant_csv_fields,
     get_participant_field_default, get_participant_display_name
@@ -1071,6 +1072,92 @@ def register_test_email_routes():
                 'success': False, 
                 'error': f'Error generating admin digest email: {str(e)}'
             }), 500
+
+
+@admin_bp.route('/area-signup-type')
+@require_admin
+@limiter.limit(RATE_LIMITS['admin_general'])
+def area_signup_type():
+    """Manage area signup types (open vs admin-only)."""
+    if not g.db:
+        return render_template('admin/area_signup_type.html', error="Database unavailable")
+
+    # Get selected year from query params, default to current year
+    selected_year = int(request.args.get('year', datetime.now().year))
+
+    # Get available years
+    available_years = ParticipantModel.get_available_years(g.db)
+
+    # Get all areas and their signup types
+    signup_type_model = AreaSignupTypeModel(g.db)
+
+    # Initialize all areas on first access (ensures all areas exist in Firestore)
+    try:
+        signup_type_model.initialize_all_areas()
+    except Exception as e:
+        logging.error(f"Error initializing area signup types: {e}")
+
+    signup_types = signup_type_model.get_all_signup_types()
+
+    # Organize by type for display
+    open_areas = [code for code, settings in sorted(signup_types.items())
+                  if not settings.get('admin_assignment_only', False)]
+    admin_only_areas = [code for code, settings in sorted(signup_types.items())
+                        if settings.get('admin_assignment_only', False)]
+
+    return render_template('admin/area_signup_type.html',
+                           selected_year=selected_year,
+                           available_years=available_years,
+                           signup_types=signup_types,
+                           open_areas=open_areas,
+                           admin_only_areas=admin_only_areas,
+                           all_areas=get_all_areas(),
+                           get_area_info=get_area_info,
+                           current_user=get_current_user())
+
+
+@admin_bp.route('/api/update-area-signup-type', methods=['POST'])
+@require_admin
+def update_area_signup_type_api():
+    """API endpoint to update area signup type."""
+    if not g.db:
+        return jsonify({'success': False, 'error': 'Database unavailable'}), 500
+
+    try:
+        data = request.get_json()
+        area_code = data.get('area_code', '').strip().upper()
+        admin_assignment_only = data.get('admin_assignment_only', False)
+
+        if not area_code:
+            return jsonify({'success': False, 'error': 'Area code is required'}), 400
+
+        # Validate area code
+        if area_code not in get_all_areas():
+            return jsonify({'success': False, 'error': f'Invalid area code: {area_code}'}), 400
+
+        # Update signup type
+        signup_type_model = AreaSignupTypeModel(g.db)
+        user = get_current_user()
+        success = signup_type_model.set_admin_assignment_only(
+            area_code,
+            admin_assignment_only,
+            updated_by=user.get('email') if user else 'unknown'
+        )
+
+        if success:
+            new_type = 'Admin Only' if admin_assignment_only else 'Open'
+            return jsonify({
+                'success': True,
+                'message': f'Area {area_code} is now {new_type}',
+                'area_code': area_code,
+                'admin_assignment_only': admin_assignment_only
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Failed to update area signup type'}), 500
+
+    except Exception as e:
+        logging.error(f"Error updating area signup type: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 # Only register test routes when TEST_MODE is enabled

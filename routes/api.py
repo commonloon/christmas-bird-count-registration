@@ -1,8 +1,9 @@
-# Updated by Claude AI on 2025-10-16
+# Updated by Claude AI on 2025-11-30
 from flask import Blueprint, jsonify, request
 from google.cloud import firestore
 from config.database import get_firestore_client
 from models.participant import ParticipantModel
+from models.area_signup_type import AreaSignupTypeModel
 from services.limiter import limiter
 from config.rate_limits import RATE_LIMITS
 import json
@@ -13,16 +14,18 @@ api_bp = Blueprint('api', __name__)
 try:
     db, _ = get_firestore_client()
     participant_model = ParticipantModel(db)
+    signup_type_model = AreaSignupTypeModel(db)
 except Exception as e:
     print(f"Warning: Could not initialize Firestore: {e}")
     db = None
     participant_model = None
+    signup_type_model = None
 
 
 @api_bp.route('/areas')
 @limiter.limit(RATE_LIMITS['api_general'])
 def get_areas():
-    """Get all areas with current registration counts for map display."""
+    """Get all areas with current registration counts and signup type info for map display."""
     try:
         # Load area boundaries and map configuration
         with open('static/data/area_boundaries.json', 'r') as f:
@@ -43,10 +46,24 @@ def get_areas():
         else:
             area_counts = {}
 
-        # Add current counts to area data
+        # Get signup type information
+        signup_types = {}
+        if signup_type_model:
+            try:
+                signup_types = signup_type_model.get_all_signup_types()
+            except Exception as e:
+                print(f"Warning: Could not get signup types: {e}")
+
+        # Add current counts and signup type to area data
         for area in areas:
             area_code = area['letter_code']
             area['current_count'] = area_counts.get(area_code, 0)
+
+            # Add signup type information
+            if area_code in signup_types:
+                area['admin_assignment_only'] = signup_types[area_code].get('admin_assignment_only', False)
+            else:
+                area['admin_assignment_only'] = False
 
             # Determine availability status based on relative counts
             all_counts = list(area_counts.values()) if area_counts else [0]

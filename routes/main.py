@@ -1,8 +1,9 @@
-# Updated by Claude AI on 2025-10-03
+# Updated by Claude AI on 2025-11-30
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g
 from config.database import get_firestore_client
 from models.participant import ParticipantModel
-from config.areas import get_area_info, get_all_areas, get_public_areas
+from models.area_signup_type import AreaSignupTypeModel
+from config.areas import get_area_info, get_all_areas
 from config.organization import COUNT_CONTACT
 from services.email_service import email_service
 from services.security import (
@@ -30,7 +31,14 @@ def load_db():
 @main_bp.route('/')
 def index():
     """Main registration page."""
-    public_areas = get_public_areas()
+    # Get public areas from Firestore
+    if g.db:
+        signup_type_model = AreaSignupTypeModel(g.db)
+        public_areas = signup_type_model.get_public_areas()
+    else:
+        # Fallback to all areas if database unavailable (graceful degradation)
+        public_areas = get_all_areas()
+
     # Pass all query parameters to template for form restoration
     form_data = dict(request.args)
     return render_template('index.html', public_areas=public_areas, get_area_info=get_area_info, form_data=form_data, count_contact=COUNT_CONTACT)
@@ -57,6 +65,10 @@ def register():
     skill_level = request.form.get('skill_level', '').strip()
     experience = request.form.get('experience', '').strip()
     preferred_area = request.form.get('preferred_area', '').strip().upper()
+
+    # Get public areas for validation
+    signup_type_model = AreaSignupTypeModel(g.db)
+    public_areas = signup_type_model.get_public_areas()
     interested_in_leadership = request.form.get('interested_in_leadership') == 'on'
     interested_in_scribe = request.form.get('interested_in_scribe') == 'on'
     
@@ -112,7 +124,10 @@ def register():
         errors.append('Area selection is required')
     elif not validate_area_code(preferred_area):
         errors.append('Invalid area selection')
-        
+    elif preferred_area != 'UNASSIGNED' and preferred_area not in public_areas:
+        # Area is valid but restricted to admin assignment
+        errors.append('This area is not available for public registration. Please choose another area or select "Wherever needed"')
+
     if not participation_type:
         errors.append('Please select how you would like to participate')
     elif not validate_participation_type(participation_type):
@@ -139,7 +154,13 @@ def register():
         # Preserve all form data programmatically for restoration
         form_data = request.form.to_dict()
 
-        public_areas = get_public_areas()
+        # Get public areas from Firestore
+        if g.db:
+            signup_type_model = AreaSignupTypeModel(g.db)
+            public_areas = signup_type_model.get_public_areas()
+        else:
+            # Fallback to all areas if database unavailable
+            public_areas = get_all_areas()
         return render_template('index.html',
                              public_areas=public_areas,
                              get_area_info=get_area_info,

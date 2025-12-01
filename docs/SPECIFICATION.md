@@ -1,5 +1,5 @@
 # Vancouver Christmas Bird Count Registration App - Complete Specification
-{# Updated by Claude AI on 2025-10-07 #}
+{# Updated by Claude AI on 2025-11-30 #}
 
 ## Overview
 Web application for Nature Vancouver's annual Christmas Bird Count registration with interactive map-based area selection. Users can register by clicking count areas on a map or using a dropdown menu, with automatic assignment to areas needing volunteers.
@@ -15,7 +15,7 @@ Web application for Nature Vancouver's annual Christmas Bird Count registration 
 - **Frontend**: Bootstrap 5 + Bootstrap Icons, Leaflet.js for interactive mapping
 - **Deployment**: Google Cloud Run with automated deployment scripts for both environments
 - **Security**: Role-based access control with admin whitelist and participant-based leadership tracking
-- **Data**: 25 count areas (A-Y) with admin-assignment-only flag system for flexible area management
+- **Data**: 25 count areas (A-Y) with dynamic admin-managed signup type settings (Firestore-based) for flexible area management
 
 ## Annual Event Architecture
 
@@ -261,6 +261,23 @@ def get_admin_emails():
 - Enhanced area dropdowns with proper area codes and names
 - **Admin-Only Leadership Assignment**: No auto-assignment during registration - leadership only assigned by admins
 
+**Area Signup Type Management (`/admin/area-signup-type`)**
+- Configure which areas accept public registration vs admin-only assignment
+- Interactive map with color coding:
+  - Green: Open for public registration
+  - Yellow: Admin-only assignment
+- Configuration table with all areas:
+  - Two columns: Area name and Assignment Type
+  - Radio buttons for each area (Open / Admin Only)
+  - Pre-selected radio button shows current state
+  - Real-time updates: changes apply immediately without page reload
+- Default state: All areas open for public registration
+- Use cases:
+  - Mark boat-based survey areas as admin-only
+  - Restrict airport or permit-required areas
+  - Close areas with sufficient volunteer coverage
+  - Areas remain in Firestore without deployment needed
+
 **Export and Reporting**
 - **Centralized Field Management**: All participant fields defined in `config/fields.py`
   - **Schema Evolution Safety**: New fields guaranteed to appear in all outputs regardless of existing data
@@ -462,54 +479,61 @@ python utils/generate_test_participants.py 20 --scribes 5
 
 ## Area Configuration
 
-### Admin-Assignment-Only Flag System
-The application uses a flexible area management system that allows clubs to designate certain areas as admin-only, which means that only admins can assign participants to the designated areas:
+### Area Signup Type Management
+The application uses a flexible area signup type system managed through the admin interface. Admins can designate certain areas as open for public registration or restricted to admin-only assignment. Changes take effect immediately without requiring code redeployment.
 
-```python
-# config/areas.py - Example structure (actual definitions organization-specific)
-AREA_CONFIG = {
-    '[CODE]': {
-        'name': '[Area Name]',
-        'description': '[Area description]',
-        'difficulty': 'Easy|Moderate|Difficult',
-        'terrain': '[Terrain type description]',
-        'admin_assignment_only': False  # Public registration allowed
-    },
-    '[CODE]': {
-        'name': '[Restricted Area Name]',
-        'description': '[Area description]',
-        'difficulty': '[Level]',
-        'terrain': '[Terrain type]',
-        'admin_assignment_only': True   # Admin assignment required (restricted access)
-    }
-    # Area codes and structure depend on organization's count circle design
-}
-```
+**Default State:** All areas are open for public registration by default.
+
+**Area Signup Types:**
+- **Open**: Participants can register directly for this area through the registration form
+- **Admin Only**: Only admins can assign participants to this area (useful for restricted areas like boat-based surveys, airports, or areas with limited volunteer capacity)
+
+**Management:**
+- Areas are configured via the admin interface at `/admin/area-signup-type`
+- Settings are stored in Firestore collection `area_signup_type`
+- Each area document contains:
+  ```
+  {
+    'area_code': 'A',
+    'admin_assignment_only': false,
+    'updated_at': timestamp,
+    'updated_by': 'admin@example.com'
+  }
+  ```
+
+**Admin Interface (`/admin/area-signup-type`):**
+- Interactive map showing area status (green = open, yellow = admin-only)
+- Configuration table with radio buttons (open vs admin-only selection)
+- Real-time updates: changes apply immediately to the registration form
+- Accessible from Dashboard Quick Actions as "Open/Close Areas"
 
 ### Area Access Logic
-- **Public Registration**: Uses `get_public_areas()` - shows only areas with `admin_assignment_only: False`
-- **Admin Interfaces**: Uses `get_all_areas()` - shows all areas including admin-only assignments
-- **Dynamic Validation**: `validate_area_code()` automatically validates against current `AREA_CONFIG` keys, making the system portable for other clubs with different area naming schemes (numbers, custom codes, etc.)
+- **Public Registration**: Uses `AreaSignupTypeModel.get_public_areas()` - returns only areas with `admin_assignment_only: False`
+  - Called by registration form to populate area dropdown
+  - If database unavailable, falls back to `get_all_areas()` for graceful degradation
+- **Admin Interfaces**: Uses `get_all_areas()` - shows all areas for admin management
+- **Dynamic Validation**: `validate_area_code()` validates against `AREA_CONFIG` keys, making the system portable for clubs with different area naming schemes
 - **Boundary Matching**: All areas in `config/areas.py` must have corresponding boundaries in `static/data/area_boundaries.json` for map rendering
-  - Map JavaScript uses template-driven area counts to avoid discrepancies
-  - Admin-assignment-only areas may omit boundaries if they don't need public map display
-- **Multiple Leaders**: All areas support multiple leaders per area (business rule enforced in application)
-- **Map Display**: Public maps show public areas only (based on static boundaries JSON)
+- **Multiple Leaders**: All areas support multiple leaders per area
+- **Map Display**: Public maps show only public areas (based on static boundaries JSON)
 
 ### Area Data Structure
-Count areas with no capacity limits (areas accommodate varying numbers based on habitat and accessibility):
-- Area definitions configured in `config/areas.py` with letter code keys
-- Geographic boundaries must match in `static/data/area_boundaries.json` for map rendering
-- Each area includes: descriptive name, description, difficulty level, terrain type
-- Admin-assignment-only flag requires admins to perform participant assignment for restricted areas (e.g. airports, marine boat-based areas)
-- Polygon coordinates for map display (restricted areas may not have public map boundaries)
+Static configuration in `config/areas.py` contains:
+- Area codes (letter codes: A-Y for Nature Vancouver)
+- Area name, description, difficulty level, terrain type
+- **Note**: `admin_assignment_only` field removed from static config; now managed dynamically in Firestore
 
-Static configuration in `config/areas.py` (no year dependency) with helper functions:
-- `get_all_areas()`: Returns all configured area codes (dynamically reads from `AREA_CONFIG.keys()`)
-- `get_public_areas()`: Returns only public areas (excludes admin-only areas)
-- `get_area_info(code)`: Returns area configuration details
+Helper functions in `config/areas.py`:
+- `get_all_areas()`: Returns all configured area codes
+- `get_area_info(code)`: Returns area configuration details (name, description, difficulty, terrain)
 
-**Portability Design**: The system uses dynamic area validation based on `AREA_CONFIG` keys rather than hardcoded patterns, making it easy to adapt for other Christmas Bird Count clubs with different area naming schemes (numbers, regions, custom codes).
+Dynamic area filtering via `AreaSignupTypeModel` in `models/area_signup_type.py`:
+- `get_all_signup_types()`: Fetch all areas with their signup status from Firestore
+- `get_public_areas()`: Returns only areas open for public registration
+- `set_admin_assignment_only(area_code, flag)`: Update area's signup type
+- `initialize_all_areas()`: Initialize all areas as open (used during initial setup)
+
+**Portability Design**: The system separates static area definitions (config) from dynamic signup type settings (Firestore), making it easy to adapt for other Christmas Bird Count clubs with different area naming schemes.
 
 ## Key Implementation Details
 
@@ -1095,4 +1119,4 @@ Use the current date from the environment context, not specific times since Clau
 
 ---
 
-This specification represents a Christmas Bird Count registration system with comprehensive admin management capabilities, including enhanced registration data collection, comprehensive participant management interfaces, and flexible admin-assignment-only area system for specialized counting areas.
+This specification represents a Christmas Bird Count registration system with participant registration, admin management, area leader assignment, and dynamic area signup type configuration via Firestore for specialized counting areas.
