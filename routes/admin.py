@@ -5,6 +5,7 @@ from config.database import get_firestore_client
 from config.email_settings import is_test_server
 from models.participant import ParticipantModel
 from models.removal_log import RemovalLogModel
+from models.withdrawal_log import WithdrawalLogModel
 from models.area_signup_type import AreaSignupTypeModel
 from config.areas import get_area_info, get_all_areas
 from models.reassignment_log import ReassignmentLogModel
@@ -612,6 +613,109 @@ def delete_participant(participant_id):
             flash(f'Participant {participant_name} removed successfully.', 'success')
     else:
         flash('Failed to remove participant.', 'error')
+
+    return redirect(url_for('admin.participants', year=selected_year))
+
+
+@admin_bp.route('/withdraw_participant/<participant_id>', methods=['POST'])
+@require_admin
+def withdraw_participant(participant_id):
+    """Withdraw a participant from the count and log the withdrawal."""
+    if not g.db:
+        flash('Database unavailable.', 'error')
+        return redirect(url_for('admin.participants'))
+
+    selected_year = int(request.form.get('year', datetime.now().year))
+    participant_model = ParticipantModel(g.db, selected_year)
+    withdrawal_log_model = WithdrawalLogModel(g.db, selected_year)
+    user = get_current_user()
+
+    # Get participant info before withdrawal
+    participant = participant_model.get_participant(participant_id)
+    if not participant:
+        flash('Participant not found.', 'error')
+        return redirect(url_for('admin.participants', year=selected_year))
+
+    participant_name = f"{participant['first_name']} {participant['last_name']}"
+    area_code = participant.get('preferred_area', 'UNASSIGNED')
+    withdrawal_reason = request.form.get('reason', 'Withdrawn by administrator')
+
+    # Withdraw participant
+    if participant_model.withdraw_participant(participant_id):
+        # Log the withdrawal
+        if withdrawal_log_model.log_withdrawal(
+            participant_id=participant_id,
+            first_name=participant.get('first_name', ''),
+            last_name=participant.get('last_name', ''),
+            email=participant.get('email', ''),
+            area_code=area_code,
+            withdrawal_reason=withdrawal_reason,
+            recorded_by=user['email']
+        ):
+            # Send withdrawal confirmation email to participant
+            try:
+                from services.email_service import email_service
+                email_service.send_withdrawal_confirmation(
+                    participant_email=participant.get('email', ''),
+                    first_name=participant.get('first_name', ''),
+                    last_name=participant.get('last_name', ''),
+                    withdrawal_reason=withdrawal_reason
+                )
+            except Exception as e:
+                logger.error(f"Failed to send withdrawal confirmation email: {e}")
+
+            flash(f'Participant {participant_name} has been withdrawn.', 'success')
+        else:
+            flash(f'Participant {participant_name} withdrawn but failed to log withdrawal. Please review.', 'warning')
+    else:
+        flash('Failed to withdraw participant.', 'error')
+
+    return redirect(url_for('admin.participants', year=selected_year))
+
+
+@admin_bp.route('/reactivate_participant/<participant_id>', methods=['POST'])
+@require_admin
+def reactivate_participant(participant_id):
+    """Reactivate a withdrawn participant."""
+    if not g.db:
+        flash('Database unavailable.', 'error')
+        return redirect(url_for('admin.participants'))
+
+    selected_year = int(request.form.get('year', datetime.now().year))
+    participant_model = ParticipantModel(g.db, selected_year)
+    withdrawal_log_model = WithdrawalLogModel(g.db, selected_year)
+    user = get_current_user()
+
+    # Get participant info
+    participant = participant_model.get_participant(participant_id)
+    if not participant:
+        flash('Participant not found.', 'error')
+        return redirect(url_for('admin.participants', year=selected_year))
+
+    participant_name = f"{participant['first_name']} {participant['last_name']}"
+    area_code = participant.get('preferred_area', 'UNASSIGNED')
+
+    # Check if participant is actually withdrawn
+    if participant.get('status') != 'withdrawn':
+        flash(f'Participant {participant_name} is not withdrawn.', 'warning')
+        return redirect(url_for('admin.participants', year=selected_year))
+
+    # Reactivate participant
+    if participant_model.reactivate_participant(participant_id):
+        # Log the reactivation
+        if withdrawal_log_model.log_reactivation(
+            participant_id=participant_id,
+            first_name=participant.get('first_name', ''),
+            last_name=participant.get('last_name', ''),
+            email=participant.get('email', ''),
+            area_code=area_code,
+            recorded_by=user['email']
+        ):
+            flash(f'Participant {participant_name} has been reactivated.', 'success')
+        else:
+            flash(f'Participant {participant_name} reactivated but failed to log reactivation. Please review.', 'warning')
+    else:
+        flash('Failed to reactivate participant.', 'error')
 
     return redirect(url_for('admin.participants', year=selected_year))
 

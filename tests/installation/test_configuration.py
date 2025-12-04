@@ -1,6 +1,6 @@
 """
 Phase 1: Configuration Validation Tests
-Updated by Claude AI on 2025-10-18
+Updated by Claude AI on 2025-12-03
 
 These tests validate that all configuration files are properly set up for a
 new Christmas Bird Count installation. They are designed to be portable and
@@ -15,7 +15,7 @@ import json
 import re
 from datetime import datetime
 
-from config.areas import get_public_areas, get_all_areas, AREA_CONFIG
+from config.areas import get_all_areas, AREA_CONFIG
 from config.organization import get_organization_variables
 from config.cloud import (
     TEST_BASE_URL, PRODUCTION_BASE_URL,
@@ -83,7 +83,8 @@ class TestConfigurationFiles:
 
     def test_all_areas_have_required_fields(self, installation_config):
         """Verify each area in config/areas.py has all required fields."""
-        required_fields = ['name', 'description', 'difficulty', 'terrain', 'admin_assignment_only']
+        # Static config fields (admin_assignment_only moved to dynamic Firestore storage)
+        required_fields = ['name', 'description', 'difficulty', 'terrain']
         area_config = installation_config['area_config']
 
         for area_code in installation_config['all_areas']:
@@ -93,7 +94,8 @@ class TestConfigurationFiles:
             assert not missing_fields, (
                 f"Area {area_code} missing required fields: {missing_fields}\n"
                 f"Current fields: {list(config.keys())}\n"
-                f"Update config/areas.py to include: {', '.join(missing_fields)}"
+                f"Update config/areas.py to include: {', '.join(missing_fields)}\n"
+                f"Note: admin_assignment_only is managed dynamically in Firestore via AreaSignupTypeModel"
             )
 
     def test_area_boundaries_json_exists(self):

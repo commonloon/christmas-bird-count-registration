@@ -223,10 +223,19 @@ def get_admin_emails():
   - **Data Preservation**: All participant fields (phone, skill level, experience, etc.) remain unchanged during reassignment
   - **Page Reload**: Automatic page refresh after successful reassignment to show updated area assignment
 - **Sorting**: Areas displayed in alphabetical order, participants within each area sorted alphabetically by first name
-- **Actions**: Delete participants with confirmation modal and reason logging, inline edit with save/cancel options, area reassignment (current year only)
-- **Visual Indicators**: FEEDER participants clearly marked with type indicator
+- **Participant Status Sections** (Current Year Only):
+  - **Active Participants**: Standard display grouped by participation type (regular, then FEEDER)
+  - **Withdrawn Participants**: Separate section after FEEDER participants with yellow background, displaying "WITHDRAWN" label after participant names
+  - **Display Order**: Regular → FEEDER → Withdrawn (within each area)
+- **Actions**: Inline edit with save/cancel options, area reassignment, withdraw/reactivate toggle button, delete with confirmation modal and reason logging
+  - **Withdraw/Activate Button**: X icon for withdrawing participants, checkmark icon for reactivating withdrawn participants
+  - **Button Position**: Appears before delete button in Actions column
+  - **Withdrawal Modal**: Prompts for withdrawal reason before marking as withdrawn
+  - **Withdrawn Participants**: Show "Activate" button instead of "Withdraw" to allow reactivation
+- **Visual Indicators**: FEEDER participants marked with type indicator, withdrawn participants marked with "WITHDRAWN" label and yellow background
 - **Year Selection**: Server-side tab switching via query parameter (?year=YYYY)
 - **CSV Export**: Available for both current and historical years via Quick Actions section
+  - **Included Data**: All participants (active and withdrawn) with status column showing participant state
 
 **Unassigned Participant Management (`/admin/unassigned`)**
 - Area capacity overview with color-coded participant counts
@@ -314,9 +323,11 @@ def get_admin_emails():
 - **Team Summary Card**: Total participant count with breakdown (regular vs FEEDER)
 - **Historical Data Warning**: Alert banner for historical years indicating read-only status
 - **Participant Tables**:
-  - Separate sections for regular and FEEDER participants
+  - Separate sections for regular, FEEDER, and withdrawn participants
+  - Display order: Regular → FEEDER → Withdrawn (with yellow background and "WITHDRAWN" label)
   - Orange background tint on cards when viewing historical data (bg-warning bg-opacity-10/25)
   - Full participant details: name, email, phones, skill level, experience, equipment, notes, interests
+  - Email addresses for withdrawn participants excluded from contact lists
   - Sorted alphabetically by first name within each section
 - **CSV Export**: Button exports team roster for selected year
 - **Year Selection**: Server-side tab switching via query parameter (?year=YYYY)
@@ -328,16 +339,20 @@ def get_admin_emails():
 1. **Twice-Daily Team Updates**:
    - Recipients: Area leaders when team composition changes
    - Subject: "CBC Area X Team Update"
-   - Content: New members, members joining from other areas, members reassigned to other areas, removed members, complete current team roster
-   - Triggers: Participant additions, removals, area reassignments, email changes
+   - Content: New members, members joining from other areas, members reassigned to other areas, withdrawn members, removed members, complete current team roster
+   - Triggers: Participant additions, removals, area reassignments, withdrawals, email changes
    - Frequency: Automated checks twice daily (production scheduling pending)
    - **Reassignment handling**: When a participant is moved from Area A to Area B, Area A leader is notified of departure, Area B leader is notified of arrival (separate from "new members")
+   - **Withdrawal handling**: When a participant is withdrawn, their area leader is notified in "Withdrawn" section; email addresses excluded from roster contact lists
+   - **Email Address Exclusion**: Contact lists in emails exclude withdrawn participant email addresses
 
 2. **Weekly Team Summary (No Changes)**:
    - Recipients: Area leaders with no team changes in past week
    - When: Every Friday at 11pm Pacific
    - Subject: "CBC Area X Weekly Summary"
    - Content: "No changes this week" + complete team roster with contact details
+   - **Team Roster Display**: Lists regular participants → FEEDER participants → withdrawn participants (with yellow background and "WITHDRAWN" label below name)
+   - **Email Address Exclusion**: Contact lists exclude withdrawn participant email addresses
    - **Reassignment handling**: Weekly summaries include arrivals and departures in change tracking
 
 3. **Daily Admin Digest**:
@@ -383,7 +398,15 @@ Email notifications categorize team changes as:
   - **Departures**: Participants reassigned FROM this area (displayed as "reassigned to Area Y")
   - **New members**: Participants newly registering in this area
   - **Modifications**: Existing participants with updated contact info/preferences
+  - **Withdrawals**: Participants who withdrew from their area (separate section in email)
   - **Removals**: Participants deleted from the system
+
+**Withdrawal Confirmation Email**:
+- **Recipient**: Participant being withdrawn
+- **Subject**: "[COUNT_EVENT_NAME] Withdrawal Confirmation"
+- **Content**: Confirms withdrawal with provided reason, includes request to re-engage by contacting COUNT_CONTACT email address
+- **Trigger**: Sent immediately when admin marks participant as withdrawn
+- **Notification**: Area leader informed via twice-daily update in "Withdrawn" section
 
 **Current Implementation Status:**
 - ✅ **Email Generation Logic**: Complete with reassignment tracking and separate arrival/departure handling
@@ -486,6 +509,7 @@ python utils/generate_test_participants.py 20 --scribes 5
   auto_assigned: boolean,                    // True if auto-assigned from leadership
   assigned_by: string,                       // Admin who assigned (if assigned)
   assigned_at: timestamp,                    // When assigned (if assigned)
+  status: "active|withdrawn",                // Participation status (default: "active")
   created_at: timestamp,
   updated_at: timestamp,
   year: integer                              // Explicit year field for data integrity
@@ -501,6 +525,13 @@ python utils/generate_test_participants.py 20 --scribes 5
   - All operations use identity matching: `(first_name, last_name, email)` combination
   - Authentication privileges shared among family members with same email
   - Duplicate prevention and data synchronization work correctly with shared emails
+- **Withdrawal system**: Participants can be withdrawn by admins when they can no longer participate
+  - Withdrawn participants (`status == "withdrawn"`) excluded from area rosters, volunteer counts, and team displays
+  - Withdrawn leaders automatically lose leadership status upon withdrawal
+  - Withdrawal is reversible: admins can reactivate withdrawn participants
+  - Reactivated participants treated as new arrivals in twice-daily leader emails
+  - All withdrawal and reactivation events logged to `withdrawal_log_YYYY` with reason
+  - Withdrawn participants' contact information retained for future recruitment
 
 ### Removal Log Collection (per year: removal_log_YYYY)
 ```
@@ -533,6 +564,24 @@ python utils/generate_test_participants.py 20 --scribes 5
 ```
 
 **Purpose**: Tracks all participant area reassignments to enable accurate email notifications to both source and destination area leaders. Queries use single-field year filter + in-memory area matching (no composite indexes required).
+
+### Withdrawal Log Collection (per year: withdrawal_log_YYYY)
+```
+{
+  id: auto_generated,
+  participant_id: string,                    // Participant being withdrawn/reactivated
+  first_name: string,                        // Denormalized for audit trail
+  last_name: string,                         // Denormalized for audit trail
+  email: string,                             // Denormalized for audit trail
+  area_code: string,                         // Area they were assigned to
+  status: "withdrawn|reactivated",           // Type of event
+  withdrawal_reason: string,                 // Reason provided by admin for withdrawal
+  recorded_by: string,                       // Admin email who recorded the action
+  recorded_at: timestamp                     // When action was recorded
+}
+```
+
+**Purpose**: Tracks all participant withdrawals and reactivations to maintain complete audit trail and enable withdrawal/reactivation information in email notifications to participants and area leaders. Supports recruitment operations by retaining contact info for previously withdrawn participants.
 
 ## Area Configuration
 
@@ -836,8 +885,9 @@ test/
 utils/
   setup_oauth_secrets.sh       # OAuth credential setup script for Google Secret Manager
   setup_databases.py           # Firestore database creation script with environment-specific databases
+  manage_indexes.py            # Composite index management using Firestore Admin API (create, list, check)
   generate_test_participants.py # Test data generation script with timestamped emails for uniqueness and CSRF token support
-  requirements.txt             # Dependencies for utility scripts (requests, faker, firestore, beautifulsoup4)
+  requirements.txt             # Dependencies for utility scripts (requests, faker, firestore, beautifulsoup4, google-cloud-firestore-admin)
 
 tests/
   config.py                    # Test configuration with environment detection and test accounts
@@ -1114,10 +1164,34 @@ pip install -r requirements.txt
 
 # Create required Firestore databases
 python setup_databases.py --dry-run       # Preview what would be created
-python setup_databases.py                # Create missing databases with indexes (cbc-test, cbc-register)
-python setup_databases.py --skip-indexes # Create databases only (faster, but may have runtime delays)
+python setup_databases.py                # Create missing databases (cbc-test, cbc-register)
+python setup_databases.py --skip-indexes # Create databases only (faster)
 python setup_databases.py --force        # Recreate all databases (with confirmation)
 ```
+
+### Composite Index Management
+Composite indexes must be created explicitly after collections exist. Use the index management utility:
+```bash
+# Create composite indexes for withdrawal and filtering features
+python manage_indexes.py --create       # Create all required indexes
+python manage_indexes.py --list         # List all existing indexes
+python manage_indexes.py --check        # Check if all required indexes exist
+
+# For test environment
+python manage_indexes.py --create --database=cbc-test
+
+# For production environment
+python manage_indexes.py --create --database=cbc-register
+```
+
+**When to Run Index Creation:**
+- After initial database setup (once collections have test data)
+- Annual season start when new year collections are created
+- Post-deployment when data is present
+
+**Required Indexes for Current Features:**
+- `(status, preferred_area)` - Filtering active participants by area
+- `(status, assigned_area_leader)` - Filtering active leaders by area
 
 ### Test Data Generation
 For development and testing purposes:

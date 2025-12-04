@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2025-10-15
+# Updated by Claude AI on 2025-12-03
 """
 UI Conformance Tests - Verify rendered HTML templates match specification.
 
@@ -328,31 +328,37 @@ class TestRegistrationFormUI:
         """
         Verify area dropdown has all 24 public areas (A-X, excluding admin-only Y).
 
-        Validates that config/areas.py public areas are correctly rendered.
+        Validates that AreaSignupTypeModel public areas are correctly rendered.
         """
-        from config.areas import get_public_areas
+        from unittest.mock import patch
 
-        response = client.get('/')
-        soup = BeautifulSoup(response.data, 'html.parser')
+        # Mock AreaSignupTypeModel to return A-X as public areas (excluding Y)
+        expected_areas = [chr(ord('A') + i) for i in range(24)]  # A-X
 
-        area_select = soup.find('select', {'id': 'preferred_area', 'name': 'preferred_area'})
-        assert area_select is not None, "Area dropdown not found"
+        with patch('routes.main.AreaSignupTypeModel') as mock_model:
+            mock_instance = MagicMock()
+            mock_instance.get_public_areas.return_value = expected_areas
+            mock_model.return_value = mock_instance
 
-        # Get all area option values (excluding empty "Choose..." and UNASSIGNED)
-        options = [opt.get('value') for opt in area_select.find_all('option')
-                   if opt.get('value') and opt.get('value') not in ['', 'UNASSIGNED']]
+            response = client.get('/')
+            soup = BeautifulSoup(response.data, 'html.parser')
 
-        expected_areas = get_public_areas()  # Should be A-X (24 areas, excludes Y)
+            area_select = soup.find('select', {'id': 'preferred_area', 'name': 'preferred_area'})
+            assert area_select is not None, "Area dropdown not found"
 
-        assert len(options) == len(expected_areas), \
-            f"Expected {len(expected_areas)} areas, found {len(options)}"
+            # Get all area option values (excluding empty "Choose..." and UNASSIGNED)
+            options = [opt.get('value') for opt in area_select.find_all('option')
+                       if opt.get('value') and opt.get('value') not in ['', 'UNASSIGNED']]
 
-        # Verify each expected area is present
-        for area_code in expected_areas:
-            assert area_code in options, f"Area {area_code} missing from dropdown"
+            assert len(options) == len(expected_areas), \
+                f"Expected {len(expected_areas)} areas, found {len(options)}"
 
-        # Verify Area Y (admin-only) is NOT present
-        assert 'Y' not in options, "Area Y (admin-only) should not be in public dropdown"
+            # Verify each expected area is present
+            for area_code in expected_areas:
+                assert area_code in options, f"Area {area_code} missing from dropdown"
+
+            # Verify Area Y (admin-only) is NOT present
+            assert 'Y' not in options, "Area Y (admin-only) should not be in public dropdown"
 
     def test_area_dropdown_has_unassigned_option(self, client):
         """Verify area dropdown has UNASSIGNED option for flexible assignment."""

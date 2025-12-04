@@ -28,12 +28,13 @@ class ParticipantModel:
         participant_data.setdefault('leadership_assigned_at', None)
         participant_data.setdefault('leadership_removed_by', None)
         participant_data.setdefault('leadership_removed_at', None)
-        
+
         # Set defaults for new fields
         participant_data.setdefault('notes_to_organizers', '')
         participant_data.setdefault('has_binoculars', False)
         participant_data.setdefault('spotting_scope', False)
         participant_data.setdefault('participation_type', 'regular')
+        participant_data.setdefault('status', 'active')
 
         doc_ref = self.db.collection(self.collection).add(participant_data)
         self.logger.info(f"Added participant to {self.collection}: {participant_data.get('email')}")
@@ -49,9 +50,11 @@ class ParticipantModel:
         return None
 
     def get_participants_by_area(self, area_code: str) -> List[Dict]:
-        """Get all participants for a specific area in the current year."""
+        """Get all active participants for a specific area in the current year."""
         participants = []
-        query = self.db.collection(self.collection).where(filter=FieldFilter('preferred_area', '==', area_code))
+        query = (self.db.collection(self.collection)
+                .where(filter=FieldFilter('status', '==', 'active'))
+                .where(filter=FieldFilter('preferred_area', '==', area_code)))
 
         for doc in query.stream():
             data = doc.to_dict()
@@ -61,9 +64,11 @@ class ParticipantModel:
         return participants
 
     def get_unassigned_participants(self) -> List[Dict]:
-        """Get all participants with preferred_area = 'UNASSIGNED'."""
+        """Get all active participants with preferred_area = 'UNASSIGNED'."""
         participants = []
-        query = self.db.collection(self.collection).where(filter=FieldFilter('preferred_area', '==', 'UNASSIGNED'))
+        query = (self.db.collection(self.collection)
+                .where(filter=FieldFilter('status', '==', 'active'))
+                .where(filter=FieldFilter('preferred_area', '==', 'UNASSIGNED')))
 
         for doc in query.stream():
             data = doc.to_dict()
@@ -89,9 +94,9 @@ class ParticipantModel:
             return False
 
     def get_area_counts(self) -> Dict[str, int]:
-        """Get participant count by area for the current year."""
+        """Get active participant count by area for the current year."""
         counts = {}
-        query = self.db.collection(self.collection)
+        query = self.db.collection(self.collection).where(filter=FieldFilter('status', '==', 'active'))
 
         for doc in query.stream():
             data = doc.to_dict()
@@ -180,9 +185,10 @@ class ParticipantModel:
         return len(docs) > 0
 
     def get_participants_interested_in_leadership(self) -> List[Dict]:
-        """Get participants who expressed interest in leadership but aren't assigned as leaders."""
+        """Get active participants who expressed interest in leadership but aren't assigned as leaders."""
         participants = []
         query = (self.db.collection(self.collection)
+                 .where(filter=FieldFilter('status', '==', 'active'))
                  .where(filter=FieldFilter('interested_in_leadership', '==', True))
                  .where(filter=FieldFilter('is_leader', '==', False)))
 
@@ -398,6 +404,83 @@ class ParticipantModel:
     def remove_leader(self, participant_id: str, removed_by: str) -> bool:
         """Remove leadership from a participant (wrapper for remove_area_leadership)."""
         return self.remove_area_leadership(participant_id, removed_by)
+
+    def withdraw_participant(self, participant_id: str) -> bool:
+        """Withdraw a participant from the count, removing leadership if applicable."""
+        try:
+            participant = self.get_participant(participant_id)
+            if not participant:
+                self.logger.error(f"Participant {participant_id} not found for withdrawal")
+                return False
+
+            updates = {
+                'status': 'withdrawn',
+                'updated_at': datetime.now()
+            }
+
+            # Remove leadership if participant is a leader
+            if participant.get('is_leader'):
+                updates['is_leader'] = False
+                updates['assigned_area_leader'] = None
+                updates['leadership_removed_by'] = 'system-withdrawal'
+                updates['leadership_removed_at'] = datetime.now()
+
+            self.db.collection(self.collection).document(participant_id).update(updates)
+            self.logger.info(f"Withdrew participant {participant_id} from {self.collection}")
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to withdraw participant {participant_id}: {e}")
+            return False
+
+    def reactivate_participant(self, participant_id: str) -> bool:
+        """Reactivate a withdrawn participant."""
+        try:
+            participant = self.get_participant(participant_id)
+            if not participant:
+                self.logger.error(f"Participant {participant_id} not found for reactivation")
+                return False
+
+            if participant.get('status') != 'withdrawn':
+                self.logger.warning(f"Participant {participant_id} is not withdrawn, cannot reactivate")
+                return False
+
+            updates = {
+                'status': 'active',
+                'updated_at': datetime.now()
+            }
+
+            self.db.collection(self.collection).document(participant_id).update(updates)
+            self.logger.info(f"Reactivated participant {participant_id} in {self.collection}")
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to reactivate participant {participant_id}: {e}")
+            return False
+
+    def get_withdrawn_participants_by_area(self, area_code: str) -> List[Dict]:
+        """Get all withdrawn participants for a specific area in the current year."""
+        participants = []
+        query = (self.db.collection(self.collection)
+                .where(filter=FieldFilter('status', '==', 'withdrawn'))
+                .where(filter=FieldFilter('preferred_area', '==', area_code)))
+
+        for doc in query.stream():
+            data = doc.to_dict()
+            data['id'] = doc.id
+            participants.append(data)
+
+        return participants
+
+    def get_withdrawn_participants(self) -> List[Dict]:
+        """Get all withdrawn participants for the current year."""
+        participants = []
+        query = self.db.collection(self.collection).where(filter=FieldFilter('status', '==', 'withdrawn'))
+
+        for doc in query.stream():
+            data = doc.to_dict()
+            data['id'] = doc.id
+            participants.append(data)
+
+        return participants
 
     @classmethod
     def get_available_years(cls, db_client) -> List[int]:

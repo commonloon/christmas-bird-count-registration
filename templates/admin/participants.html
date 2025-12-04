@@ -1,4 +1,4 @@
-{# Updated by Claude AI on 2025-10-26 #}
+{# Updated by Claude AI on 2025-12-02 #}
 {% extends "base.html" %}
 
 {% block title %}All Participants - {{ count_event_name }}{% endblock %}
@@ -122,12 +122,15 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {# Sort participants: regular first, then FEEDER, both by first name #}
-                        {% set regular_participants = area_participants | selectattr('participation_type', 'ne', 'FEEDER') | sort(attribute='first_name') | list %}
-                        {% set feeder_participants = area_participants | selectattr('participation_type', 'equalto', 'FEEDER') | sort(attribute='first_name') | list %}
-                        {% set sorted_participants = regular_participants + feeder_participants %}
+                        {# Sort participants: active regular first, then FEEDER, then withdrawn - all by first name #}
+                        {% set active_participants = area_participants | selectattr('status', 'equalto', 'active') | list %}
+                        {% set withdrawn_participants = area_participants | selectattr('status', 'equalto', 'withdrawn') | list %}
+                        {% set regular_active = active_participants | selectattr('participation_type', 'ne', 'FEEDER') | sort(attribute='first_name') | list %}
+                        {% set feeder_active = active_participants | selectattr('participation_type', 'equalto', 'FEEDER') | sort(attribute='first_name') | list %}
+                        {% set withdrawn_sorted = withdrawn_participants | sort(attribute='first_name') | list %}
+                        {% set sorted_participants = regular_active + feeder_active + withdrawn_sorted %}
                         {% for participant in sorted_participants %}
-                        <tr{% if participant.get('participation_type') == 'FEEDER' %} class="table-info"{% endif %} data-participant-id="{{ participant.id }}">
+                        <tr{% if participant.get('status') == 'withdrawn' %} class="table-warning"{% elif participant.get('participation_type') == 'FEEDER' %} class="table-info"{% endif %} data-participant-id="{{ participant.id }}">
                             <td>
                                 <div class="name-display">
                                     <strong class="participant-name">{{ participant.first_name|e }} {{ participant.last_name|e }}</strong>
@@ -136,6 +139,9 @@
                                     {% endif %}
                                     {% if participant.get('participation_type') == 'FEEDER' %}
                                         <div class="small text-muted">FEEDER</div>
+                                    {% endif %}
+                                    {% if participant.get('status') == 'withdrawn' %}
+                                        <div class="small text-warning fw-bold">WITHDRAWN</div>
                                     {% endif %}
                                 </div>
                                 <div class="name-edit" style="display: none;">
@@ -263,6 +269,7 @@
                                     <button type="button" class="btn btn-outline-primary btn-edit" title="Edit">
                                         <i class="bi bi-pencil"></i>
                                     </button>
+                                    {% if participant.get('status') != 'withdrawn' %}
                                     <button type="button" class="btn btn-outline-warning btn-reassign" title="Reassign to different area"
                                             data-participant-id="{{ participant.id }}"
                                             data-participant-name="{{ participant.first_name|e }} {{ participant.last_name|e }}"
@@ -273,6 +280,22 @@
                                             data-is-leader="{{ participant.is_leader|lower }}">
                                         <i class="bi bi-arrow-left-right"></i>
                                     </button>
+                                    {% endif %}
+                                    {% if participant.get('status') == 'withdrawn' %}
+                                    <form method="POST" action="{{ url_for('admin.reactivate_participant', participant_id=participant.id) }}" style="display: inline;">
+                                        <input type="hidden" name="year" value="{{ selected_year }}">
+                                        <button type="submit" class="btn btn-outline-success btn-sm" title="Reactivate participant">
+                                            <i class="bi bi-check-circle"></i>
+                                        </button>
+                                    </form>
+                                    {% else %}
+                                    <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#withdrawalModal"
+                                            data-participant-id="{{ participant.id }}"
+                                            data-participant-name="{{ participant.first_name|e }} {{ participant.last_name|e }}"
+                                            title="Withdraw participant">
+                                        <i class="bi bi-x-circle"></i>
+                                    </button>
+                                    {% endif %}
                                     <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteModal"
                                             data-participant-id="{{ participant.id }}"
                                             data-participant-name="{{ participant.first_name|e }} {{ participant.last_name|e }}">
@@ -331,6 +354,36 @@
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-outline-primary" id="moveAsTeamMember">Team Member</button>
                 <button type="button" class="btn btn-primary" id="moveAsLeader">Leader</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Withdrawal Confirmation Modal -->
+<div class="modal fade" id="withdrawalModal" tabindex="-1" aria-labelledby="withdrawalModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="withdrawalModalLabel">Withdraw Participant</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to withdraw <strong id="withdrawalParticipantName"></strong>?</p>
+                <p class="text-muted">They will be excluded from team rosters but their contact information will be retained for future recruitment.</p>
+
+                <div class="mb-3">
+                    <label for="withdrawalReason" class="form-label">Reason for withdrawal (optional)</label>
+                    <textarea class="form-control" id="withdrawalReason" rows="3" placeholder="e.g., Family commitment, health reasons, schedule conflict"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form method="POST" id="withdrawalForm" class="d-inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="year" value="{{ selected_year }}">
+                    <input type="hidden" name="reason" id="withdrawalReasonInput">
+                    <button type="submit" class="btn btn-warning">Withdraw Participant</button>
+                </form>
             </div>
         </div>
     </div>
@@ -401,6 +454,30 @@ if (deleteModal) {
 
     reasonTextarea.addEventListener('input', function() {
         reasonInput.value = this.value;
+    });
+}
+
+// Handle withdrawal modal
+const withdrawalModal = document.getElementById('withdrawalModal');
+if (withdrawalModal) {
+    withdrawalModal.addEventListener('show.bs.modal', function (event) {
+        const button = event.relatedTarget;
+        const participantId = button.getAttribute('data-participant-id');
+        const participantName = button.getAttribute('data-participant-name');
+
+        const modalTitle = withdrawalModal.querySelector('#withdrawalParticipantName');
+        const withdrawalForm = withdrawalModal.querySelector('#withdrawalForm');
+
+        modalTitle.textContent = participantName;
+        withdrawalForm.action = '/admin/withdraw_participant/' + participantId;
+    });
+
+    // Handle reason input
+    const withdrawalReasonTextarea = withdrawalModal.querySelector('#withdrawalReason');
+    const withdrawalReasonInput = withdrawalModal.querySelector('#withdrawalReasonInput');
+
+    withdrawalReasonTextarea.addEventListener('input', function() {
+        withdrawalReasonInput.value = this.value;
     });
 }
 

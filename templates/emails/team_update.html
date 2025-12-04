@@ -236,6 +236,15 @@
         </div>
         {% endif %}
 
+        {% if withdrawn_participants %}
+        <div class="changes-section removed-members">
+            <h4>⚠️ Withdrawn From Team ({{ withdrawn_participants|length }})</h4>
+            {% for withdrawal in withdrawn_participants %}
+            <p><strong>{{ withdrawal.first_name|e }} {{ withdrawal.last_name|e }}</strong>{% if withdrawal.withdrawal_reason %} - {{ withdrawal.withdrawal_reason|e }}{% endif %}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+
         <h4>📋 Next Steps</h4>
         <ul>
             {% if new_participants or arrivals %}
@@ -311,7 +320,8 @@
         <div class="email-summary">
             <h4>📧 Email Addresses of Team Members</h4>
             <p><strong>To copy:</strong> Select all text in the box below, then copy (Ctrl+C or Cmd+C) and paste (Ctrl+V or Cmd+V) to a new email. <em>We recommend pasting addresses in the BCC field when emailing multiple team members, for privacy reasons. Not everyone is comfortable sharing their contact information with strangers.</em></p>
-            <div class="email-list" id="emailList">{{ current_team|map(attribute='email')|join(', ') }}</div>
+            {% set active_team = current_team|selectattr('status', 'equalto', 'active')|list %}
+            <div class="email-list" id="emailList">{{ active_team|map(attribute='email')|join(', ') }}</div>
         </div>
         {% endif %}
     </div>

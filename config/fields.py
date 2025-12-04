@@ -51,6 +51,9 @@ PARTICIPANT_FIELDS = OrderedDict([
     ('updated_at', {'default': None, 'display_name': 'Last Updated', 'csv_order': 25}),
     ('year', {'default': datetime.now().year, 'display_name': 'Year', 'csv_order': 26}),
     ('id', {'default': None, 'display_name': 'ID', 'csv_order': 27}),
+
+    # Withdrawal feature
+    ('status', {'default': 'active', 'display_name': 'Status', 'csv_order': 28}),
 ])
 
 

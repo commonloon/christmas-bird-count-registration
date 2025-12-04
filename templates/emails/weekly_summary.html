@@ -107,6 +107,12 @@
         .feeder-row:hover {
             background-color: #bee5eb;
         }
+        .withdrawn-row {
+            background-color: #fff3cd;
+        }
+        .withdrawn-row:hover {
+            background-color: #ffe8a1;
+        }
         .badge {
             display: inline-block;
             padding: 2px 6px;
@@ -312,15 +318,21 @@
                 </tr>
             </thead>
             <tbody>
-                {# Sort: regular participants first (alphabetically), then FEEDER participants (alphabetically) #}
-                {% set regular_participants = current_team|selectattr('participation_type', 'ne', 'FEEDER')|sort(attribute='first_name')|list %}
-                {% set feeder_participants = current_team|selectattr('participation_type', 'equalto', 'FEEDER')|sort(attribute='first_name')|list %}
-                {% for participant in regular_participants + feeder_participants %}
-                <tr{% if participant.participation_type == 'FEEDER' %} class="feeder-row"{% endif %}>
+                {# Sort: active regular first, then FEEDER, then withdrawn - all alphabetically #}
+                {% set active_participants = current_team|selectattr('status', 'equalto', 'active')|list %}
+                {% set withdrawn_participants = current_team|selectattr('status', 'equalto', 'withdrawn')|list %}
+                {% set regular_active = active_participants|selectattr('participation_type', 'ne', 'FEEDER')|sort(attribute='first_name')|list %}
+                {% set feeder_active = active_participants|selectattr('participation_type', 'equalto', 'FEEDER')|sort(attribute='first_name')|list %}
+                {% set withdrawn_sorted = withdrawn_participants|sort(attribute='first_name')|list %}
+                {% for participant in regular_active + feeder_active + withdrawn_sorted %}
+                <tr{% if participant.get('status') == 'withdrawn' %} class="withdrawn-row"{% elif participant.participation_type == 'FEEDER' %} class="feeder-row"{% endif %}>
                     <td>
                         <strong>{{ participant.first_name|e }} {{ participant.last_name|e }}</strong>
                         {% if participant.participation_type == 'FEEDER' %}
                         <br><span class="badge badge-info">FEEDER</span>
+                        {% endif %}
+                        {% if participant.get('status') == 'withdrawn' %}
+                        <br><span class="badge badge-warning">WITHDRAWN</span>
                         {% endif %}
                     </td>
                     <td>{{ participant.email|e }}</td>
@@ -361,7 +373,8 @@
         <div class="email-summary">
             <h4>📧 Email Addresses of Team Members</h4>
             <p><strong>To copy:</strong> Select all text in the box below, then copy (Ctrl+C or Cmd+C) and paste (Ctrl+V or Cmd+V) to a new email. <em>We recommend pasting addresses in the BCC field when emailing multiple team members, for privacy reasons. Not everyone is comfortable sharing their contact information with strangers.</em></p>
-            <div class="email-list" id="emailList">{{ current_team|map(attribute='email')|join(', ') }}</div>
+            {% set active_team_emails = current_team|selectattr('status', 'equalto', 'active')|list %}
+            <div class="email-list" id="emailList">{{ active_team_emails|map(attribute='email')|join(', ') }}</div>
         </div>
         {% endif %}
     </div>

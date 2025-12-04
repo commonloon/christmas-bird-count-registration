@@ -1,6 +1,6 @@
 """
 Pytest fixtures for installation validation tests.
-Updated by Claude AI on 2025-10-18
+Updated by Claude AI on 2025-12-02
 """
 
 import pytest
@@ -17,7 +17,7 @@ def installation_config():
     This fixture dynamically loads all configuration without hardcoding,
     making tests portable across different bird count installations.
     """
-    from config.areas import get_public_areas, get_all_areas, AREA_CONFIG
+    from config.areas import get_all_areas, AREA_CONFIG
     from config.organization import get_organization_variables
     from config.cloud import (
         TEST_BASE_URL, PRODUCTION_BASE_URL,
@@ -25,11 +25,18 @@ def installation_config():
         GCP_PROJECT_ID, GCP_LOCATION,
         BASE_DOMAIN, TEST_SERVICE, PRODUCTION_SERVICE
     )
+    from config.database import get_firestore_client
+    from models.area_signup_type import AreaSignupTypeModel
+
+    # Get public areas from model
+    db, _ = get_firestore_client()
+    area_signup_model = AreaSignupTypeModel(db)
+    public_areas = area_signup_model.get_public_areas()
 
     return {
         # Area configuration
         'all_areas': get_all_areas(),
-        'public_areas': get_public_areas(),
+        'public_areas': public_areas,
         'area_config': AREA_CONFIG,
 
         # Organization configuration

@@ -292,6 +292,33 @@ This is an automated notification from the CBC registration system.
 
         return self.send_email([participant_email], subject, '', html_content)
 
+    def send_withdrawal_confirmation(self, participant_email: str, first_name: str,
+                                    last_name: str, withdrawal_reason: str) -> bool:
+        """Send withdrawal confirmation email to participant."""
+        org_vars = get_organization_variables()
+        current_year = datetime.now().year
+
+        subject = f"[{org_vars['count_event_name']}] Withdrawal Confirmation"
+
+        body = f"""
+Dear {first_name} {last_name},
+
+Your withdrawal from the {current_year} {org_vars['count_event_name']} has been recorded.
+
+REASON FOR WITHDRAWAL:
+{withdrawal_reason}
+
+If your circumstances change and you would like to participate, please contact:
+{org_vars['count_contact']}
+
+We hope to have you join us again in the future.
+
+Best regards,
+{org_vars['organization_name']} - {org_vars['count_event_name']} Registration System
+        """
+
+        return self.send_email([participant_email], subject, body)
+
     def _get_db_client(self):
         """Get Firestore database client."""
         from config.database import get_firestore_client

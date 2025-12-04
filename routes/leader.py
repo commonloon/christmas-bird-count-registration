@@ -85,16 +85,21 @@ def dashboard():
     # Initialize model for selected year to get participant data
     participant_model = ParticipantModel(g.db, selected_year)
 
-    # Get all participants for this area in the selected year
-    all_participants = participant_model.get_participants_by_area(assigned_area)
+    # Get active and withdrawn participants for this area in the selected year
+    active_participants = participant_model.get_participants_by_area(assigned_area)
+    withdrawn_participants = participant_model.get_withdrawn_participants_by_area(assigned_area)
 
-    # Separate FEEDER and regular participants
-    feeder_participants = [p for p in all_participants if p.get('participation_type') == 'FEEDER']
-    regular_participants = [p for p in all_participants if p.get('participation_type') != 'FEEDER']
+    # Separate active FEEDER and regular participants
+    feeder_participants = [p for p in active_participants if p.get('participation_type') == 'FEEDER']
+    regular_participants = [p for p in active_participants if p.get('participation_type') != 'FEEDER']
 
     # Sort participants by first name
     feeder_participants.sort(key=lambda x: x.get('first_name', '').lower())
     regular_participants.sort(key=lambda x: x.get('first_name', '').lower())
+    withdrawn_participants.sort(key=lambda x: x.get('first_name', '').lower())
+
+    # Combine all participants for total count
+    all_participants = active_participants + withdrawn_participants
 
     # Get available years for tab navigation
     available_years = ParticipantModel.get_available_years(g.db)
@@ -116,5 +121,6 @@ def dashboard():
                            area_info=area_info,
                            feeder_participants=feeder_participants,
                            regular_participants=regular_participants,
-                           total_participants=len(all_participants),
+                           withdrawn_participants=withdrawn_participants,
+                           total_participants=len(active_participants),
                            current_user=get_current_user())
