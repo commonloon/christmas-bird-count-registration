@@ -427,9 +427,14 @@ def clean_database(firestore_client):
     # clear_collections()
     # logger.info("Database cleaned after test")
 
-@pytest.fixture
+@pytest.fixture(scope="class")
 def populated_database(firestore_client):
-    """Provide a database with realistic test data loaded from CSV fixture."""
+    """Provide a database with realistic test data loaded from CSV fixture.
+
+    Class-scoped: Loads test data once per test class, allowing related tests
+    to share the same dataset. Tests within a class should use different
+    participants to avoid interference.
+    """
     from tests.utils.load_test_data import load_csv_participants, load_participants_to_firestore
     from models.participant import ParticipantModel
 

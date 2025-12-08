@@ -330,7 +330,7 @@ class TestBackendAPIEmailValidation:
 class TestAdminEmailValidation:
     """Browser-based tests for admin interface email validation."""
 
-    def test_admin_participant_edit_rejects_invalid_email(self, authenticated_browser, db, test_cleanup):
+    def test_admin_participant_edit_rejects_invalid_email(self, authenticated_browser, db, test_cleanup, populated_database):
         """Test that admin participant edit validates email format."""
         base_url = get_base_url()
 
@@ -377,7 +377,7 @@ class TestAdminEmailValidation:
                 "Should still be in edit mode after validation failure"
 
 
-    def test_admin_leader_inline_edit_rejects_invalid_email(self, authenticated_browser, db, test_cleanup):
+    def test_admin_leader_inline_edit_rejects_invalid_email(self, authenticated_browser, db, test_cleanup, populated_database):
         """Test that editing a leader validates email format."""
         base_url = get_base_url()
 

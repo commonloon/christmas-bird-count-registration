@@ -454,6 +454,12 @@ class TestCSVExport:
             data_rows = csv_data[1:] if len(csv_data) > 1 else []
             logger.info(f"CSV contains {len(data_rows)} data rows")
 
+            # CRITICAL: Assert that CSV contains actual data, not just headers
+            assert len(data_rows) > 0, \
+                f"CSV should contain data rows beyond header, got {len(data_rows)} rows"
+            assert len(data_rows) >= len(test_participants), \
+                f"CSV should have all {len(test_participants)} test participants, got {len(data_rows)} rows"
+
             if data_rows:
                 # Build column index map for easier access
                 col_map = {}

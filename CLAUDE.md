@@ -311,3 +311,4 @@ gcloud run services logs tail SERVICE --region=us-west1
 **For End Users:** `docs/ADMIN_GUIDE.md`, `docs/LEADER_GUIDE.md` (if exist)
 
 **Utilities:** `utils/verify_indexes.py` (annual season start), `utils/setup_databases.py`, `utils/generate_test_participants.py`, `utils/setup_email_scheduler.sh`
+- most documents are in the docs/ directory
