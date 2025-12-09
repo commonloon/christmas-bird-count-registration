@@ -78,8 +78,14 @@ def populated_test_data(firestore_client):
     logger.info(f"Loaded {len(participants)} participants from CSV")
 
     # Upload to Firestore
-    load_participants_to_firestore(firestore_client, current_year, participants)
-    logger.info(f"Successfully loaded {len(participants)} test participants to Firestore")
+    loaded_count = load_participants_to_firestore(firestore_client, current_year, participants)
+    logger.info(f"Loaded {loaded_count} of {len(participants)} test participants to Firestore")
+
+    # CRITICAL: Fail the test if data didn't load
+    if loaded_count == 0:
+        raise RuntimeError(f"Failed to load any participants to Firestore! Expected {len(participants)}")
+    if loaded_count < len(participants):
+        logger.warning(f"Only loaded {loaded_count}/{len(participants)} participants - some writes failed")
 
     yield participants
 
@@ -124,11 +130,14 @@ class TestParticipantReassignment:
     """
 
     @pytest.fixture(autouse=True)
-    def navigate_to_participants_page(self, authenticated_browser):
+    def navigate_to_participants_page(self, authenticated_browser, populated_test_data):
         """Navigate to participants page before each test.
 
         This provides test isolation by ensuring each test starts from a
         clean page state, while reusing the authenticated browser session.
+
+        Depends on populated_test_data to ensure test data is loaded to Firestore
+        BEFORE navigating to the page.
 
         Uses shorter timeout (5s) since we're already authenticated and
         subsequent page loads are fast.
@@ -200,11 +209,21 @@ class TestParticipantReassignment:
 
         # Find the participant row
         rows = authenticated_browser.find_elements(By.CSS_SELECTOR, "tbody tr")
+        logger.info(f"Found {len(rows)} table rows")
         target_row = None
         for row in rows:
-            if participant_name in row.text:
+            row_text = row.text
+            logger.info(f"Checking row: {row_text[:100]}")  # Log first 100 chars
+            if participant_name in row_text:
                 target_row = row
+                logger.info(f"MATCH FOUND for {participant_name}")
                 break
+
+        if target_row is None:
+            logger.error(f"Could not find participant '{participant_name}' in {len(rows)} rows")
+            logger.error(f"First few rows:")
+            for i, row in enumerate(rows[:5]):
+                logger.error(f"  Row {i}: {row.text[:150]}")
 
         assert target_row is not None, f"Could not find participant {participant_name} in table"
         logger.info(f"Found participant row")

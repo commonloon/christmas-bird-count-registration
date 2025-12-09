@@ -92,14 +92,14 @@ class TestAdminCoreFunctionality:
                 'first_name': 'SearchTest',
                 'last_name': 'Alpha',
                 'email': 'search.alpha@test.com',
-                'area_preference': 'A',
+                'preferred_area': 'A',  # Fixed: was 'area_preference'
                 'participation_type': 'regular'
             },
             {
                 'first_name': 'SearchTest',
                 'last_name': 'Beta',
                 'email': 'search.beta@test.com',
-                'area_preference': 'B',
+                'preferred_area': 'B',  # Fixed: was 'area_preference'
                 'participation_type': 'FEEDER'
             }
         ]
@@ -357,7 +357,7 @@ class TestAdminCoreFunctionality:
             'first_name': 'Area',
             'last_name': 'Changer',
             'email': 'area.changer@test.com',
-            'area_preference': 'A',
+            'preferred_area': 'A',  # Fixed: was 'area_preference'
             'participation_type': 'regular'
         }
 

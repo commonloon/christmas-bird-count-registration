@@ -151,6 +151,8 @@ def load_participants_to_firestore(db_client,
     logger.info(f"Loading {len(participants)} participants into {collection_name}")
     collection_ref = db_client.collection(collection_name)
     loaded_count = 0
+    failed_count = 0
+    first_error = None
 
     for participant in participants:
         # Update year field to match target collection
@@ -161,9 +163,23 @@ def load_participants_to_firestore(db_client,
             collection_ref.add(participant)
             loaded_count += 1
         except Exception as e:
+            failed_count += 1
+            if first_error is None:
+                first_error = e
             logger.error(f"Failed to load participant {participant.get('email')}: {e}")
 
-    logger.info(f"Successfully loaded {loaded_count} participants")
+    if loaded_count == 0:
+        error_msg = f"Failed to load ANY participants to {collection_name}!"
+        if first_error:
+            error_msg += f" First error: {first_error}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg)
+
+    if failed_count > 0:
+        logger.warning(f"Loaded {loaded_count} participants but {failed_count} failed")
+    else:
+        logger.info(f"Successfully loaded {loaded_count} participants")
+
     return loaded_count
 
 

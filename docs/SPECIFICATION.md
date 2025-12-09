@@ -1,5 +1,5 @@
 # Vancouver Christmas Bird Count Registration App - Complete Specification
-{# Updated by Claude AI on 2025-11-30 #}
+{# Updated by Claude AI on 2025-12-09 #}
 
 ## Overview
 Web application for Nature Vancouver's annual Christmas Bird Count registration with interactive map-based area selection. Users can register by clicking count areas on a map or using a dropdown menu, with automatic assignment to areas needing volunteers.
@@ -10,7 +10,7 @@ Web application for Nature Vancouver's annual Christmas Bird Count registration 
   - `cbc-test`: Development/testing environment database
   - `cbc-register`: Production environment database
   - Year-based collections within each database (`participants_2025`, etc.)
-  - Automated database setup with composite indexes
+  - Simple single-field queries with in-memory Python filtering (no compound indexes required)
 - **Authentication**: Google Identity Services OAuth with Google Secret Manager for credentials
 - **Frontend**: Bootstrap 5 + Bootstrap Icons, Leaflet.js for interactive mapping
 - **Deployment**: Google Cloud Run with automated deployment scripts for both environments
@@ -44,9 +44,9 @@ Each year's data is stored in separate Firestore collections:
 
 ### Environment-Specific Database Architecture
 - **Automatic Database Selection**: Environment-specific database selection based on `FLASK_ENV` and `TEST_MODE` variables
-- **Database Setup Automation**: `utils/setup_databases.py` script creates both databases with proper indexes
+- **Database Setup Automation**: `utils/setup_databases.py` script creates both databases
 - **Multi-Environment Support**: Seamless switching between test and production databases
-- **Index Management**: Automated composite index creation for optimal query performance
+- **Query Strategy**: All queries use simple single-field filters followed by in-memory Python filtering to avoid compound index requirements
 - **Data Isolation**: Complete separation of test and production data
 
 ## Authentication & Authorization
@@ -885,7 +885,7 @@ test/
 utils/
   setup_oauth_secrets.sh       # OAuth credential setup script for Google Secret Manager
   setup_databases.py           # Firestore database creation script with environment-specific databases
-  manage_indexes.py            # Composite index management using Firestore Admin API (create, list, check)
+  manage_indexes.py            # Legacy index management utility (not required - app uses in-memory filtering)
   generate_test_participants.py # Test data generation script with timestamped emails for uniqueness and CSRF token support
   requirements.txt             # Dependencies for utility scripts (requests, faker, firestore, beautifulsoup4, google-cloud-firestore-admin)
 
@@ -1074,7 +1074,8 @@ rm client_secret.json             # Remove sensitive file
 **Database Architecture:**
 - **Environment-specific databases**: `cbc-test` for development, `cbc-register` for production
 - **Automatic database selection**: Based on `FLASK_ENV` and `TEST_MODE` environment variables
-- **Composite indexes**: Automatically created by database setup script for optimal performance
+- **Query strategy**: Simple single-field Firestore queries followed by in-memory Python filtering
+- **No compound indexes required**: Eliminates 5-10 minute index creation delays in test environments
 - **Year-based collections**: All data organized by year with explicit year fields for integrity
 
 **OAuth Integration:**
@@ -1087,7 +1088,7 @@ rm client_secret.json             # Remove sensitive file
 
 **Database Design:**
 - All Firestore operations must include explicit year fields for data integrity
-- Composite indexes required for complex queries (created automatically by setup script)
+- Single-field queries followed by Python filtering (performant for small dataset of ~hundreds of participants)
 - Email deduplication logic prevents duplicate registrations within same year
 - **Consistent Field Names**: All participant records use standardized schema with leadership data integrated
 
@@ -1128,7 +1129,7 @@ rm client_secret.json             # Remove sensitive file
 3. **Firestore Operations**
    - All write operations should include explicit year fields
    - Handle missing collections gracefully (new years start with empty data)
-   - Use composite indexes for filtering by multiple fields
+   - Use single-field queries followed by Python filtering for multi-field filtering needs
 
 4. **Identity-Based Operations (CRITICAL)**
    - **NEVER use email-only matching for participant/leader operations**
@@ -1163,35 +1164,12 @@ cd utils
 pip install -r requirements.txt
 
 # Create required Firestore databases
-python setup_databases.py --dry-run       # Preview what would be created
-python setup_databases.py                # Create missing databases (cbc-test, cbc-register)
-python setup_databases.py --skip-indexes # Create databases only (faster)
-python setup_databases.py --force        # Recreate all databases (with confirmation)
+python setup_databases.py --dry-run  # Preview what would be created
+python setup_databases.py            # Create missing databases (cbc-test, cbc-register)
+python setup_databases.py --force    # Recreate all databases (with confirmation)
 ```
 
-### Composite Index Management
-Composite indexes must be created explicitly after collections exist. Use the index management utility:
-```bash
-# Create composite indexes for withdrawal and filtering features
-python manage_indexes.py --create       # Create all required indexes
-python manage_indexes.py --list         # List all existing indexes
-python manage_indexes.py --check        # Check if all required indexes exist
-
-# For test environment
-python manage_indexes.py --create --database=cbc-test
-
-# For production environment
-python manage_indexes.py --create --database=cbc-register
-```
-
-**When to Run Index Creation:**
-- After initial database setup (once collections have test data)
-- Annual season start when new year collections are created
-- Post-deployment when data is present
-
-**Required Indexes for Current Features:**
-- `(status, preferred_area)` - Filtering active participants by area
-- `(status, assigned_area_leader)` - Filtering active leaders by area
+**Note:** No compound indexes are required. The application uses simple single-field queries followed by in-memory Python filtering, which is performant for the small database size (~hundreds of participants) and eliminates 5-10 minute index creation delays during testing.
 
 ### Test Data Generation
 For development and testing purposes:

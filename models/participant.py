@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2025-10-08
+# Updated by Claude AI on 2025-12-09
 from google.cloud import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
 from datetime import datetime
@@ -51,31 +51,25 @@ class ParticipantModel:
 
     def get_participants_by_area(self, area_code: str) -> List[Dict]:
         """Get all active participants for a specific area in the current year."""
-        participants = []
-        query = (self.db.collection(self.collection)
-                .where(filter=FieldFilter('status', '==', 'active'))
-                .where(filter=FieldFilter('preferred_area', '==', area_code)))
+        # Fetch all participants and filter in Python to avoid compound index requirements
+        all_participants = self._fetch_all_for_filtering()
 
-        for doc in query.stream():
-            data = doc.to_dict()
-            data['id'] = doc.id
-            participants.append(data)
-
-        return participants
+        # Filter by status and area
+        return [
+            p for p in all_participants
+            if p.get('status') == 'active' and p.get('preferred_area') == area_code
+        ]
 
     def get_unassigned_participants(self) -> List[Dict]:
         """Get all active participants with preferred_area = 'UNASSIGNED'."""
-        participants = []
-        query = (self.db.collection(self.collection)
-                .where(filter=FieldFilter('status', '==', 'active'))
-                .where(filter=FieldFilter('preferred_area', '==', 'UNASSIGNED')))
+        # Fetch all participants and filter in Python to avoid compound index requirements
+        all_participants = self._fetch_all_for_filtering()
 
-        for doc in query.stream():
-            data = doc.to_dict()
-            data['id'] = doc.id
-            participants.append(data)
-
-        return participants
+        # Filter by status and UNASSIGNED area
+        return [
+            p for p in all_participants
+            if p.get('status') == 'active' and p.get('preferred_area') == 'UNASSIGNED'
+        ]
 
     def assign_participant_to_area(self, participant_id: str, area_code: str, assigned_by: str) -> bool:
         """Assign an unassigned participant to a specific area."""
@@ -120,16 +114,15 @@ class ParticipantModel:
 
     def get_participant_by_email_and_names(self, email: str, first_name: str, last_name: str) -> Optional[Dict]:
         """Get participant by exact email + first_name + last_name match."""
-        query = (self.db.collection(self.collection)
-                .where(filter=FieldFilter('email', '==', email.lower()))
-                .where(filter=FieldFilter('first_name', '==', first_name))
-                .where(filter=FieldFilter('last_name', '==', last_name)))
+        # Use existing get_participants_by_email() (single-field query) then filter by names
+        email_matches = self.get_participants_by_email(email)
 
-        docs = list(query.stream())
-        if docs:
-            data = docs[0].to_dict()
-            data['id'] = docs[0].id
-            return data
+        # Filter by names in Python
+        for participant in email_matches:
+            if (participant.get('first_name') == first_name and
+                participant.get('last_name') == last_name):
+                return participant
+
         return None
 
     def update_participant(self, participant_id: str, updates: Dict) -> bool:
@@ -169,6 +162,24 @@ class ParticipantModel:
 
         return participants
 
+    def _fetch_all_for_filtering(self) -> List[Dict]:
+        """
+        Fetch all participants for Python-based filtering.
+
+        Note: Using fetch-all pattern instead of compound Firestore queries
+        to avoid index creation delays (5-10 minutes per new compound query).
+        This is performant for our dataset size (~hundreds of participants).
+        """
+        participants = []
+        query = self.db.collection(self.collection).stream()
+
+        for doc in query:
+            data = doc.to_dict()
+            data['id'] = doc.id
+            participants.append(data)
+
+        return participants
+
     def email_exists(self, email: str) -> bool:
         """Check if an email is already registered for the current year."""
         query = self.db.collection(self.collection).where(filter=FieldFilter('email', '==', email.lower()))
@@ -177,27 +188,29 @@ class ParticipantModel:
 
     def email_name_exists(self, email: str, first_name: str, last_name: str) -> bool:
         """Check if email+name combination exists for current year."""
-        query = (self.db.collection(self.collection)
-                .where(filter=FieldFilter('email', '==', email.lower()))
-                .where(filter=FieldFilter('first_name', '==', first_name))
-                .where(filter=FieldFilter('last_name', '==', last_name)))
-        docs = list(query.stream())
-        return len(docs) > 0
+        # Use existing get_participants_by_email() (single-field query) then filter by names
+        email_matches = self.get_participants_by_email(email)
+
+        # Check if any match has the same first and last name
+        for participant in email_matches:
+            if (participant.get('first_name') == first_name and
+                participant.get('last_name') == last_name):
+                return True
+
+        return False
 
     def get_participants_interested_in_leadership(self) -> List[Dict]:
         """Get active participants who expressed interest in leadership but aren't assigned as leaders."""
-        participants = []
-        query = (self.db.collection(self.collection)
-                 .where(filter=FieldFilter('status', '==', 'active'))
-                 .where(filter=FieldFilter('interested_in_leadership', '==', True))
-                 .where(filter=FieldFilter('is_leader', '==', False)))
+        # Fetch all participants and filter in Python to avoid compound index requirements
+        all_participants = self._fetch_all_for_filtering()
 
-        for doc in query.stream():
-            data = doc.to_dict()
-            data['id'] = doc.id
-            participants.append(data)
-
-        return participants
+        # Filter by status, leadership interest, and not currently a leader
+        return [
+            p for p in all_participants
+            if (p.get('status') == 'active' and
+                p.get('interested_in_leadership') == True and
+                p.get('is_leader') == False)
+        ]
 
 
     def get_historical_participants(self, area_code: str, years_back: int = 3) -> List[Dict]:
@@ -237,29 +250,30 @@ class ParticipantModel:
 
     def get_leaders_by_area(self, area_code: str) -> List[Dict]:
         """Get all active leaders for a specific area."""
-        leaders = []
-        query = (self.db.collection(self.collection)
-                 .where(filter=FieldFilter('is_leader', '==', True))
-                 .where(filter=FieldFilter('assigned_area_leader', '==', area_code)))
+        # Use existing get_leaders() (single-field query) and filter by area in Python
+        all_leaders = self.get_leaders()
 
-        for doc in query.stream():
-            data = doc.to_dict()
-            data['id'] = doc.id
-            leaders.append(data)
-
-        return leaders
+        # Filter by area
+        return [
+            leader for leader in all_leaders
+            if leader.get('assigned_area_leader') == area_code
+        ]
 
     def is_area_leader(self, email: str, area_code: str = None) -> bool:
         """Check if an email is an area leader (optionally for a specific area)."""
-        query = (self.db.collection(self.collection)
-                 .where(filter=FieldFilter('email', '==', email.lower()))
-                 .where(filter=FieldFilter('is_leader', '==', True)))
+        # Use existing get_leaders() (single-field query) and filter in Python
+        all_leaders = self.get_leaders()
 
-        if area_code:
-            query = query.where(filter=FieldFilter('assigned_area_leader', '==', area_code))
+        email_lower = email.lower()
 
-        docs = list(query.stream())
-        return len(docs) > 0
+        # Check if email matches any leader, optionally filtered by area
+        for leader in all_leaders:
+            if leader.get('email', '').lower() == email_lower:
+                # If area_code specified, check it matches
+                if area_code is None or leader.get('assigned_area_leader') == area_code:
+                    return True
+
+        return False
 
     def get_leaders_by_identity(self, first_name: str, last_name: str, email: str) -> List[Dict]:
         """Get all leaders matching exact identity (first_name, last_name, email)."""
@@ -458,17 +472,14 @@ class ParticipantModel:
 
     def get_withdrawn_participants_by_area(self, area_code: str) -> List[Dict]:
         """Get all withdrawn participants for a specific area in the current year."""
-        participants = []
-        query = (self.db.collection(self.collection)
-                .where(filter=FieldFilter('status', '==', 'withdrawn'))
-                .where(filter=FieldFilter('preferred_area', '==', area_code)))
+        # Fetch all participants and filter in Python to avoid compound index requirements
+        all_participants = self._fetch_all_for_filtering()
 
-        for doc in query.stream():
-            data = doc.to_dict()
-            data['id'] = doc.id
-            participants.append(data)
-
-        return participants
+        # Filter by withdrawn status and area
+        return [
+            p for p in all_participants
+            if p.get('status') == 'withdrawn' and p.get('preferred_area') == area_code
+        ]
 
     def get_withdrawn_participants(self) -> List[Dict]:
         """Get all withdrawn participants for the current year."""
