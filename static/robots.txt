@@ -1,0 +1,25 @@
+# Updated by Claude AI on 2025-12-09
+# Robots.txt for CBC Registration System
+# Includes honeypot traps for bad bots
+
+User-agent: *
+
+# Disallow admin and leader areas
+Disallow: /admin/
+Disallow: /leader/
+
+# Honeypot traps - good bots respect these, bad bots fall into trap
+Disallow: /wp-admin.php
+Disallow: /administrator
+Disallow: /admin.php
+Disallow: /login.php
+
+# Allow public pages
+Allow: /
+Allow: /api/
+
+# Crawl delay for respectful bot behavior
+Crawl-delay: 10
+
+# Sitemap (update URL as needed)
+# Sitemap: https://cbc-registration.naturevancouver.ca/sitemap.xml

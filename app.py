@@ -1,11 +1,12 @@
 # app.py - Flask application entry point
-# Updated by Claude AI on 2025-10-26
+# Updated by Claude AI on 2025-12-09
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session, g, send_file
 from flask_wtf.csrf import CSRFProtect
 from google.cloud import firestore
 from config.database import get_firestore_client
 from config.organization import get_organization_variables
 from services.limiter import limiter
+from services.ip_blocker import IPBlockerService, get_client_ip
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 import os
@@ -150,12 +151,43 @@ def load_user():
         g.user_role = session.get('user_role', 'public')
     else:
         g.user_email = None
-        g.user_name = None  
+        g.user_name = None
         g.user_role = 'public'
+
+@app.before_request
+def check_blocked_ip():
+    """Block requests from IPs on the block list."""
+    # Skip authenticated users (can mistype URLs)
+    if 'user_email' in session:
+        return None
+
+    # Get client IP
+    client_ip = get_client_ip(request)
+
+    # Check if blocked
+    if db:
+        blocker = IPBlockerService(db)
+        if blocker.is_blocked(client_ip):
+            logger.warning(f"BLOCKED_REQUEST: {client_ip} attempted access to {request.path}")
+            return render_template('errors/403.html'), 403
+
+    return None
 
 # Error handlers
 @app.errorhandler(404)
 def not_found_error(error):
+    """Handle 404 errors with IP tracking."""
+    # Only track unauthenticated users
+    if 'user_email' not in session and db:
+        client_ip = get_client_ip(request)
+        user_agent = request.headers.get('User-Agent', '')
+
+        blocker = IPBlockerService(db)
+        block_id = blocker.track_404(client_ip, request.path, user_agent)
+
+        if block_id:
+            logger.warning(f"IP_AUTO_BLOCKED: {client_ip} exceeded 404 threshold")
+
     return render_template('errors/404.html'), 404
 
 @app.errorhandler(500)

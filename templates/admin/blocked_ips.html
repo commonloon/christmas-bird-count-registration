@@ -1,0 +1,151 @@
+{# Updated by Claude AI on 2025-12-09 #}
+
+{% extends "base.html" %}
+
+{% block title %}Blocked IPs - Admin{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Blocked IP Addresses</h1>
+    <div>
+        {% if current_user.email %}
+        <span class="text-muted">{{ current_user.email }}</span>
+        <a href="{{ url_for('auth.logout') }}" class="btn btn-sm btn-outline-secondary ms-2">Logout</a>
+        {% endif %}
+    </div>
+</div>
+
+<nav aria-label="breadcrumb" class="mb-4">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('admin.index') }}">Dashboard</a></li>
+        <li class="breadcrumb-item active" aria-current="page">Blocked IPs</li>
+    </ol>
+</nav>
+
+<!-- Statistics Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-subtitle mb-2 text-muted">Active Blocks</h6>
+                <h2 class="card-title">{{ stats.active_blocks }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-subtitle mb-2 text-muted">404 Blocks</h6>
+                <h2 class="card-title">{{ stats['404_blocks'] }}</h2>
+                <small class="text-muted">Exceeded threshold</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-subtitle mb-2 text-muted">Honeypot Blocks</h6>
+                <h2 class="card-title">{{ stats.honeypot_blocks }}</h2>
+                <small class="text-muted">Trap triggered</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="card-subtitle mb-2 text-muted">Cache Size</h6>
+                <h2 class="card-title">{{ stats.cache_size }}</h2>
+                <small class="text-muted">In-memory cached</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Admin Actions -->
+<div class="mb-3">
+    <form method="POST" action="{{ url_for('admin.cleanup_blocks') }}" class="d-inline">
+        {{ csrf_token() }}
+        <button type="submit" class="btn btn-secondary">
+            <i class="bi bi-trash"></i> Cleanup Expired Blocks
+        </button>
+    </form>
+</div>
+
+<!-- Blocked IPs Table -->
+{% if blocks %}
+<div class="card">
+    <div class="card-body">
+        <h5 class="card-title">Active Blocks</h5>
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>IP Address</th>
+                        <th>Reason</th>
+                        <th>Blocked At</th>
+                        <th>Expires At</th>
+                        <th>Violations</th>
+                        <th>Last URL</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for block in blocks %}
+                    <tr>
+                        <td><code>{{ block.ip_address }}</code></td>
+                        <td>
+                            {% if block.reason == 'honeypot_trap' %}
+                                <span class="badge bg-danger">Honeypot</span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark">404 Threshold</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ block.blocked_at.strftime('%Y-%m-%d %H:%M') if block.blocked_at else 'N/A' }}</td>
+                        <td>{{ block.expires_at.strftime('%Y-%m-%d %H:%M') if block.expires_at else 'N/A' }}</td>
+                        <td>
+                            <span class="badge bg-secondary">{{ block.total_violations }}</span>
+                        </td>
+                        <td>
+                            <small class="text-muted text-truncate" style="max-width: 200px; display: inline-block;" title="{{ block.last_violation_url }}">
+                                {{ block.last_violation_url if block.last_violation_url else 'N/A' }}
+                            </small>
+                        </td>
+                        <td>
+                            <form method="POST" action="{{ url_for('admin.unblock_ip', ip_address=block.ip_address) }}" style="display:inline;">
+                                {{ csrf_token() }}
+                                <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('Unblock {{ block.ip_address }}?')">
+                                    <i class="bi bi-unlock"></i> Unblock
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i> No active IP blocks at this time.
+</div>
+{% endif %}
+
+<!-- Help Information -->
+<div class="card mt-4">
+    <div class="card-body">
+        <h5 class="card-title">About IP Blocking</h5>
+        <p class="card-text">
+            The IP blocking system protects the site from bot attacks using two methods:
+        </p>
+        <ul>
+            <li><strong>404 Threshold:</strong> IPs generating {{ config.MAX_404_PER_MINUTE|default(3) }} or more 404 errors within 60 seconds are blocked for 48 hours.</li>
+            <li><strong>Honeypot Trap:</strong> IPs that access forbidden URLs (defined in robots.txt) are immediately blocked for 48 hours.</li>
+        </ul>
+        <p class="card-text text-muted">
+            <small>Authenticated admins and leaders are exempt from automatic blocking.</small>
+        </p>
+    </div>
+</div>
+
+{% endblock %}

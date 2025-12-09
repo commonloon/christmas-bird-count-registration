@@ -1,6 +1,7 @@
 Flask
 Flask-WTF
 Flask-Limiter
+cachetools==5.3.2
 google-auth
 google-cloud-firestore
 google-cloud-functions

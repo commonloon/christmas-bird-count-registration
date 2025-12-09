@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2025-10-24
+# Updated by Claude AI on 2025-12-09
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response, g, current_app
 from google.cloud import firestore
 from config.database import get_firestore_client
@@ -16,6 +16,7 @@ from config.fields import (
 from config.admins import get_admin_emails
 from routes.auth import require_admin, get_current_user
 from services.email_service import email_service
+from services.ip_blocker import IPBlockerService
 from test.email_generator import (
     generate_team_update_emails,
     generate_weekly_summary_emails,
@@ -1284,6 +1285,43 @@ def update_area_signup_type_api():
     except Exception as e:
         logging.error(f"Error updating area signup type: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@admin_bp.route('/blocked-ips')
+@require_admin
+def blocked_ips():
+    """View and manage blocked IPs."""
+    blocker = IPBlockerService(g.db)
+    blocks = blocker.get_all_blocks(include_expired=False)
+    stats = blocker.get_block_stats()
+
+    return render_template('admin/blocked_ips.html', blocks=blocks, stats=stats)
+
+
+@admin_bp.route('/blocked-ips/<ip_address>/unblock', methods=['POST'])
+@require_admin
+def unblock_ip(ip_address):
+    """Manually unblock an IP address."""
+    blocker = IPBlockerService(g.db)
+
+    if blocker.remove_block(ip_address):
+        flash(f'IP {ip_address} has been unblocked.', 'success')
+    else:
+        flash(f'Failed to unblock IP {ip_address}.', 'error')
+
+    return redirect(url_for('admin.blocked_ips'))
+
+
+@admin_bp.route('/blocked-ips/cleanup', methods=['POST'])
+@require_admin
+def cleanup_blocks():
+    """Manually trigger cleanup of expired blocks."""
+    blocker = IPBlockerService(g.db)
+    count = blocker.cleanup_expired()
+
+    flash(f'Cleaned up {count} expired blocks.', 'success')
+
+    return redirect(url_for('admin.blocked_ips'))
 
 
 # Only register test routes when TEST_MODE is enabled

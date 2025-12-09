@@ -48,5 +48,10 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     {% block scripts %}{% endblock %}
+
+    <!-- Anti-bot honeypot trap (hidden from users, forbidden in robots.txt) -->
+    {% if config.get('HONEYPOT_ENABLED', True) %}
+    <a href="/wp-admin.php" style="display:none;position:absolute;left:-9999px;" aria-hidden="true" tabindex="-1">Admin</a>
+    {% endif %}
 </body>
 </html>

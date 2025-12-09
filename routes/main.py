@@ -1,5 +1,5 @@
-# Updated by Claude AI on 2025-12-01
-from flask import Blueprint, render_template, request, redirect, url_for, flash, g
+# Updated by Claude AI on 2025-12-09
+from flask import Blueprint, render_template, request, redirect, url_for, flash, g, send_from_directory, abort
 from config.database import get_firestore_client
 from models.participant import ParticipantModel
 from models.area_signup_type import AreaSignupTypeModel
@@ -11,9 +11,14 @@ from services.security import (
     validate_area_code, validate_skill_level, validate_experience,
     validate_participation_type, validate_email_format, is_suspicious_input, log_security_event
 )
+from services.ip_blocker import IPBlockerService, get_client_ip
 from services.limiter import limiter
 from config.rate_limits import RATE_LIMITS, get_rate_limit_message
+from config.ip_blocking import HONEYPOT_ENABLED
 from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 main_bp = Blueprint('main', __name__)
 
@@ -326,6 +331,38 @@ def scribe_info():
     # Pass all query parameters to template for form restoration links
     form_data = dict(request.args)
     return render_template('scribe_info.html', form_data=form_data)
+
+
+@main_bp.route('/robots.txt')
+def robots_txt():
+    """Serve robots.txt to guide bots and define honeypot traps."""
+    return send_from_directory('static', 'robots.txt', mimetype='text/plain')
+
+
+@main_bp.route('/wp-admin.php')
+@main_bp.route('/administrator')
+@main_bp.route('/admin.php')
+@main_bp.route('/login.php')
+def honeypot_trap():
+    """
+    Honeypot trap - immediate block for bots that ignore robots.txt.
+    Good bots respect robots.txt and never access these URLs.
+    Bad bots ignore robots.txt and fall into the trap.
+    """
+    if not HONEYPOT_ENABLED:
+        abort(404)
+
+    client_ip = get_client_ip(request)
+    user_agent = request.headers.get('User-Agent', '')
+
+    # Block immediately
+    if g.db:
+        blocker = IPBlockerService(g.db)
+        blocker.trigger_honeypot(client_ip, request.path, user_agent)
+        logger.warning(f"HONEYPOT_TRIGGERED: {client_ip} accessed {request.path}")
+
+    # Return 404 to avoid revealing trap existence
+    return render_template('errors/404.html'), 404
 
 
 # Email validation moved to services/security.py::validate_email_format()

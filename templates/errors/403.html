@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="text-center mt-5">
+    <h1 class="display-4">403 - Access Denied</h1>
+    <p class="lead">Your IP address has been temporarily blocked due to suspicious activity.</p>
+    <p>If you believe this is an error, please contact the site administrator.</p>
+    {% if count_contact %}
+    <a href="mailto:{{ count_contact }}" class="btn btn-primary">Contact Support</a>
+    {% endif %}
+</div>
+{% endblock %}
