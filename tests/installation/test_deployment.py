@@ -657,19 +657,74 @@ class TestRegistrationFormRendering:
         except requests.exceptions.RequestException as e:
             pytest.fail(f"Failed to access {url}: {e}")
 
-    def test_admin_only_areas_excluded(self, installation_config):
+    def test_admin_only_areas_excluded(self, authenticated_browser, installation_config):
         """Verify admin-only areas are not shown in public registration form."""
+        import re
+        from config.areas import get_all_areas
+        from config.database import get_firestore_client
+        from models.area_signup_type import AreaSignupTypeModel
+
         url = installation_config['test_url']
+        base_url = url.rstrip('/')
 
-        # Find admin-only areas
-        admin_only = {
-            code for code, config in installation_config['area_config'].items()
-            if config.get('admin_assignment_only', False)
-        }
+        # Get all area codes
+        all_areas = get_all_areas()
 
-        if not admin_only:
-            pytest.skip("No admin-only areas configured")
+        # Get current area signup types from database
+        db, _ = get_firestore_client()
+        signup_model = AreaSignupTypeModel(db)
+        current_types = signup_model.get_all_signup_types()
 
+        # Navigate to admin page to get CSRF token
+        authenticated_browser.get(f'{base_url}/admin')
+        page_source = authenticated_browser.page_source
+
+        # Extract CSRF token from page source (looks for X-CSRFToken or similar patterns)
+        csrf_match = re.search(r"['\"]X-CSRFToken['\"]:\s*['\"]([^'\"]+)['\"]", page_source) or \
+                     re.search(r"csrf[_-]?token['\"]?\s*[:=]\s*['\"]([^'\"]+)['\"]", page_source, re.IGNORECASE) or \
+                     re.search(r"csrfToken\s*=\s*['\"]([^'\"]+)['\"]", page_source)
+
+        csrf_token = csrf_match.group(1) if csrf_match else None
+        assert csrf_token, "Could not extract CSRF token from admin page"
+
+        # Extract cookies from authenticated browser for API calls
+        selenium_cookies = authenticated_browser.get_cookies()
+        session = requests.Session()
+        for cookie in selenium_cookies:
+            session.cookies.set(cookie['name'], cookie['value'])
+
+        # Only update areas that need to be changed (to avoid rate limiting)
+        # Set all areas except Y to open (admin_assignment_only=False)
+        for area_code in all_areas:
+            if area_code != 'Y':
+                current_state = current_types.get(area_code, {}).get('admin_assignment_only', False)
+                if current_state:  # Only update if currently admin-only
+                    payload = {
+                        'area_code': area_code,
+                        'admin_assignment_only': False
+                    }
+                    response = session.post(
+                        f'{base_url}/admin/api/update-area-signup-type',
+                        json=payload,
+                        headers={'X-CSRFToken': csrf_token}
+                    )
+                    assert response.status_code == 200, f"Failed to set area {area_code} to open: {response.text}"
+
+        # Set area Y to admin-only (admin_assignment_only=True) if not already
+        current_y_state = current_types.get('Y', {}).get('admin_assignment_only', False)
+        if not current_y_state:
+            payload = {
+                'area_code': 'Y',
+                'admin_assignment_only': True
+            }
+            response = session.post(
+                f'{base_url}/admin/api/update-area-signup-type',
+                json=payload,
+                headers={'X-CSRFToken': csrf_token}
+            )
+            assert response.status_code == 200, f"Failed to set area Y as admin-only: {response.text}"
+
+        # Now test that area Y is excluded from public registration form
         try:
             response = requests.get(url, timeout=10)
             assert response.status_code == 200
@@ -686,14 +741,14 @@ class TestRegistrationFormRendering:
             options = area_select.find_all('option')
             area_codes = {opt['value'] for opt in options if opt.get('value')}
 
-            # Check for admin-only areas
-            found_admin_only = area_codes.intersection(admin_only)
-
-            assert not found_admin_only, \
-                f"Admin-only areas should not appear in public registration form:\n" \
-                f"Found in form: {sorted(found_admin_only)}\n" \
-                f"These areas have admin_assignment_only=True in config/areas.py\n" \
+            # Check that area Y is NOT in dropdown
+            assert 'Y' not in area_codes, \
+                f"Admin-only area Y should not appear in public registration form\n" \
+                f"Found areas: {sorted(area_codes)}\n" \
                 f"Check routes/main.py uses get_public_areas() not get_all_areas()"
+
+            # Verify other areas are present
+            assert len(area_codes) > 0, "Form should contain at least some public areas"
 
         except requests.exceptions.RequestException as e:
             pytest.fail(f"Failed to access {url}: {e}")

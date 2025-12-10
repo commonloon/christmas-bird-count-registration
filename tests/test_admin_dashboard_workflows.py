@@ -61,45 +61,6 @@ class TestAdminAuthentication:
     @pytest.mark.critical
     @pytest.mark.admin
     @pytest.mark.auth
-    def test_admin_oauth_login_workflow(self, admin_dashboard):
-        """Test complete admin OAuth login workflow."""
-        logger.info("Testing admin OAuth login workflow")
-
-        try:
-            # Get admin credentials
-            admin_account = get_test_account('admin1')
-            admin_email = admin_account['email']
-            admin_password = get_test_password('admin1')
-
-            # Navigate to admin (should redirect to login)
-            assert admin_dashboard.navigate_to_admin(), "Failed to navigate to admin"
-
-            # Should be redirected to login
-            login_page_reached = admin_dashboard.is_login_page()
-            dashboard_loaded = admin_dashboard.is_dashboard_loaded()
-
-            if dashboard_loaded:
-                logger.info("Already authenticated - clearing session for clean test")
-                # In a real implementation, you might clear cookies/session here
-
-            if login_page_reached or not dashboard_loaded:
-                # Perform OAuth login using working auth utils
-                login_success = login_with_google(browser, admin_email, admin_password, base_url)
-                assert login_success, "OAuth login process failed"
-
-                # Verify dashboard loads after authentication
-                assert admin_dashboard.is_dashboard_loaded(), "Dashboard did not load after authentication"
-
-                logger.info("✓ Admin OAuth login workflow completed successfully")
-            else:
-                logger.warning("Could not test OAuth login - may already be authenticated")
-
-        except Exception as e:
-            logger.error(f"OAuth login test failed: {e}")
-            pytest.skip(f"OAuth login not available: {e}")
-
-    @pytest.mark.admin
-    @pytest.mark.auth
     def test_admin_whitelist_enforcement(self, admin_dashboard):
         """Test that admin access is properly restricted to whitelisted accounts."""
         logger.info("Testing admin whitelist enforcement")

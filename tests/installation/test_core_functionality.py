@@ -144,24 +144,79 @@ class TestRegistrationWorkflow:
             pytest.fail("Area dropdown not found or did not load in time")
 
     @pytest.mark.installation
-    def test_area_dropdown_excludes_admin_only(self, browser, installation_config):
+    def test_area_dropdown_excludes_admin_only(self, authenticated_browser, installation_config):
         """Verify areas with admin_assignment_only=True are excluded from dropdown."""
+        import requests
+        import re
+        from config.areas import get_all_areas
+        from config.database import get_firestore_client
+        from models.area_signup_type import AreaSignupTypeModel
+
         url = installation_config['test_url']
-        area_config = installation_config['area_config']
+        base_url = url.rstrip('/')
 
-        # Find admin-only areas
-        admin_only_areas = {
-            code for code, config in area_config.items()
-            if config.get('admin_assignment_only', False)
-        }
+        # Get all area codes
+        all_areas = get_all_areas()
 
-        if not admin_only_areas:
-            pytest.skip("No admin-only areas configured")
+        # Get current area signup types from database
+        db, _ = get_firestore_client()
+        signup_model = AreaSignupTypeModel(db)
+        current_types = signup_model.get_all_signup_types()
 
-        browser.get(url)
+        # Navigate to admin page to get CSRF token
+        authenticated_browser.get(f'{base_url}/admin')
+        page_source = authenticated_browser.page_source
+
+        # Extract CSRF token from page source (looks for X-CSRFToken or similar patterns)
+        csrf_match = re.search(r"['\"]X-CSRFToken['\"]:\s*['\"]([^'\"]+)['\"]", page_source) or \
+                     re.search(r"csrf[_-]?token['\"]?\s*[:=]\s*['\"]([^'\"]+)['\"]", page_source, re.IGNORECASE) or \
+                     re.search(r"csrfToken\s*=\s*['\"]([^'\"]+)['\"]", page_source)
+
+        csrf_token = csrf_match.group(1) if csrf_match else None
+        assert csrf_token, "Could not extract CSRF token from admin page"
+
+        # Extract cookies from authenticated browser for API calls
+        selenium_cookies = authenticated_browser.get_cookies()
+        session = requests.Session()
+        for cookie in selenium_cookies:
+            session.cookies.set(cookie['name'], cookie['value'])
+
+        # Only update areas that need to be changed (to avoid rate limiting)
+        # Set all areas except Y to open (admin_assignment_only=False)
+        for area_code in all_areas:
+            if area_code != 'Y':
+                current_state = current_types.get(area_code, {}).get('admin_assignment_only', False)
+                if current_state:  # Only update if currently admin-only
+                    payload = {
+                        'area_code': area_code,
+                        'admin_assignment_only': False
+                    }
+                    response = session.post(
+                        f'{base_url}/admin/api/update-area-signup-type',
+                        json=payload,
+                        headers={'X-CSRFToken': csrf_token}
+                    )
+                    assert response.status_code == 200, f"Failed to set area {area_code} to open: {response.text}"
+
+        # Set area Y to admin-only (admin_assignment_only=True) if not already
+        current_y_state = current_types.get('Y', {}).get('admin_assignment_only', False)
+        if not current_y_state:
+            payload = {
+                'area_code': 'Y',
+                'admin_assignment_only': True
+            }
+            response = session.post(
+                f'{base_url}/admin/api/update-area-signup-type',
+                json=payload,
+                headers={'X-CSRFToken': csrf_token}
+            )
+            assert response.status_code == 200, f"Failed to set area Y as admin-only: {response.text}"
+
+        # Now test that area Y is excluded from public dropdown
+        authenticated_browser.get(url)
 
         try:
-            wait = WebDriverWait(browser, 10)
+            wait = WebDriverWait(authenticated_browser, 10)
             area_select = wait.until(
                 EC.presence_of_element_located((By.NAME, 'preferred_area'))
             )
@@ -169,13 +224,14 @@ class TestRegistrationWorkflow:
             select = Select(area_select)
             dropdown_values = {opt.get_attribute('value') for opt in select.options if opt.get_attribute('value')}
 
-            # Check that admin-only areas are NOT in dropdown
-            found_admin_only = dropdown_values.intersection(admin_only_areas)
+            # Check that area Y is NOT in dropdown
+            assert 'Y' not in dropdown_values, \
+                f"Admin-only area Y should not appear in public dropdown\n" \
+                f"Found areas: {sorted(dropdown_values)}\n" \
+                f"Check that templates/index.html filters admin_assignment_only areas"
 
-            assert not found_admin_only, \
-                f"Admin-only areas should not appear in public dropdown:\n" \
-                f"Found: {sorted(found_admin_only)}\n" \
-                f"Check templates/index.html filters admin_assignment_only areas"
+            # Verify other areas are present (at least one)
+            assert len(dropdown_values) > 0, "Dropdown should contain at least some public areas"
 
         except TimeoutException:
             pytest.fail("Area dropdown not found")
