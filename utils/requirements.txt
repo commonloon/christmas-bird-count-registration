@@ -5,5 +5,4 @@ requests>=2.25.0
 faker>=18.0.0
 google-cloud-firestore>=2.11.0
 google-cloud-storage>=2.10.0
-google-cloud-firestore-admin>=1.0.0
 beautifulsoup4>=4.12.0
