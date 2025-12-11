@@ -60,6 +60,17 @@ class ParticipantModel:
             if p.get('status') == 'active' and p.get('preferred_area') == area_code
         ]
 
+    def get_withdrawn_participants_by_area(self, area_code: str) -> List[Dict]:
+        """Get all withdrawn participants for a specific area in the current year."""
+        # Fetch all participants and filter in Python to avoid compound index requirements
+        all_participants = self._fetch_all_for_filtering()
+
+        # Filter by status and area
+        return [
+            p for p in all_participants
+            if p.get('status') == 'withdrawn' and p.get('preferred_area') == area_code
+        ]
+
     def get_unassigned_participants(self) -> List[Dict]:
         """Get all active participants with preferred_area = 'UNASSIGNED'."""
         # Fetch all participants and filter in Python to avoid compound index requirements

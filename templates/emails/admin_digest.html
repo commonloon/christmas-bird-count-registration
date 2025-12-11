@@ -173,6 +173,11 @@
                 {% if participant.interested_in_leadership %}
                 <br><span class="leadership-interest">🌟 Interested in Leadership</span>
                 {% endif %}
+                {% if participant.notes_to_organizers %}
+                <div style="background-color: #f8f9fa; padding: 8px; margin-top: 8px; border-left: 3px solid #ffc107;">
+                    <strong>Notes:</strong> {{ participant.notes_to_organizers|e }}
+                </div>
+                {% endif %}
             </div>
         </div>
         {% endfor %}

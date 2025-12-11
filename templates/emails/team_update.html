@@ -107,6 +107,12 @@
         .feeder-row:hover {
             background-color: #bee5eb;
         }
+        .withdrawn-row {
+            background-color: #fff3cd;
+        }
+        .withdrawn-row:hover {
+            background-color: #ffe8a1;
+        }
         .badge {
             display: inline-block;
             padding: 2px 6px;
@@ -245,17 +251,26 @@
         </div>
         {% endif %}
 
+        {% if reactivated_participants %}
+        <div class="changes-section new-members">
+            <h4>🔄 Reactivated Team Members ({{ reactivated_participants|length }})</h4>
+            {% for reactivation in reactivated_participants %}
+            <p><strong>{{ reactivation.first_name|e }} {{ reactivation.last_name|e }} ({{ reactivation.email|e }})</strong> was reactivated (previously withdrawn)</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+
         <h4>📋 Next Steps</h4>
         <ul>
-            {% if new_participants or arrivals %}
-                <li><strong>Welcome new and arriving members to the team.</strong> <ul><li>Ideally they should hear from you within a few days of joining your team, even if it's just a quick greeting and a note to say you'll send details later.</li></ul></li>
+            {% if new_participants or arrivals or reactivated_participants %}
+                <li><strong>Welcome new, arriving, and rejoining members to the team.</strong> <ul><li>Ideally they should hear from you within a few days of joining your team, even if it's just a quick greeting and a note to say you'll send details later.</li></ul></li>
             {% endif %}
             <li>Share meeting location and time information</li>
             <li>Coordinate any special equipment or preparation needs</li>
         </ul>
 
         {% if current_team %}
-        <h4>👥 Complete List of Team Members ({{ current_team|length }} members)</h4>
+        <h4>👥 Complete List of Team Members ({{ current_team|selectattr('status', 'equalto', 'active')|list|length }} members)</h4>
 
         <table class="participant-table">
             <thead>
@@ -271,15 +286,22 @@
                 </tr>
             </thead>
             <tbody>
-                {# Sort: regular participants first (alphabetically), then FEEDER participants (alphabetically) #}
-                {% set regular_participants = current_team|selectattr('participation_type', 'ne', 'FEEDER')|sort(attribute='first_name')|list %}
-                {% set feeder_participants = current_team|selectattr('participation_type', 'equalto', 'FEEDER')|sort(attribute='first_name')|list %}
-                {% for participant in regular_participants + feeder_participants %}
-                <tr{% if participant.participation_type == 'FEEDER' %} class="feeder-row"{% endif %}>
+                {# Sort: active regular first, then FEEDER, then withdrawn - all alphabetically #}
+                {% set active_participants = current_team|selectattr('status', 'equalto', 'active')|list %}
+                {% set withdrawn_participants = current_team|selectattr('status', 'equalto', 'withdrawn')|list %}
+                {% set regular_active = active_participants|selectattr('participation_type', 'ne', 'FEEDER')|sort(attribute='first_name')|list %}
+                {% set feeder_active = active_participants|selectattr('participation_type', 'equalto', 'FEEDER')|sort(attribute='first_name')|list %}
+                {% set withdrawn_sorted = withdrawn_participants|sort(attribute='first_name')|list %}
+                {% for participant in regular_active + feeder_active + withdrawn_sorted %}
+                {% set row_bg = 'background-color: #fff3cd;' if participant.get('status') == 'withdrawn' else ('background-color: #d1ecf1;' if participant.participation_type == 'FEEDER' else ('background-color: #f8f9fa;' if loop.index % 2 == 0 else '')) %}
+                <tr style="{{ row_bg }}">
                     <td>
                         <strong>{{ participant.first_name|e }} {{ participant.last_name|e }}</strong>
                         {% if participant.participation_type == 'FEEDER' %}
                         <br><span class="badge badge-info">FEEDER</span>
+                        {% endif %}
+                        {% if participant.get('status') == 'withdrawn' %}
+                        <br><span class="badge badge-warning">WITHDRAWN</span>
                         {% endif %}
                     </td>
                     <td>{{ participant.email|e }}</td>
@@ -312,6 +334,13 @@
                         {% endif %}
                     </td>
                 </tr>
+                {% if participant.notes_to_organizers %}
+                <tr style="{{ row_bg }}">
+                    <td colspan="8" style="padding: 8px 12px; border-left: 3px solid #ffc107;">
+                        <strong>Notes from {{ participant.first_name|e }} {{ participant.last_name|e }}:</strong> {{ participant.notes_to_organizers|e }}
+                    </td>
+                </tr>
+                {% endif %}
                 {% endfor %}
             </tbody>
         </table>

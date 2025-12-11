@@ -1,5 +1,5 @@
 # Vancouver Christmas Bird Count Registration App - Complete Specification
-{# Updated by Claude AI on 2025-12-09 #}
+{# Updated by Claude AI on 2025-12-11 #}
 
 ## Overview
 Web application for Nature Vancouver's annual Christmas Bird Count registration with interactive map-based area selection. Users can register by clicking count areas on a map or using a dropdown menu, with automatic assignment to areas needing volunteers.
@@ -191,8 +191,13 @@ def get_admin_emails():
 - **Historical Data Warning**: Alert banner for historical years indicating read-only status and disabled edit/delete actions
 - **Unified Data Source**: All data from `participants_YYYY` collection with integrated leadership information
 - **Dual-Section Display**: Separate tables for FEEDER and regular participants within each area
-- **In-Page Navigation**: Jump links to quickly access areas with participant counts in headers
-- **Area-Based Organization**: Participants grouped alphabetically by area with participant counts in headers
+- **In-Page Navigation**: Jump links to quickly access areas with detailed participant count breakdowns in headers
+- **Area-Based Organization**: Participants grouped alphabetically by area with detailed count breakdowns
+  - **Participant Count Breakdown**: Headers show "(X field, Y feeder, Z withdrawn)" format
+    - Field count: active participants with participation_type='regular'
+    - Feeder count: active participants with participation_type='FEEDER' (only shown if > 0)
+    - Withdrawn count: participants with status='withdrawn' (only shown if > 0)
+    - UNASSIGNED area: Shows all counts (may include feeders if not enforced)
   - **Area Leader Information**: When leaders are assigned, displays leader name, email, and phone in area headers
   - **Orange Background**: Cards display orange tint when viewing historical data (bg-warning bg-opacity-10/25)
 - **Comprehensive Information Display**:
@@ -339,26 +344,30 @@ def get_admin_emails():
 1. **Twice-Daily Team Updates**:
    - Recipients: Area leaders when team composition changes
    - Subject: "CBC Area X Team Update"
-   - Content: New members, members joining from other areas, members reassigned to other areas, withdrawn members, removed members, complete current team roster
-   - Triggers: Participant additions, removals, area reassignments, withdrawals, email changes
+   - Content: New members, members joining from other areas, members reassigned to other areas, withdrawn members, reactivated members, removed members, complete current team roster with notes
+   - Triggers: Participant additions, removals, area reassignments, withdrawals, reactivations, email changes
    - Frequency: Automated checks twice daily (production scheduling pending)
    - **Reassignment handling**: When a participant is moved from Area A to Area B, Area A leader is notified of departure, Area B leader is notified of arrival (separate from "new members")
-   - **Withdrawal handling**: When a participant is withdrawn, their area leader is notified in "Withdrawn" section; email addresses excluded from roster contact lists
+   - **Withdrawal/Reactivation handling**: Only NET state changes reported (e.g., withdrawn→reactivated = no change, not reported); withdrawn participants shown in "Withdrawn From Team" section, reactivated shown in "Reactivated Team Members" section
+   - **Team Roster Display**: Lists regular participants → FEEDER participants → withdrawn participants (each with alternating row colors: white/light gray for regular, light blue for FEEDER, yellow for withdrawn)
+   - **Participant Notes Display**: Notes from participants displayed below their roster entry with personalized header "Notes from [First Name] [Last Name]:" and yellow left border
    - **Email Address Exclusion**: Contact lists in emails exclude withdrawn participant email addresses
 
 2. **Weekly Team Summary (No Changes)**:
    - Recipients: Area leaders with no team changes in past week
    - When: Every Friday at 11pm Pacific
    - Subject: "CBC Area X Weekly Summary"
-   - Content: "No changes this week" + complete team roster with contact details
-   - **Team Roster Display**: Lists regular participants → FEEDER participants → withdrawn participants (with yellow background and "WITHDRAWN" label below name)
+   - Content: "No changes this week" + complete team roster with contact details and notes
+   - **Team Roster Display**: Lists regular participants → FEEDER participants → withdrawn participants (each with alternating row colors: white/light gray for regular, light blue for FEEDER, yellow for withdrawn with "WITHDRAWN" label)
+   - **Participant Notes Display**: Notes from participants displayed below their roster entry with personalized header "Notes from [First Name] [Last Name]:" and yellow left border
    - **Email Address Exclusion**: Contact lists exclude withdrawn participant email addresses
-   - **Reassignment handling**: Weekly summaries include arrivals and departures in change tracking
+   - **Reassignment/Withdrawal handling**: Includes NET changes only (arrivals, departures, withdrawals, reactivations) - intermediate state changes filtered out
 
 3. **Daily Admin Digest**:
    - Recipients: All admins (from `config/admins.py`)
    - Subject: "CBC Registration: X Unassigned Participants"
    - Content: List of unassigned participants with details + admin interface link
+   - **Participant Notes Display**: Notes from participants displayed with personalized header "Notes from [First Name] [Last Name]:" in styled gray box with yellow left border
 
 **Implementation Architecture:**
 - **Email Generation**: Core logic in `test/email_generator.py` with Flask app context support
@@ -398,8 +407,24 @@ Email notifications categorize team changes as:
   - **Departures**: Participants reassigned FROM this area (displayed as "reassigned to Area Y")
   - **New members**: Participants newly registering in this area
   - **Modifications**: Existing participants with updated contact info/preferences
-  - **Withdrawals**: Participants who withdrew from their area (separate section in email)
+  - **Withdrawals**: Participants who withdrew from their area (separate section in email, NET change only)
+  - **Reactivations**: Previously withdrawn participants who were reactivated (NET change only)
   - **Removals**: Participants deleted from the system
+
+**Withdrawal/Reactivation Net Change Logic**:
+To avoid confusion from multiple state changes, only NET withdrawal/reactivation changes are reported:
+
+- **Withdrawn → Reactivated** (active → active): No change, nothing reported
+- **Withdrawn only** (active → withdrawn): Reported in "Withdrawn From Team" section
+- **Reactivated only** (withdrawn → active): Reported in "Reactivated Team Members" section
+- **Withdrawn → Reactivated → Withdrawn** (active → withdrawn): Reported in "Withdrawn From Team" section
+
+Implementation uses `calculate_net_withdrawal_reactivation_changes()` function that:
+1. Groups all withdrawal/reactivation events by participant since last email
+2. Determines starting status from first event
+3. Compares to current participant status in database
+4. Reports only if net change occurred
+5. Excludes deleted participants (handled by removal_log)
 
 **Withdrawal Confirmation Email**:
 - **Recipient**: Participant being withdrawn
@@ -526,12 +551,13 @@ python utils/generate_test_participants.py 20 --scribes 5
   - Authentication privileges shared among family members with same email
   - Duplicate prevention and data synchronization work correctly with shared emails
 - **Withdrawal system**: Participants can be withdrawn by admins when they can no longer participate
-  - Withdrawn participants (`status == "withdrawn"`) excluded from area rosters, volunteer counts, and team displays
+  - Withdrawn participants (`status == "withdrawn"`) shown in yellow background in team rosters, excluded from volunteer counts and contact lists
   - Withdrawn leaders automatically lose leadership status upon withdrawal
-  - Withdrawal is reversible: admins can reactivate withdrawn participants
-  - Reactivated participants treated as new arrivals in twice-daily leader emails
-  - All withdrawal and reactivation events logged to `withdrawal_log_YYYY` with reason
-  - Withdrawn participants' contact information retained for future recruitment
+  - Withdrawal is reversible: admins can reactivate withdrawn participants via checkmark button in admin interface
+  - All withdrawal and reactivation events logged to `withdrawal_log_YYYY` with timezone-aware UTC timestamps
+  - Email notifications show NET state changes only (withdrawn→reactivated = no change, not reported)
+  - Withdrawn participants appear in team roster displays with yellow background and "WITHDRAWN" label
+  - Withdrawn participants' contact information retained for future recruitment and visible to area leaders
 
 ### Removal Log Collection (per year: removal_log_YYYY)
 ```
@@ -577,11 +603,17 @@ python utils/generate_test_participants.py 20 --scribes 5
   status: "withdrawn|reactivated",           // Type of event
   withdrawal_reason: string,                 // Reason provided by admin for withdrawal
   recorded_by: string,                       // Admin email who recorded the action
-  recorded_at: timestamp                     // When action was recorded
+  recorded_at: timestamp (UTC timezone-aware) // When action was recorded
 }
 ```
 
 **Purpose**: Tracks all participant withdrawals and reactivations to maintain complete audit trail and enable withdrawal/reactivation information in email notifications to participants and area leaders. Supports recruitment operations by retaining contact info for previously withdrawn participants.
+
+**Query Strategy**: Uses fetch-all pattern with Python filtering (no compound indexes required):
+- Fetches entire collection via `_fetch_all_for_filtering()`
+- Filters by area_code, status, and timestamp in Python
+- Ensures timezone-aware timestamp comparisons for accurate queries
+- Net change calculation groups events by participant_id to report only final state changes
 
 ## Area Configuration
 

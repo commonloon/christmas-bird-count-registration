@@ -1,6 +1,6 @@
-# Updated by Claude AI on 2025-12-02
+# Updated by Claude AI on 2025-12-11
 from google.cloud import firestore
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict
 import logging
 
@@ -28,7 +28,7 @@ class WithdrawalLogModel:
                 'status': 'withdrawn',
                 'withdrawal_reason': withdrawal_reason,
                 'recorded_by': recorded_by,
-                'recorded_at': datetime.now()
+                'recorded_at': datetime.now(timezone.utc)
             }
 
             self.db.collection(self.collection).add(entry)
@@ -51,7 +51,7 @@ class WithdrawalLogModel:
                 'status': 'reactivated',
                 'withdrawal_reason': None,
                 'recorded_by': recorded_by,
-                'recorded_at': datetime.now()
+                'recorded_at': datetime.now(timezone.utc)
             }
 
             self.db.collection(self.collection).add(entry)
@@ -61,21 +61,43 @@ class WithdrawalLogModel:
             self.logger.error(f"Failed to log reactivation: {e}")
             return False
 
-    def get_withdrawals_since(self, area_code: str, since_timestamp: datetime) -> List[Dict]:
-        """Get all withdrawals for an area since a specific timestamp."""
-        from google.cloud.firestore_v1.base_query import FieldFilter
-        withdrawals = []
+    def _fetch_all_for_filtering(self) -> List[Dict]:
+        """
+        Fetch all withdrawal log entries for Python-based filtering.
 
+        Note: Using fetch-all pattern instead of compound Firestore queries
+        to avoid index creation delays. This is performant for our dataset size.
+        """
+        entries = []
         try:
-            query = (self.db.collection(self.collection)
-                    .where(filter=FieldFilter('area_code', '==', area_code))
-                    .where(filter=FieldFilter('status', '==', 'withdrawn'))
-                    .where(filter=FieldFilter('recorded_at', '>=', since_timestamp)))
-
-            for doc in query.stream():
+            query = self.db.collection(self.collection).stream()
+            for doc in query:
                 data = doc.to_dict()
                 data['id'] = doc.id
-                withdrawals.append(data)
+                entries.append(data)
+            return entries
+        except Exception as e:
+            self.logger.error(f"Failed to fetch withdrawal log entries: {e}")
+            return []
+
+    def get_withdrawals_since(self, area_code: str, since_timestamp: datetime) -> List[Dict]:
+        """Get all withdrawals for an area since a specific timestamp."""
+        try:
+            # Ensure since_timestamp is timezone-aware for comparison
+            if since_timestamp.tzinfo is None:
+                since_timestamp = since_timestamp.replace(tzinfo=timezone.utc)
+
+            # Fetch all and filter in Python to avoid compound index requirements
+            all_entries = self._fetch_all_for_filtering()
+
+            # Filter by area, status, and timestamp
+            withdrawals = [
+                entry for entry in all_entries
+                if (entry.get('area_code') == area_code and
+                    entry.get('status') == 'withdrawn' and
+                    entry.get('recorded_at') and
+                    entry.get('recorded_at') >= since_timestamp)
+            ]
 
             return withdrawals
         except Exception as e:
@@ -84,18 +106,21 @@ class WithdrawalLogModel:
 
     def get_all_withdrawals_since(self, since_timestamp: datetime) -> List[Dict]:
         """Get all withdrawals since a specific timestamp."""
-        from google.cloud.firestore_v1.base_query import FieldFilter
-        withdrawals = []
-
         try:
-            query = (self.db.collection(self.collection)
-                    .where(filter=FieldFilter('status', '==', 'withdrawn'))
-                    .where(filter=FieldFilter('recorded_at', '>=', since_timestamp)))
+            # Ensure since_timestamp is timezone-aware for comparison
+            if since_timestamp.tzinfo is None:
+                since_timestamp = since_timestamp.replace(tzinfo=timezone.utc)
 
-            for doc in query.stream():
-                data = doc.to_dict()
-                data['id'] = doc.id
-                withdrawals.append(data)
+            # Fetch all and filter in Python to avoid compound index requirements
+            all_entries = self._fetch_all_for_filtering()
+
+            # Filter by status and timestamp
+            withdrawals = [
+                entry for entry in all_entries
+                if (entry.get('status') == 'withdrawn' and
+                    entry.get('recorded_at') and
+                    entry.get('recorded_at') >= since_timestamp)
+            ]
 
             return withdrawals
         except Exception as e:

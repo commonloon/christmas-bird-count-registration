@@ -72,7 +72,13 @@
         <div class="d-flex flex-wrap gap-2">
             {% for area_code, area_participants in areas_with_participants %}
             {% set area_label = 'UNASSIGNED' if area_code == 'UNASSIGNED' else 'Area ' + area_code %}
-            <a href="#area-{{ area_code }}" class="btn btn-outline-primary btn-sm">{{ area_label }} ({{ area_participants|list|length }})</a>
+            {% set area_list = area_participants|list %}
+            {% set field_count = area_list|selectattr('status', 'equalto', 'active')|selectattr('participation_type', 'equalto', 'regular')|list|length %}
+            {% set feeder_count = area_list|selectattr('status', 'equalto', 'active')|selectattr('participation_type', 'equalto', 'FEEDER')|list|length %}
+            {% set withdrawn_count = area_list|selectattr('status', 'equalto', 'withdrawn')|list|length %}
+            <a href="#area-{{ area_code }}" class="btn btn-outline-primary btn-sm">
+                {{ area_label }} ({{ field_count }} field{% if feeder_count > 0 %}, {{ feeder_count }} feeder{% endif %}{% if withdrawn_count > 0 %}, {{ withdrawn_count }} withdrawn{% endif %})
+            </a>
             {% endfor %}
         </div>
     </div>
@@ -88,10 +94,13 @@
     <div id="area-{{ area_code }}" class="card mb-4{% if is_historical %} bg-warning bg-opacity-10{% endif %}">
         <div class="card-header{% if is_historical %} bg-warning bg-opacity-25{% endif %}">
             <h5 class="mb-0">
+                {% set field_count = area_participants|selectattr('status', 'equalto', 'active')|selectattr('participation_type', 'equalto', 'regular')|list|length %}
+                {% set feeder_count = area_participants|selectattr('status', 'equalto', 'active')|selectattr('participation_type', 'equalto', 'FEEDER')|list|length %}
+                {% set withdrawn_count = area_participants|selectattr('status', 'equalto', 'withdrawn')|list|length %}
                 {% if area_code == 'UNASSIGNED' %}
-                    UNASSIGNED ({{ area_participants|length }})
+                    UNASSIGNED ({{ field_count }} field{% if feeder_count > 0 %}, {{ feeder_count }} feeder{% endif %}{% if withdrawn_count > 0 %}, {{ withdrawn_count }} withdrawn{% endif %})
                 {% else %}
-                    Area {{ area_code }} ({{ area_participants|length }})
+                    Area {{ area_code }} ({{ field_count }} field{% if feeder_count > 0 %}, {{ feeder_count }} feeder{% endif %}{% if withdrawn_count > 0 %}, {{ withdrawn_count }} withdrawn{% endif %})
                     {% if area_leaders.get(area_code) %}
                         {% for leader in area_leaders[area_code] %}
                             <br><small class="text-muted">
@@ -283,6 +292,7 @@
                                     {% endif %}
                                     {% if participant.get('status') == 'withdrawn' %}
                                     <form method="POST" action="{{ url_for('admin.reactivate_participant', participant_id=participant.id) }}" style="display: inline;">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                         <input type="hidden" name="year" value="{{ selected_year }}">
                                         <button type="submit" class="btn btn-outline-success btn-sm" title="Reactivate participant">
                                             <i class="bi bi-check-circle"></i>

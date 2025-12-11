@@ -28,6 +28,7 @@ from config.email_settings import (
 )
 from models.participant import ParticipantModel
 from models.removal_log import RemovalLogModel
+from models.withdrawal_log import WithdrawalLogModel
 from models.reassignment_log import ReassignmentLogModel
 from services.email_service import email_service
 from services.datetime_utils import convert_to_display_timezone
@@ -133,6 +134,98 @@ def calculate_net_changes(all_reassignments: List[Dict], area_code: str) -> Tupl
             departures.append(final_reassignment)
 
     return arrivals, departures
+
+
+def calculate_net_withdrawal_reactivation_changes(
+    participant_model: ParticipantModel,
+    withdrawal_model: WithdrawalLogModel,
+    area_code: str,
+    since_timestamp: datetime
+) -> Tuple[List[Dict], List[Dict]]:
+    """Calculate net withdrawal/reactivation changes for an area.
+
+    For participants who had multiple withdrawal/reactivation events, this calculates
+    the NET state change (starting state vs ending state) and only reports that.
+
+    Examples:
+        - active → withdrawn → reactivated (net: no change, don't report)
+        - active → withdrawn (net: withdrawn, report as withdrawn)
+        - withdrawn → reactivated → withdrawn (net: withdrawn, report as withdrawn)
+
+    Args:
+        participant_model: Model to check current participant status
+        withdrawal_model: Model to fetch withdrawal log entries
+        area_code: The area to filter by
+        since_timestamp: Only consider events after this timestamp
+
+    Returns:
+        Tuple of (net_withdrawals, net_reactivations) containing only participants
+        with a net state change. Deleted participants are excluded (handled separately).
+    """
+    # Ensure timezone-aware
+    if since_timestamp.tzinfo is None:
+        since_timestamp = since_timestamp.replace(tzinfo=timezone.utc)
+
+    # Fetch all withdrawal log entries for this area since timestamp
+    try:
+        all_entries = withdrawal_model._fetch_all_for_filtering()
+        area_events = [
+            entry for entry in all_entries
+            if (entry.get('area_code') == area_code and
+                entry.get('recorded_at') and
+                entry.get('recorded_at') >= since_timestamp and
+                entry.get('status') in ['withdrawn', 'reactivated'])
+        ]
+    except Exception as e:
+        logger.error(f"Failed to get withdrawal events for area {area_code}: {e}")
+        return [], []
+
+    if not area_events:
+        return [], []
+
+    # Group events by participant_id
+    from collections import defaultdict
+    participant_events = defaultdict(list)
+    for event in area_events:
+        participant_id = event.get('participant_id')
+        if participant_id:
+            participant_events[participant_id].append(event)
+
+    # Sort each participant's events by timestamp
+    for participant_id in participant_events:
+        participant_events[participant_id].sort(key=lambda x: x.get('recorded_at'))
+
+    net_withdrawals = []
+    net_reactivations = []
+
+    # For each participant, calculate net change
+    for participant_id, events in participant_events.items():
+        # Get current participant status
+        participant = participant_model.get_participant(participant_id)
+
+        # If participant is deleted, skip (deletions handled by removal_log)
+        if not participant:
+            continue
+
+        current_status = participant.get('status')
+
+        # Determine starting status from first event
+        first_event = events[0]
+        if first_event.get('status') == 'withdrawn':
+            starting_status = 'active'  # They were active before being withdrawn
+        else:  # reactivated
+            starting_status = 'withdrawn'  # They were withdrawn before being reactivated
+
+        # Calculate net change: starting_status → current_status
+        if starting_status == 'active' and current_status == 'withdrawn':
+            # Net: withdrawn (report using last event for details)
+            net_withdrawals.append(events[-1])
+        elif starting_status == 'withdrawn' and current_status == 'active':
+            # Net: reactivated (report using last event for details)
+            net_reactivations.append(events[-1])
+        # else: no net change (active→active or withdrawn→withdrawn), don't report
+
+    return net_withdrawals, net_reactivations
 
 
 def get_area_leaders_emails(participant_model: ParticipantModel, area_code: str) -> List[str]:
@@ -267,6 +360,12 @@ def generate_team_update_emails(app=None) -> Dict[str, Any]:
                 all_reassignments = reassignment_model.get_reassignments_since(last_email_sent)
                 arrivals, departures = calculate_net_changes(all_reassignments, area_code)
 
+                # Get NET withdrawal/reactivation changes (filters out intermediate state changes)
+                withdrawal_model = WithdrawalLogModel(db, current_year)
+                withdrawn_participants_changes, reactivated_participants = calculate_net_withdrawal_reactivation_changes(
+                    participant_model, withdrawal_model, area_code, last_email_sent
+                )
+
                 # Filter out participants from "updated" list if they were round-trip reassignments
                 # A participant is a round-trip if they appear in all_reassignments but not in arrivals/departures
                 reassigned_participant_ids = set()
@@ -286,8 +385,8 @@ def generate_team_update_emails(app=None) -> Dict[str, Any]:
                     if p.get('id') not in (reassigned_participant_ids - net_change_participant_ids)
                 ]
 
-                # Only send email if there are changes (including net reassignments only)
-                if not new_participants and not updated_participants and not removed_participants and not arrivals and not departures:
+                # Only send email if there are changes (including net reassignments, withdrawals, and reactivations)
+                if not new_participants and not updated_participants and not removed_participants and not arrivals and not departures and not withdrawn_participants_changes and not reactivated_participants:
                     logger.info(f"No changes for area {area_code}, skipping team update email")
                     continue
                 
@@ -302,9 +401,11 @@ def generate_team_update_emails(app=None) -> Dict[str, Any]:
                 leader_names = [f"{leader.get('first_name', '')} {leader.get('last_name', '')}".strip()
                               for leader in leaders if leader.get('is_leader', False)]
                 
-                # Get current team roster
+                # Get current team roster (active and withdrawn)
                 current_team = participant_model.get_participants_by_area(area_code)
-                
+                withdrawn_participants = participant_model.get_withdrawn_participants_by_area(area_code)
+                current_team = current_team + withdrawn_participants
+
                 # Prepare email context
                 email_context = {
                     'area_code': area_code,
@@ -314,6 +415,8 @@ def generate_team_update_emails(app=None) -> Dict[str, Any]:
                     'removed_participants': removed_participants,
                     'arrivals': arrivals,
                     'departures': departures,
+                    'withdrawn_participants': withdrawn_participants_changes,
+                    'reactivated_participants': reactivated_participants,
                     'current_team': current_team,
                     'current_date': current_time,
                     'display_timezone': display_timezone,
@@ -402,6 +505,12 @@ def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
                 all_reassignments = reassignment_model.get_reassignments_since(last_weekly_summary)
                 arrivals, departures = calculate_net_changes(all_reassignments, area_code)
 
+                # Get NET withdrawal/reactivation changes (filters out intermediate state changes)
+                withdrawal_model = WithdrawalLogModel(db, current_year)
+                withdrawn_participants_changes, reactivated_participants = calculate_net_withdrawal_reactivation_changes(
+                    participant_model, withdrawal_model, area_code, last_weekly_summary
+                )
+
                 # Filter out participants from "updated" list if they were round-trip reassignments
                 reassigned_participant_ids = set()
                 for reassignment in all_reassignments:
@@ -420,7 +529,7 @@ def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
                     if p.get('id') not in (reassigned_participant_ids - net_change_participant_ids)
                 ]
 
-                has_changes = bool(new_participants or updated_participants or removed_participants or arrivals or departures)
+                has_changes = bool(new_participants or updated_participants or removed_participants or arrivals or departures or withdrawn_participants_changes or reactivated_participants)
 
                 # Send weekly summary to ALL leaders regardless of changes
                 # Get leader emails and names
@@ -432,9 +541,11 @@ def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
                 leaders = participant_model.get_leaders_by_area(area_code)
                 leader_names = [f"{leader.get('first_name', '')} {leader.get('last_name', '')}".strip()
                               for leader in leaders if leader.get('is_leader', False)]
-                
-                # Get current team and statistics
+
+                # Get current team and statistics (active and withdrawn)
                 current_team = participant_model.get_participants_by_area(area_code)
+                withdrawn_participants = participant_model.get_withdrawn_participants_by_area(area_code)
+                current_team = current_team + withdrawn_participants
                 skill_breakdown = calculate_skill_breakdown(current_team)
                 experience_breakdown = calculate_experience_breakdown(current_team)
                 leadership_interest_count = sum(1 for p in current_team if p.get('interested_in_leadership'))
@@ -448,6 +559,8 @@ def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
                     'removed_participants': removed_participants,
                     'arrivals': arrivals,
                     'departures': departures,
+                    'withdrawn_participants': withdrawn_participants_changes,
+                    'reactivated_participants': reactivated_participants,
                     'current_team': current_team,
                     'has_changes': has_changes,
                     'skill_breakdown': skill_breakdown,
