@@ -223,8 +223,10 @@ class AdminDashboardPage(BasePage):
             dict: Dashboard statistics
         """
         stats = {}
+        import re
 
-        # Common statistic selectors and their keys
+        # PERFORMANCE OPTIMIZED: Dashboard template now has IDs on statistics
+        # Use direct ID lookup (fast) instead of multiple fallback attempts
         stat_mappings = {
             'total-participants': 'total_participants',
             'total-assigned': 'total_assigned',
@@ -234,38 +236,19 @@ class AdminDashboardPage(BasePage):
         }
 
         for selector, key in stat_mappings.items():
-            element = self.find_element_safely(selector)
+            # Try direct ID lookup first (now exists in template)
+            element = self.find_element_safely((By.ID, selector), timeout=1)
             if element:
                 text = element.text.strip()
-                # Extract number from text (handle formats like "25 participants")
-                import re
+                # Extract number from text (handle formats like "25" or "25 participants")
                 numbers = re.findall(r'\d+', text)
                 if numbers:
                     stats[key] = int(numbers[0])
                 else:
                     stats[key] = 0
             else:
-                # Fallback: look for elements containing the statistic
-                fallback_selectors = [
-                    (By.CSS_SELECTOR, f'.{selector}'),
-                    (By.CSS_SELECTOR, f'*[data-stat="{key}"]'),
-                    (By.CSS_SELECTOR, f'#{selector.replace("-", "_")}')
-                ]
-
-                found = False
-                for fallback in fallback_selectors:
-                    element = self.find_element_safely(fallback)
-                    if element:
-                        text = element.text.strip()
-                        import re
-                        numbers = re.findall(r'\d+', text)
-                        if numbers:
-                            stats[key] = int(numbers[0])
-                            found = True
-                            break
-
-                if not found:
-                    stats[key] = None
+                # Element not found - may not be present on all dashboard views
+                stats[key] = None
 
         return stats
 

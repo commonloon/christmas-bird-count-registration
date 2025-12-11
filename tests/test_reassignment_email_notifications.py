@@ -19,6 +19,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 from bs4 import BeautifulSoup
+from contextlib import contextmanager
 
 # Add project root to path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -42,6 +43,37 @@ from test.email_generator import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Timing instrumentation
+timing_data = {}
+
+
+@contextmanager
+def time_section(section_name, test_name):
+    """Context manager to time a section of code."""
+    start = time.time()
+    try:
+        yield
+    finally:
+        elapsed = time.time() - start
+        if test_name not in timing_data:
+            timing_data[test_name] = []
+        timing_data[test_name].append((section_name, elapsed))
+        logger.info(f"⏱️  {section_name}: {elapsed:.2f}s")
+
+
+def print_timing_summary(test_name):
+    """Print timing summary for a test."""
+    if test_name in timing_data:
+        logger.info(f"\n{'='*60}")
+        logger.info(f"TIMING SUMMARY: {test_name}")
+        logger.info(f"{'='*60}")
+        total = 0
+        for section, elapsed in timing_data[test_name]:
+            logger.info(f"  {section:.<50} {elapsed:>6.2f}s")
+            total += elapsed
+        logger.info(f"  {'TOTAL':.<50} {total:>6.2f}s")
+        logger.info(f"{'='*60}\n")
 
 
 class EmailCapture:
@@ -183,6 +215,9 @@ class TestEmailNotifications:
         4. Generate and validate team update emails
         5. Generate and validate weekly summary emails
         """
+        test_name = "test_simple_reassignment"
+        logger.info(f"\n{'#'*60}\nSTARTING: {test_name}\n{'#'*60}")
+
         current_year = datetime.now().year
         base_url = get_base_url()
 
@@ -190,218 +225,227 @@ class TestEmailNotifications:
             # ============================================================
             # Phase 1: Setup - Initialize email timestamps
             # ============================================================
-            logger.info("Phase 1: Setting up email timestamps")
+            with time_section("Phase 1: Setup email timestamps", test_name):
+                logger.info("Phase 1: Setting up email timestamps")
 
-            timestamp_model = EmailTimestampModel(firestore_client_module, current_year)
-            now = datetime.now(timezone.utc)
+                timestamp_model = EmailTimestampModel(firestore_client_module, current_year)
+                now = datetime.now(timezone.utc)
 
-            # Set both area C and E timestamps to current time
-            for area in ['C', 'E']:
-                timestamp_model.update_last_email_sent(area, 'team_update', now)
-                timestamp_model.update_last_email_sent(area, 'weekly_update', now)
-                logger.info(f"Set email timestamps for Area {area}")
+                # Set both area C and E timestamps to current time
+                for area in ['C', 'E']:
+                    timestamp_model.update_last_email_sent(area, 'team_update', now)
+                    timestamp_model.update_last_email_sent(area, 'weekly_update', now)
+                    logger.info(f"Set email timestamps for Area {area}")
 
-            # Wait to ensure reassignment happens after timestamp
-            time.sleep(1)
+                # Wait to ensure reassignment happens after timestamp
+                time.sleep(1)
 
             # ============================================================
             # Phase 2: Reassign participant using Selenium
             # ============================================================
-            logger.info("Phase 2: Reassigning participant from Area C to Area E")
+            with time_section("Phase 2: Navigate and find participant", test_name):
+                logger.info("Phase 2: Reassigning participant from Area C to Area E")
 
-            # Get a participant from Area C and reassign to Area E
-            # First, find a participant email to reassign
-            authenticated_browser.get(f"{base_url}/admin/participants")
-            WebDriverWait(authenticated_browser, 10).until(
-                EC.presence_of_element_located((By.TAG_NAME, "table"))
-            )
-            time.sleep(1)
+                # Get a participant from Area C and reassign to Area E
+                # First, find a participant email to reassign
+                authenticated_browser.get(f"{base_url}/admin/participants")
+                WebDriverWait(authenticated_browser, 10).until(
+                    EC.presence_of_element_located((By.TAG_NAME, "table"))
+                )
+                time.sleep(1)
 
-            # Find first participant in Area C
-            area_c_section = authenticated_browser.find_element(By.ID, "area-C")
-            rows = area_c_section.find_elements(By.CSS_SELECTOR, "table tbody tr")
-            if not rows:
-                pytest.skip("No participants found in Area C")
+                # Find first participant in Area C
+                area_c_section = authenticated_browser.find_element(By.ID, "area-C")
+                rows = area_c_section.find_elements(By.CSS_SELECTOR, "table tbody tr")
+                if not rows:
+                    pytest.skip("No participants found in Area C")
 
-            cells = rows[0].find_elements(By.TAG_NAME, "td")
-            if len(cells) < 2:
-                pytest.skip("Could not extract participant info from Area C")
+                cells = rows[0].find_elements(By.TAG_NAME, "td")
+                if len(cells) < 2:
+                    pytest.skip("Could not extract participant info from Area C")
 
-            participant_email = cells[1].text.strip()
+                participant_email = cells[1].text.strip()
 
-            # Use utility function to perform reassignment
-            participant_name, _ = reassign_participant_via_ui(
-                authenticated_browser,
-                base_url,
-                participant_email,
-                'E',
-                is_leader=False
-            )
+            with time_section("Phase 2: Reassign participant via UI", test_name):
+                # Use utility function to perform reassignment
+                participant_name, _ = reassign_participant_via_ui(
+                    authenticated_browser,
+                    base_url,
+                    participant_email,
+                    'E',
+                    is_leader=False
+                )
 
             # ============================================================
             # Phase 3: Verify reassignment in database
             # ============================================================
-            logger.info("Phase 3: Verifying reassignment in database")
+            with time_section("Phase 3: Verify reassignment in database", test_name):
+                logger.info("Phase 3: Verifying reassignment in database")
 
-            # Find the participant we just reassigned and verify the change
-            time.sleep(1)  # Give database time to update
+                # Find the participant we just reassigned and verify the change
+                time.sleep(1)  # Give database time to update
 
-            # Verify in reassignments_YYYY collection
-            reassignment_model = ReassignmentLogModel(firestore_client_module, current_year)
-            recent_reassignments = reassignment_model.get_reassignments_since(now)
+                # Verify in reassignments_YYYY collection
+                reassignment_model = ReassignmentLogModel(firestore_client_module, current_year)
+                recent_reassignments = reassignment_model.get_reassignments_since(now)
 
-            area_c_to_e_reassignment = None
-            for reassignment in recent_reassignments:
-                if (reassignment.get('old_area') == 'C' and
-                    reassignment.get('new_area') == 'E' and
-                    participant_email in reassignment.get('email', '')):
-                    area_c_to_e_reassignment = reassignment
-                    break
+                area_c_to_e_reassignment = None
+                for reassignment in recent_reassignments:
+                    if (reassignment.get('old_area') == 'C' and
+                        reassignment.get('new_area') == 'E' and
+                        participant_email in reassignment.get('email', '')):
+                        area_c_to_e_reassignment = reassignment
+                        break
 
-            if not area_c_to_e_reassignment:
-                logger.warning("Could not find reassignment in database - may still be processing")
-                # Don't fail the test - Selenium might have moved too fast or data is eventually consistent
-            else:
-                logger.info(f"✓ Reassignment logged: {participant_name} from Area C to E")
+                if not area_c_to_e_reassignment:
+                    logger.warning("Could not find reassignment in database - may still be processing")
+                    # Don't fail the test - Selenium might have moved too fast or data is eventually consistent
+                else:
+                    logger.info(f"✓ Reassignment logged: {participant_name} from Area C to E")
 
             # ============================================================
             # Phase 4: Generate and validate team update emails
             # ============================================================
-            logger.info("Phase 4: Generating team update emails")
+            with time_section("Phase 4: Generate team update emails", test_name):
+                logger.info("Phase 4: Generating team update emails")
 
-            email_capture.clear()
+                email_capture.clear()
 
-            # Mock the email service send_email method
-            with patch('services.email_service.email_service.send_email') as mock_send:
-                mock_send.side_effect = email_capture.send_email
+                # Mock the email service send_email method
+                with patch('services.email_service.email_service.send_email') as mock_send:
+                    mock_send.side_effect = email_capture.send_email
 
-                # Generate team update emails with Flask app for template rendering
-                results = generate_team_update_emails(app=flask_app_module)
+                    # Generate team update emails with Flask app for template rendering
+                    results = generate_team_update_emails(app=flask_app_module)
 
-                logger.info(f"Team update results: {results['emails_sent']} sent, {results['areas_processed']} areas processed")
+                    logger.info(f"Team update results: {results['emails_sent']} sent, {results['areas_processed']} areas processed")
 
-            # Validate team update emails
-            team_c_emails = [e for e in email_capture.captured_emails if "Area C" in e['subject']]
-            team_e_emails = [e for e in email_capture.captured_emails if "Area E" in e['subject']]
+            with time_section("Phase 4: Validate team update emails", test_name):
+                # Validate team update emails
+                team_c_emails = [e for e in email_capture.captured_emails if "Area C" in e['subject']]
+                team_e_emails = [e for e in email_capture.captured_emails if "Area E" in e['subject']]
 
-            logger.info(f"Captured {len(team_c_emails)} team update emails for Area C")
-            logger.info(f"Captured {len(team_e_emails)} team update emails for Area E")
+                logger.info(f"Captured {len(team_c_emails)} team update emails for Area C")
+                logger.info(f"Captured {len(team_e_emails)} team update emails for Area E")
 
-            # Verify Area C email content
-            if team_c_emails:
-                area_c_email = team_c_emails[0]
-                html_content = area_c_email.get('html_content', '')
+                # Verify Area C email content
+                if team_c_emails:
+                    area_c_email = team_c_emails[0]
+                    html_content = area_c_email.get('html_content', '')
 
-                if html_content:
-                    soup = BeautifulSoup(html_content, 'html.parser')
-                    email_text = soup.get_text()
+                    if html_content:
+                        soup = BeautifulSoup(html_content, 'html.parser')
+                        email_text = soup.get_text()
 
-                    # Area C should show participant being reassigned away
-                    if participant_name and "reassigned" in email_text.lower():
-                        logger.info(f"✓ Area C email mentions reassignment of {participant_name}")
-                    elif participant_name:
-                        logger.warning(f"Area C email does not mention reassignment for {participant_name}")
+                        # Area C should show participant being reassigned away
+                        if participant_name and "reassigned" in email_text.lower():
+                            logger.info(f"✓ Area C email mentions reassignment of {participant_name}")
+                        elif participant_name:
+                            logger.warning(f"Area C email does not mention reassignment for {participant_name}")
 
-                    # Save email file for inspection
-                    c_email_file = f"{email_capture.output_dir}/team_update_area_c.html"
-                    with open(c_email_file, 'w', encoding='utf-8') as f:
-                        f.write(html_content)
-                    logger.info(f"Saved Area C team update email to {c_email_file}")
+                        # Save email file for inspection
+                        c_email_file = f"{email_capture.output_dir}/team_update_area_c.html"
+                        with open(c_email_file, 'w', encoding='utf-8') as f:
+                            f.write(html_content)
+                        logger.info(f"Saved Area C team update email to {c_email_file}")
 
-            # Verify Area E email content
-            if team_e_emails:
-                area_e_email = team_e_emails[0]
-                html_content = area_e_email.get('html_content', '')
+                # Verify Area E email content
+                if team_e_emails:
+                    area_e_email = team_e_emails[0]
+                    html_content = area_e_email.get('html_content', '')
 
-                if html_content:
-                    soup = BeautifulSoup(html_content, 'html.parser')
-                    email_text = soup.get_text()
+                    if html_content:
+                        soup = BeautifulSoup(html_content, 'html.parser')
+                        email_text = soup.get_text()
 
-                    # Area E should show participant joining from another area
-                    if participant_name and ("reassigned" in email_text.lower() or "joined" in email_text.lower()):
-                        logger.info(f"✓ Area E email mentions {participant_name} joining")
-                    elif participant_name:
-                        logger.warning(f"Area E email does not mention {participant_name} joining")
+                        # Area E should show participant joining from another area
+                        if participant_name and ("reassigned" in email_text.lower() or "joined" in email_text.lower()):
+                            logger.info(f"✓ Area E email mentions {participant_name} joining")
+                        elif participant_name:
+                            logger.warning(f"Area E email does not mention {participant_name} joining")
 
-                    # Save email file for inspection
-                    e_email_file = f"{email_capture.output_dir}/team_update_area_e.html"
-                    with open(e_email_file, 'w', encoding='utf-8') as f:
-                        f.write(html_content)
-                    logger.info(f"Saved Area E team update email to {e_email_file}")
+                        # Save email file for inspection
+                        e_email_file = f"{email_capture.output_dir}/team_update_area_e.html"
+                        with open(e_email_file, 'w', encoding='utf-8') as f:
+                            f.write(html_content)
+                        logger.info(f"Saved Area E team update email to {e_email_file}")
 
-            # Verify timestamp was updated
-            logger.info("Verifying timestamp updates")
-            new_c_timestamp = timestamp_model.get_last_email_sent('C', 'team_update')
-            new_e_timestamp = timestamp_model.get_last_email_sent('E', 'team_update')
+                # Verify timestamp was updated
+                logger.info("Verifying timestamp updates")
+                new_c_timestamp = timestamp_model.get_last_email_sent('C', 'team_update')
+                new_e_timestamp = timestamp_model.get_last_email_sent('E', 'team_update')
 
-            if new_c_timestamp and new_c_timestamp > now:
-                logger.info(f"✓ Area C team_update timestamp updated: {new_c_timestamp}")
-            else:
-                logger.warning("Area C team_update timestamp not updated")
+                if new_c_timestamp and new_c_timestamp > now:
+                    logger.info(f"✓ Area C team_update timestamp updated: {new_c_timestamp}")
+                else:
+                    logger.warning("Area C team_update timestamp not updated")
 
-            if new_e_timestamp and new_e_timestamp > now:
-                logger.info(f"✓ Area E team_update timestamp updated: {new_e_timestamp}")
-            else:
-                logger.warning("Area E team_update timestamp not updated")
+                if new_e_timestamp and new_e_timestamp > now:
+                    logger.info(f"✓ Area E team_update timestamp updated: {new_e_timestamp}")
+                else:
+                    logger.warning("Area E team_update timestamp not updated")
 
             # ============================================================
             # Phase 5: Generate and validate weekly summary emails
             # ============================================================
-            logger.info("Phase 5: Generating weekly summary emails")
+            with time_section("Phase 5: Generate weekly summary emails", test_name):
+                logger.info("Phase 5: Generating weekly summary emails")
 
-            email_capture.clear()
+                email_capture.clear()
 
-            with patch('services.email_service.email_service.send_email') as mock_send:
-                mock_send.side_effect = email_capture.send_email
+                with patch('services.email_service.email_service.send_email') as mock_send:
+                    mock_send.side_effect = email_capture.send_email
 
-                # Generate weekly summary emails with Flask app for template rendering
-                results = generate_weekly_summary_emails(app=flask_app_module)
+                    # Generate weekly summary emails with Flask app for template rendering
+                    results = generate_weekly_summary_emails(app=flask_app_module)
 
-                logger.info(f"Weekly summary results: {results['emails_sent']} sent, {results['areas_processed']} areas processed")
+                    logger.info(f"Weekly summary results: {results['emails_sent']} sent, {results['areas_processed']} areas processed")
 
-            # Validate weekly summary emails
-            weekly_c_emails = [e for e in email_capture.captured_emails if "Area C" in e['subject'] and "Weekly" in e['subject']]
-            weekly_e_emails = [e for e in email_capture.captured_emails if "Area E" in e['subject'] and "Weekly" in e['subject']]
+            with time_section("Phase 5: Validate weekly summary emails", test_name):
+                # Validate weekly summary emails
+                weekly_c_emails = [e for e in email_capture.captured_emails if "Area C" in e['subject'] and "Weekly" in e['subject']]
+                weekly_e_emails = [e for e in email_capture.captured_emails if "Area E" in e['subject'] and "Weekly" in e['subject']]
 
-            logger.info(f"Captured {len(weekly_c_emails)} weekly summary emails for Area C")
-            logger.info(f"Captured {len(weekly_e_emails)} weekly summary emails for Area E")
+                logger.info(f"Captured {len(weekly_c_emails)} weekly summary emails for Area C")
+                logger.info(f"Captured {len(weekly_e_emails)} weekly summary emails for Area E")
 
-            # Verify weekly emails mention the change
-            if weekly_c_emails:
-                area_c_email = weekly_c_emails[0]
-                html_content = area_c_email.get('html_content', '')
+                # Verify weekly emails mention the change
+                if weekly_c_emails:
+                    area_c_email = weekly_c_emails[0]
+                    html_content = area_c_email.get('html_content', '')
 
-                if html_content:
-                    soup = BeautifulSoup(html_content, 'html.parser')
-                    email_text = soup.get_text()
+                    if html_content:
+                        soup = BeautifulSoup(html_content, 'html.parser')
+                        email_text = soup.get_text()
 
-                    if participant_name and "reassigned" in email_text.lower():
-                        logger.info(f"✓ Area C weekly summary mentions {participant_name} departure")
+                        if participant_name and "reassigned" in email_text.lower():
+                            logger.info(f"✓ Area C weekly summary mentions {participant_name} departure")
 
-                    # Save file
-                    c_weekly_file = f"{email_capture.output_dir}/weekly_summary_area_c.html"
-                    with open(c_weekly_file, 'w', encoding='utf-8') as f:
-                        f.write(html_content)
-                    logger.info(f"Saved Area C weekly summary to {c_weekly_file}")
+                        # Save file
+                        c_weekly_file = f"{email_capture.output_dir}/weekly_summary_area_c.html"
+                        with open(c_weekly_file, 'w', encoding='utf-8') as f:
+                            f.write(html_content)
+                        logger.info(f"Saved Area C weekly summary to {c_weekly_file}")
 
-            if weekly_e_emails:
-                area_e_email = weekly_e_emails[0]
-                html_content = area_e_email.get('html_content', '')
+                if weekly_e_emails:
+                    area_e_email = weekly_e_emails[0]
+                    html_content = area_e_email.get('html_content', '')
 
-                if html_content:
-                    soup = BeautifulSoup(html_content, 'html.parser')
-                    email_text = soup.get_text()
+                    if html_content:
+                        soup = BeautifulSoup(html_content, 'html.parser')
+                        email_text = soup.get_text()
 
-                    if participant_name and "reassigned" in email_text.lower():
-                        logger.info(f"✓ Area E weekly summary mentions {participant_name} arrival")
+                        if participant_name and "reassigned" in email_text.lower():
+                            logger.info(f"✓ Area E weekly summary mentions {participant_name} arrival")
 
-                    # Save file
-                    e_weekly_file = f"{email_capture.output_dir}/weekly_summary_area_e.html"
-                    with open(e_weekly_file, 'w', encoding='utf-8') as f:
-                        f.write(html_content)
-                    logger.info(f"Saved Area E weekly summary to {e_weekly_file}")
+                        # Save file
+                        e_weekly_file = f"{email_capture.output_dir}/weekly_summary_area_e.html"
+                        with open(e_weekly_file, 'w', encoding='utf-8') as f:
+                            f.write(html_content)
+                        logger.info(f"Saved Area E weekly summary to {e_weekly_file}")
 
             logger.info("✓ test_simple_reassignment completed successfully")
+            print_timing_summary(test_name)
 
         except Exception as e:
             logger.error(f"Test failed with error: {e}", exc_info=True)
