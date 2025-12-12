@@ -179,14 +179,18 @@ def not_found_error(error):
     """Handle 404 errors with IP tracking."""
     # Only track unauthenticated users
     if 'user_email' not in session and db:
-        client_ip = get_client_ip(request)
-        user_agent = request.headers.get('User-Agent', '')
+        from config.ip_blocking import EXCLUDED_404_PATHS
 
-        blocker = IPBlockerService(db)
-        block_id = blocker.track_404(client_ip, request.path, user_agent)
+        # Skip tracking for common browser resource requests
+        if request.path not in EXCLUDED_404_PATHS:
+            client_ip = get_client_ip(request)
+            user_agent = request.headers.get('User-Agent', '')
 
-        if block_id:
-            logger.warning(f"IP_AUTO_BLOCKED: {client_ip} exceeded 404 threshold")
+            blocker = IPBlockerService(db)
+            block_id = blocker.track_404(client_ip, request.path, user_agent)
+
+            if block_id:
+                logger.warning(f"IP_AUTO_BLOCKED: {client_ip} exceeded 404 threshold")
 
     return render_template('errors/404.html'), 404
 

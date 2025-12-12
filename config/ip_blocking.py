@@ -12,7 +12,17 @@ def is_test_mode():
 
 # 404 rate limiting threshold
 # Number of 404 errors within VIOLATION_WINDOW_SECONDS that triggers a block
-MAX_404_PER_MINUTE = int(os.getenv('MAX_404_PER_MINUTE', 3))
+MAX_404_PER_MINUTE = int(os.getenv('MAX_404_PER_MINUTE', 12))
+
+# URLs to exclude from 404 counting (common browser resource requests)
+# These are automatically requested by browsers and shouldn't count as violations
+EXCLUDED_404_PATHS = {
+    '/favicon.ico',
+    '/apple-touch-icon.png',
+    '/apple-touch-icon-precomposed.png',
+    '/robots.txt',  # Also commonly requested
+    '/sitemap.xml'  # Also commonly requested
+}
 
 # Block duration in hours
 BLOCK_DURATION_HOURS = int(os.getenv('BLOCK_DURATION_HOURS', 48))
