@@ -184,6 +184,23 @@ def get_admin_emails():
 - Quick action buttons for common management tasks
 - **Email Testing Section (Test Server Only)**: Manual trigger buttons for testing all three email types with immediate feedback
 
+**Recent Registrations (`/admin/recent-registrations`)**
+- Dedicated page for filtering and viewing recent participant registrations
+- **Date Filtering Options**:
+  - **Preset Time Ranges**: Dropdown with 7, 14, 30, 60, or 90-day options
+  - **Custom Date Picker**: HTML5 date input for selecting specific "registered since" date
+  - Server-side validation: rejects future dates, validates date format
+- **Display**: Full participant table showing Name, Email, Area, Skill Level, Experience, and Registration Date
+- **Email Copy Functionality**:
+  - "Copy All Emails" button copies all filtered participant emails to clipboard
+  - Comma-separated format suitable for email client BCC fields
+  - Modern Clipboard API with fallback for older browsers
+  - Bootstrap toast notifications for success/error feedback
+- **Query Strategy**: Loads all participants via `get_all_participants()` and filters in Python (no compound indexes required)
+- **Use Case**: Enables admins to email recent registrants with information already sent to earlier participants
+- Year-aware with year selector support
+- Empty state message when no participants match filter criteria
+
 **Participant Management (`/admin/participants`)**
 - **Tab Navigation**: Current year + past 3 years with available data
   - Current year tab: Default selection, full edit capabilities
@@ -891,6 +908,7 @@ templates/
     login.html                 # Google OAuth login page
   admin/
     dashboard.html             # Admin overview with statistics
+    recent_registrations.html  # Recent registrations filter with email copy functionality
     participants.html          # Complete participant management
     unassigned.html           # Streamlined unassigned participant assignment tools
     area_detail.html          # Area-specific participant and leader views

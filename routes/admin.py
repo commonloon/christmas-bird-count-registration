@@ -95,6 +95,81 @@ def dashboard():
                            current_user=get_current_user())
 
 
+@admin_bp.route('/recent-registrations')
+@require_admin
+@limiter.limit(RATE_LIMITS['admin_general'])
+def recent_registrations():
+    """View and filter recent registrations with email copy capability."""
+    # Updated by Claude AI on 2025-12-12
+    from datetime import timedelta, timezone
+
+    if not g.db:
+        return render_template('admin/recent_registrations.html', error="Database unavailable")
+
+    # Get year selection
+    selected_year = request.args.get('year', datetime.now().year, type=int)
+
+    # Get filter parameters
+    days = request.args.get('days', type=int)
+    custom_date = request.args.get('date')
+
+    # Validate and process filters
+    cutoff_date = None
+    filter_days = 7  # Default
+    filter_date = None
+
+    if custom_date:
+        try:
+            # Parse date and make it timezone-aware (UTC) to match Firestore timestamps
+            cutoff_date = datetime.strptime(custom_date, '%Y-%m-%d')
+            cutoff_date = cutoff_date.replace(tzinfo=timezone.utc)
+            # Reject future dates
+            now_utc = datetime.now(timezone.utc)
+            if cutoff_date > now_utc:
+                flash('Cannot filter by future dates.', 'error')
+                cutoff_date = None
+            else:
+                filter_date = custom_date
+        except ValueError:
+            flash('Invalid date format. Please use YYYY-MM-DD.', 'error')
+
+    if cutoff_date is None:
+        # Use days parameter (default to 7 if not specified)
+        if days and 1 <= days <= 90:
+            filter_days = days
+        else:
+            if days:
+                flash('Days must be between 1 and 90.', 'error')
+            filter_days = 7
+
+        # Calculate cutoff date from days (timezone-aware UTC)
+        cutoff_date = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        cutoff_date = cutoff_date - timedelta(days=filter_days)
+
+    # Get all participants and filter in Python
+    participant_model = ParticipantModel(g.db, selected_year)
+    all_participants = participant_model.get_all_participants()
+
+    # Filter by date in Python (avoids compound index requirement)
+    filtered_participants = []
+    for p in all_participants:
+        if p.get('created_at') and p['created_at'] >= cutoff_date:
+            filtered_participants.append(normalize_participant_record(p))
+
+    # Get available years
+    available_years = ParticipantModel.get_available_years(g.db)
+
+    return render_template('admin/recent_registrations.html',
+                         selected_year=selected_year,
+                         available_years=available_years,
+                         participants=filtered_participants,
+                         filter_days=filter_days,
+                         filter_date=filter_date,
+                         total_count=len(filtered_participants),
+                         today=datetime.now().strftime('%Y-%m-%d'),
+                         current_user=get_current_user())
+
+
 @admin_bp.route('/participants')
 @require_admin
 def participants():

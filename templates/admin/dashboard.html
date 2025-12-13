@@ -81,10 +81,13 @@
             </div>
             <div class="card-body">
                 <a href="{{ url_for('admin.participants', year=selected_year) }}" class="btn btn-primary me-2">View All Participants</a>
-                <a href="{{ url_for('admin.unassigned', year=selected_year) }}" class="btn btn-warning me-2">Manage Unassigned ({{ total_unassigned|default(0) }})</a>
-                <a href="{{ url_for('admin.leaders', year=selected_year) }}" class="btn btn-info me-2">Manage Leaders</a>
-                <a href="{{ url_for('admin.area_signup_type', year=selected_year) }}" class="btn btn-secondary me-2">Open/Close Areas</a>
-                <a href="{{ url_for('admin.export_csv', year=selected_year) }}" class="btn btn-success">Export CSV</a>
+                <a href="{{ url_for('admin.unassigned', year=selected_year) }}" class="btn btn-primary me-2">Manage Unassigned ({{ total_unassigned|default(0) }})</a>
+                <a href="{{ url_for('admin.leaders', year=selected_year) }}" class="btn btn-primary me-2">Manage Leaders</a>
+                <a href="{{ url_for('admin.recent_registrations', year=selected_year) }}" class="btn btn-primary me-2">
+                    <i class="bi bi-clock-history"></i> Recent Registrations
+                </a>
+                <a href="{{ url_for('admin.area_signup_type', year=selected_year) }}" class="btn btn-primary me-2">Open/Close Areas</a>
+                <a href="{{ url_for('admin.export_csv', year=selected_year) }}" class="btn btn-primary">Export CSV</a>
             </div>
         </div>
     </div>
