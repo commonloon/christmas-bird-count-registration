@@ -211,37 +211,69 @@ class IPBlockerService:
             }]
         )
 
-    def cleanup_expired(self) -> int:
+    def cleanup_expired(self, delete_old: bool = True) -> int:
         """
         Clean up expired blocks (run periodically or on-demand).
+        Updated by Claude AI on 2025-12-12 - Avoid compound index by filtering in Python
+
+        Args:
+            delete_old: If True, delete records older than 7 days. Otherwise just mark as auto-unblocked.
 
         Returns:
             Number of blocks cleaned up
         """
-        from google.cloud.firestore_v1.base_query import FieldFilter
+        from datetime import timedelta
 
         now = datetime.now()
         count = 0
 
-        # Query expired blocks
-        query = (self.db.collection(self.collection)
-                .where(filter=FieldFilter('expires_at', '<', now))
-                .where(filter=FieldFilter('auto_unblocked', '==', False)))
+        # Fetch all blocks (no filter, no index needed)
+        query = self.db.collection(self.collection)
+        all_blocks = list(query.stream())
 
-        batch = self.db.batch()
-        for doc in query.stream():
-            # Mark as auto-unblocked (keep for audit trail)
-            doc_ref = self.db.collection(self.collection).document(doc.id)
-            batch.update(doc_ref, {'auto_unblocked': True})
-            count += 1
+        # Filter expired blocks in Python
+        expired_blocks = [doc for doc in all_blocks
+                          if doc.to_dict().get('expires_at', datetime.max) < now
+                          and not doc.to_dict().get('auto_unblocked', False)]
 
-            # Clear from cache
-            with CACHE_LOCK:
-                BLOCKED_IP_CACHE.pop(doc.id, None)
+        if delete_old:
+            # Delete records older than 7 days to keep collection small
+            delete_cutoff = now - timedelta(days=7)
+            batch = self.db.batch()
+
+            for doc in expired_blocks:
+                block_data = doc.to_dict()
+                expires_at = block_data.get('expires_at', now)
+
+                if expires_at < delete_cutoff:
+                    # Delete old expired blocks
+                    doc_ref = self.db.collection(self.collection).document(doc.id)
+                    batch.delete(doc_ref)
+                    count += 1
+                else:
+                    # Just mark as auto-unblocked (recent, keep for audit)
+                    doc_ref = self.db.collection(self.collection).document(doc.id)
+                    batch.update(doc_ref, {'auto_unblocked': True})
+                    count += 1
+
+                # Clear from cache
+                with CACHE_LOCK:
+                    BLOCKED_IP_CACHE.pop(doc.id, None)
+        else:
+            # Just mark as auto-unblocked (keep all for audit trail)
+            batch = self.db.batch()
+            for doc in expired_blocks:
+                doc_ref = self.db.collection(self.collection).document(doc.id)
+                batch.update(doc_ref, {'auto_unblocked': True})
+                count += 1
+
+                # Clear from cache
+                with CACHE_LOCK:
+                    BLOCKED_IP_CACHE.pop(doc.id, None)
 
         if count > 0:
             batch.commit()
-            logger.info(f"IP_CLEANUP: Removed {count} expired blocks")
+            logger.info(f"IP_CLEANUP: Processed {count} expired blocks")
 
         return count
 
@@ -265,6 +297,7 @@ class IPBlockerService:
     def get_all_blocks(self, include_expired: bool = False) -> List[Dict]:
         """
         Get all blocked IPs for admin dashboard.
+        Updated by Claude AI on 2025-12-12 - Avoid compound index by filtering in Python
 
         Args:
             include_expired: If True, include expired blocks
@@ -272,23 +305,30 @@ class IPBlockerService:
         Returns:
             List of block records
         """
-        from google.cloud.firestore_v1.base_query import FieldFilter
-
         blocks = []
 
-        if include_expired:
-            query = self.db.collection(self.collection).order_by('blocked_at', direction='DESCENDING')
-        else:
-            now = datetime.now()
-            query = (self.db.collection(self.collection)
-                    .where(filter=FieldFilter('expires_at', '>', now))
-                    .order_by('expires_at')
-                    .order_by('blocked_at', direction='DESCENDING'))
+        # Fetch all blocks (no filter, no order, no index needed)
+        query = self.db.collection(self.collection)
 
         for doc in query.stream():
             data = doc.to_dict()
             data['ip_address'] = doc.id  # Document ID is the IP
             blocks.append(data)
+
+        if not include_expired:
+            # Filter active blocks in Python
+            now = datetime.now()
+            blocks = [b for b in blocks if b.get('expires_at', datetime.min) > now]
+
+        # Sort in Python (expires_at ascending, then blocked_at descending)
+        # For expired blocks, just sort by blocked_at descending
+        if include_expired:
+            blocks.sort(key=lambda x: x.get('blocked_at', datetime.min), reverse=True)
+        else:
+            blocks.sort(key=lambda x: (
+                x.get('expires_at', datetime.min),
+                -x.get('blocked_at', datetime.min).timestamp() if x.get('blocked_at') else 0
+            ))
 
         return blocks
 

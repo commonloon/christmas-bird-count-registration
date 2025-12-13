@@ -55,17 +55,21 @@ class RemovalLogModel:
 
     def get_pending_removals_by_area(self, area_code: str) -> List[Dict]:
         """Get pending removals for a specific area."""
+        # Updated by Claude AI on 2025-12-12 - Avoid compound index by filtering in Python
         removals = []
-        query = (self.db.collection(self.collection)
-                 .where(filter=FieldFilter('emailed', '==', False))
-                 .where(filter=FieldFilter('area_code', '==', area_code)))
+        # Fetch all removals (no filter, no index needed)
+        query = self.db.collection(self.collection)
 
         for doc in query.stream():
             data = doc.to_dict()
             data['id'] = doc.id
             removals.append(data)
 
-        return removals
+        # Filter in Python
+        pending = [r for r in removals
+                   if not r.get('emailed', False) and r.get('area_code') == area_code]
+
+        return pending
 
     def get_all_removals(self, limit: int = None) -> List[Dict]:
         """Get all removal log entries for the current year."""
@@ -84,17 +88,20 @@ class RemovalLogModel:
 
     def get_removals_by_area(self, area_code: str) -> List[Dict]:
         """Get all removals for a specific area in the current year."""
+        # Updated by Claude AI on 2025-12-12 - Avoid compound index by filtering in Python
         removals = []
-        query = (self.db.collection(self.collection)
-                 .where(filter=FieldFilter('area_code', '==', area_code))
-                 .order_by('removed_at', direction=firestore.Query.DESCENDING))
+        # Fetch all removals with simple order_by (single-field index)
+        query = self.db.collection(self.collection).order_by('removed_at', direction=firestore.Query.DESCENDING)
 
         for doc in query.stream():
             data = doc.to_dict()
             data['id'] = doc.id
             removals.append(data)
 
-        return removals
+        # Filter by area in Python (already sorted by removed_at)
+        area_removals = [r for r in removals if r.get('area_code') == area_code]
+
+        return area_removals
 
     def mark_removals_emailed(self, removal_ids: List[str]) -> bool:
         """Mark removals as having been emailed."""
@@ -167,36 +174,44 @@ class RemovalLogModel:
 
     def get_recent_removals(self, days_back: int = 7) -> List[Dict]:
         """Get removals from the last N days."""
+        # Updated by Claude AI on 2025-12-12 - Avoid compound index by filtering in Python
         from datetime import timedelta
         cutoff_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         cutoff_date = cutoff_date - timedelta(days=days_back)
 
         removals = []
-        query = (self.db.collection(self.collection)
-                 .where(filter=FieldFilter('removed_at', '>=', cutoff_date))
-                 .order_by('removed_at', direction=firestore.Query.DESCENDING))
+        # Fetch all removals with simple order_by (single-field index)
+        query = self.db.collection(self.collection).order_by('removed_at', direction=firestore.Query.DESCENDING)
 
         for doc in query.stream():
             data = doc.to_dict()
             data['id'] = doc.id
             removals.append(data)
 
-        return removals
+        # Filter by date in Python (already sorted)
+        recent = [r for r in removals if r.get('removed_at') and r['removed_at'] >= cutoff_date]
+
+        return recent
 
     def get_removals_since(self, area_code: str, since_timestamp: datetime) -> List[Dict]:
         """Get removals for a specific area since the given timestamp."""
+        # Updated by Claude AI on 2025-12-12 - Avoid compound index by filtering in Python
         removals = []
-        query = (self.db.collection(self.collection)
-                 .where(filter=FieldFilter('area_code', '==', area_code))
-                 .where(filter=FieldFilter('removed_at', '>=', since_timestamp))
-                 .order_by('removed_at', direction=firestore.Query.DESCENDING))
+        # Fetch all removals with simple order_by (single-field index)
+        query = self.db.collection(self.collection).order_by('removed_at', direction=firestore.Query.DESCENDING)
 
         for doc in query.stream():
             data = doc.to_dict()
             data['id'] = doc.id
             removals.append(data)
 
-        return removals
+        # Filter by area and date in Python (already sorted)
+        filtered = [r for r in removals
+                    if r.get('area_code') == area_code
+                    and r.get('removed_at')
+                    and r['removed_at'] >= since_timestamp]
+
+        return filtered
 
     def get_removals_needing_notification(self) -> Dict[str, List[Dict]]:
         """Get pending removals grouped by area for email notifications."""
