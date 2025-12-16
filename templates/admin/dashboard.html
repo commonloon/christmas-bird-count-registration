@@ -1,4 +1,4 @@
-{# Updated by Claude AI on 2025-11-30 #}
+{# Updated by Claude AI on 2025-12-16 #}
 
 {% extends "base.html" %}
 
@@ -106,16 +106,39 @@
                     <tr>
                         <th>Name</th>
                         <th>Email</th>
+                        <th>Cell Phone</th>
                         <th>Area</th>
                         <th>Skill</th>
+                        <th>Experience</th>
+                        <th>Equipment</th>
+                        <th>Notes</th>
+                        <th>Leader</th>
+                        <th>Scribe</th>
                         <th>Date</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for participant in participants %}
                     <tr>
-                        <td>{{ participant.first_name|e }} {{ participant.last_name|e }}</td>
-                        <td>{{ participant.email|e }}</td>
+                        <td>
+                            <strong>{{ participant.first_name|e }} {{ participant.last_name|e }}</strong>
+                            {% if participant.is_leader %}
+                                <span class="badge bg-success ms-1">Leader</span>
+                            {% endif %}
+                            {% if participant.get('participation_type') == 'FEEDER' %}
+                                <div class="small text-muted">FEEDER</div>
+                            {% endif %}
+                            {% if participant.get('status') == 'withdrawn' %}
+                                <div class="small text-warning fw-bold">WITHDRAWN</div>
+                            {% endif %}
+                        </td>
+                        <td><a href="mailto:{{ participant.email|e }}">{{ participant.email|e }}</a></td>
+                        <td>
+                            {{ participant.phone|e or 'N/A' }}
+                            {% if participant.get('phone2') %}
+                                <div class="small text-muted">{{ participant.phone2|e }}</div>
+                            {% endif %}
+                        </td>
                         <td>
                             {% if participant.preferred_area == 'UNASSIGNED' %}
                                 <span class="badge bg-secondary">UNASSIGNED</span>
@@ -123,7 +146,38 @@
                                 {{ participant.preferred_area }}
                             {% endif %}
                         </td>
-                        <td>{{ participant.skill_level }}</td>
+                        <td>
+                            <span class="badge bg-{% if participant.skill_level == 'Expert' %}success{% elif participant.skill_level == 'Intermediate' %}primary{% elif participant.skill_level == 'Beginner' %}info{% else %}secondary{% endif %}">
+                                {{ participant.skill_level }}
+                            </span>
+                        </td>
+                        <td>{{ participant.experience }}</td>
+                        <td>
+                            {% if participant.has_binoculars %}<i class="bi bi-binoculars" title="Has binoculars"></i>{% endif %}
+                            {% if participant.spotting_scope %}<img src="{{ url_for('static', filename='icons/scope.svg') }}" alt="Spotting scope" title="Can bring spotting scope" class="scope-icon ms-1" style="width: 16px; height: 16px; vertical-align: text-bottom;">{% endif %}
+                            {% if not participant.has_binoculars and not participant.spotting_scope %}<span class="text-muted">None</span>{% endif %}
+                        </td>
+                        <td>
+                            {% if participant.notes_to_organizers %}
+                                {{ participant.notes_to_organizers|e }}
+                            {% else %}
+                                <span class="text-muted">None</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if participant.interested_in_leadership %}
+                                <span class="badge bg-warning">Interested</span>
+                            {% else %}
+                                <span class="text-muted">No</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if participant.get('interested_in_scribe') %}
+                                <span class="badge bg-info">Interested</span>
+                            {% else %}
+                                <span class="text-muted">No</span>
+                            {% endif %}
+                        </td>
                         <td>
                             {% if participant.created_at %}
                                 {{ participant.created_at.strftime('%m/%d %H:%M') }}

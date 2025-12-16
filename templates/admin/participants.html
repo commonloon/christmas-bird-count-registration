@@ -1,4 +1,4 @@
-{# Updated by Claude AI on 2025-12-02 #}
+{# Updated by Claude AI on 2025-12-16 #}
 {% extends "base.html" %}
 
 {% block title %}All Participants - {{ count_event_name }}{% endblock %}
@@ -231,9 +231,7 @@
                             <td>
                                 <div class="notes-display">
                                     {% if participant.notes_to_organizers %}
-                                        <span class="text-truncate d-inline-block" style="max-width: 150px;" title="{{ participant.notes_to_organizers|e }}">
-                                            {{ participant.notes_to_organizers[:50]|e }}{% if participant.notes_to_organizers|length > 50 %}...{% endif %}
-                                        </span>
+                                        {{ participant.notes_to_organizers|e }}
                                     {% else %}
                                         <span class="text-muted">None</span>
                                     {% endif %}
@@ -637,8 +635,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Update notes display
                 const notesDisplay = row.querySelector('.notes-display');
                 if (formData.notes_to_organizers) {
-                    const truncated = formData.notes_to_organizers.length > 50 ? formData.notes_to_organizers.substring(0, 50) + '...' : formData.notes_to_organizers;
-                    notesDisplay.innerHTML = '<span class="text-truncate d-inline-block" style="max-width: 150px;" title="' + formData.notes_to_organizers + '">' + truncated + '</span>';
+                    notesDisplay.textContent = formData.notes_to_organizers;
                 } else {
                     notesDisplay.innerHTML = '<span class="text-muted">None</span>';
                 }

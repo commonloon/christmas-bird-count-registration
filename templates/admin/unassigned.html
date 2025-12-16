@@ -1,3 +1,4 @@
+{# Updated by Claude AI on 2025-12-16 #}
 {% extends "base.html" %}
 
 {% block title %}Unassigned Participants - {{ count_event_name }}{% endblock %}
@@ -76,7 +77,10 @@
                         <th>Cell Phone</th>
                         <th>Skill Level</th>
                         <th>Experience</th>
-                        <th>Leadership Interest</th>
+                        <th>Equipment</th>
+                        <th>Notes</th>
+                        <th>Leader</th>
+                        <th>Scribe</th>
                         <th>Registered</th>
                         <th>Assign to Area</th>
                     </tr>
@@ -84,9 +88,22 @@
                 <tbody>
                     {% for participant in participants %}
                     <tr>
-                        <td><strong>{{ participant.first_name|e }} {{ participant.last_name|e }}</strong></td>
+                        <td>
+                            <strong>{{ participant.first_name|e }} {{ participant.last_name|e }}</strong>
+                            {% if participant.is_leader %}
+                                <span class="badge bg-success ms-1">Leader</span>
+                            {% endif %}
+                            {% if participant.get('participation_type') == 'FEEDER' %}
+                                <div class="small text-muted">FEEDER</div>
+                            {% endif %}
+                        </td>
                         <td><a href="mailto:{{ participant.email|e }}">{{ participant.email|e }}</a></td>
-                        <td>{{ participant.phone|e or 'N/A' }}</td>
+                        <td>
+                            {{ participant.phone|e or 'N/A' }}
+                            {% if participant.get('phone2') %}
+                                <div class="small text-muted">{{ participant.phone2|e }}</div>
+                            {% endif %}
+                        </td>
                         <td>
                             <span class="badge bg-{% if participant.skill_level == 'Expert' %}success{% elif participant.skill_level == 'Intermediate' %}primary{% elif participant.skill_level == 'Beginner' %}info{% else %}secondary{% endif %}">
                                 {{ participant.skill_level|e }}
@@ -94,8 +111,27 @@
                         </td>
                         <td>{{ participant.experience|e }}</td>
                         <td>
+                            {% if participant.has_binoculars %}<i class="bi bi-binoculars" title="Has binoculars"></i>{% endif %}
+                            {% if participant.spotting_scope %}<img src="{{ url_for('static', filename='icons/scope.svg') }}" alt="Spotting scope" title="Can bring spotting scope" class="scope-icon ms-1" style="width: 16px; height: 16px; vertical-align: text-bottom;">{% endif %}
+                            {% if not participant.has_binoculars and not participant.spotting_scope %}<span class="text-muted">None</span>{% endif %}
+                        </td>
+                        <td>
+                            {% if participant.notes_to_organizers %}
+                                {{ participant.notes_to_organizers|e }}
+                            {% else %}
+                                <span class="text-muted">None</span>
+                            {% endif %}
+                        </td>
+                        <td>
                             {% if participant.interested_in_leadership %}
-                                <span class="badge bg-warning">Yes</span>
+                                <span class="badge bg-warning">Interested</span>
+                            {% else %}
+                                <span class="text-muted">No</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if participant.get('interested_in_scribe') %}
+                                <span class="badge bg-info">Interested</span>
                             {% else %}
                                 <span class="text-muted">No</span>
                             {% endif %}
@@ -112,17 +148,17 @@
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <input type="hidden" name="participant_id" value="{{ participant.id }}">
                                 <input type="hidden" name="year" value="{{ selected_year }}">
-                                
+
                                 <select name="area_code" class="form-select form-select-sm me-2" style="width: 120px;" required>
                                     <option value="">Select...</option>
                                     {% for area in all_areas %}
-                                    <option value="{{ area }}" 
+                                    <option value="{{ area }}"
                                             {% if area_counts.get(area, 0) >= 8 %}class="text-warning"{% endif %}>
                                         {{ area }} ({{ area_counts.get(area, 0) }})
                                     </option>
                                     {% endfor %}
                                 </select>
-                                
+
                                 <button type="submit" class="btn btn-sm btn-success">Assign</button>
                             </form>
                         </td>
