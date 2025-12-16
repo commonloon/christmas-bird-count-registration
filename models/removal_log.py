@@ -1,6 +1,6 @@
 from google.cloud import firestore
 from google.cloud.firestore_v1.base_query import FieldFilter
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Optional
 import logging
 
@@ -23,7 +23,7 @@ class RemovalLogModel:
             'area_code': area_code,
             'removed_by': removed_by,
             'reason': reason,
-            'removed_at': datetime.now(),
+            'removed_at': datetime.now(timezone.utc),
             'year': self.year,
             'emailed': False
         }
@@ -107,7 +107,7 @@ class RemovalLogModel:
         """Mark removals as having been emailed."""
         try:
             batch = self.db.batch()
-            timestamp = datetime.now()
+            timestamp = datetime.now(timezone.utc)
 
             for removal_id in removal_ids:
                 doc_ref = self.db.collection(self.collection).document(removal_id)
@@ -129,7 +129,7 @@ class RemovalLogModel:
         try:
             updates = {
                 'emailed': True,
-                'emailed_at': datetime.now()
+                'emailed_at': datetime.now(timezone.utc)
             }
             self.db.collection(self.collection).document(removal_id).update(updates)
             return True
@@ -174,9 +174,9 @@ class RemovalLogModel:
 
     def get_recent_removals(self, days_back: int = 7) -> List[Dict]:
         """Get removals from the last N days."""
-        # Updated by Claude AI on 2025-12-12 - Avoid compound index by filtering in Python
+        # Updated by Claude AI on 2025-12-15 - Use timezone-aware datetime
         from datetime import timedelta
-        cutoff_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        cutoff_date = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
         cutoff_date = cutoff_date - timedelta(days=days_back)
 
         removals = []
@@ -189,13 +189,25 @@ class RemovalLogModel:
             removals.append(data)
 
         # Filter by date in Python (already sorted)
-        recent = [r for r in removals if r.get('removed_at') and r['removed_at'] >= cutoff_date]
+        recent = []
+        for r in removals:
+            if r.get('removed_at'):
+                removed_at = r['removed_at']
+                # Ensure removed_at is timezone-aware for comparison
+                if removed_at.tzinfo is None:
+                    removed_at = removed_at.replace(tzinfo=timezone.utc)
+                if removed_at >= cutoff_date:
+                    recent.append(r)
 
         return recent
 
     def get_removals_since(self, area_code: str, since_timestamp: datetime) -> List[Dict]:
         """Get removals for a specific area since the given timestamp."""
-        # Updated by Claude AI on 2025-12-12 - Avoid compound index by filtering in Python
+        # Updated by Claude AI on 2025-12-15 - Ensure timezone-aware comparison
+        # Ensure since_timestamp is timezone-aware
+        if since_timestamp.tzinfo is None:
+            since_timestamp = since_timestamp.replace(tzinfo=timezone.utc)
+
         removals = []
         # Fetch all removals with simple order_by (single-field index)
         query = self.db.collection(self.collection).order_by('removed_at', direction=firestore.Query.DESCENDING)
@@ -206,10 +218,15 @@ class RemovalLogModel:
             removals.append(data)
 
         # Filter by area and date in Python (already sorted)
-        filtered = [r for r in removals
-                    if r.get('area_code') == area_code
-                    and r.get('removed_at')
-                    and r['removed_at'] >= since_timestamp]
+        filtered = []
+        for r in removals:
+            if r.get('area_code') == area_code and r.get('removed_at'):
+                removed_at = r['removed_at']
+                # Ensure removed_at is timezone-aware for comparison
+                if removed_at.tzinfo is None:
+                    removed_at = removed_at.replace(tzinfo=timezone.utc)
+                if removed_at >= since_timestamp:
+                    filtered.append(r)
 
         return filtered
 
