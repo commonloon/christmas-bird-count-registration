@@ -1,4 +1,4 @@
-{# Updated by Claude AI on 2025-12-16 #}
+{# Updated by Claude AI on 2025-12-18 #}
 
 {% extends "base.html" %}
 
@@ -32,6 +32,42 @@
                 {% endfor %}
             </select>
         </form>
+    </div>
+</div>
+{% endif %}
+
+<!-- Registration Status -->
+{% if registration_status %}
+<div class="card mb-4 {% if registration_status.is_open %}border-success{% else %}border-warning{% endif %}">
+    <div class="card-body">
+        <h5 class="card-title">
+            <i class="bi bi-calendar-check{% if not registration_status.is_open %}-fill{% endif %}"></i>
+            Registration Status
+        </h5>
+        {% if registration_status.is_open %}
+        <p class="mb-1">
+            <span class="badge bg-success">OPEN</span>
+            Registration is currently accepting new participants for {{ registration_status.count_year }}.
+        </p>
+        {% if registration_status.days_until_closing is not none %}
+        <p class="mb-0 text-muted">
+            <i class="bi bi-clock"></i>
+            {% if registration_status.days_until_closing == 1 %}
+            Registration closes after midnight ({{ display_timezone }}) tonight.
+            {% elif registration_status.days_until_closing == 2 %}
+            Registration closes after midnight ({{ display_timezone }}) tomorrow night.
+            {% else %}
+            Registration closes in {{ registration_status.days_until_closing }} days
+            ({{ registration_status.closing_date.strftime('%B %d, %Y') }}).
+            {% endif %}
+        </p>
+        {% endif %}
+        {% else %}
+        <p class="mb-0">
+            <span class="badge bg-warning text-dark">CLOSED</span>
+            Public registration is currently closed. Admins can still add participants manually.
+        </p>
+        {% endif %}
     </div>
 </div>
 {% endif %}
