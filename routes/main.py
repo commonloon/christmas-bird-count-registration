@@ -1,10 +1,10 @@
-# Updated by Claude AI on 2025-12-09
+# Updated by Claude AI on 2025-12-18
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g, send_from_directory, abort
 from config.database import get_firestore_client
 from models.participant import ParticipantModel
 from models.area_signup_type import AreaSignupTypeModel
 from config.areas import get_area_info, get_all_areas
-from config.organization import COUNT_CONTACT, get_count_date
+from config.organization import COUNT_CONTACT, get_count_date, get_registration_status
 from services.email_service import email_service
 from services.security import (
     sanitize_name, sanitize_email, sanitize_phone, sanitize_notes,
@@ -36,6 +36,9 @@ def load_db():
 @main_bp.route('/')
 def index():
     """Main registration page."""
+    # Check registration status
+    reg_status = get_registration_status()
+
     # Get public areas from Firestore
     if g.db:
         signup_type_model = AreaSignupTypeModel(g.db)
@@ -87,13 +90,20 @@ def index():
                          count_contact=COUNT_CONTACT,
                          all_areas=all_areas,
                          area_leaders=area_leaders,
-                         count_date=count_date)
+                         count_date=count_date,
+                         registration_status=reg_status)
 
 
 @main_bp.route('/register', methods=['POST'])
 @limiter.limit(RATE_LIMITS['registration'], error_message=get_rate_limit_message('registration'))
 def register():
     """Handle registration form submission."""
+    # Check if registration is open
+    reg_status = get_registration_status()
+    if not reg_status['is_open']:
+        flash('Registration is currently closed. Please check back later.', 'error')
+        return redirect(url_for('main.index'))
+
     if not g.db:
         flash('Registration system temporarily unavailable. Please try again later.', 'error')
         return redirect(url_for('main.index'))

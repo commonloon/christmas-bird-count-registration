@@ -8,17 +8,43 @@ date
 
 # Read configuration from config files
 echo "Reading configuration from config/cloud.py and config/organization.py..."
-PYTHON_CONFIG=$(python -c "
+
+# Capture both stdout and stderr
+PYTHON_OUTPUT=$(python -c "
 import sys
 sys.path.insert(0, '.')
 from config.cloud import GCP_PROJECT_ID, GCP_LOCATION, TEST_SERVICE, PRODUCTION_SERVICE, TEST_BASE_URL, PRODUCTION_BASE_URL
 from config.organization import DISPLAY_TIMEZONE, FROM_EMAIL
 print(f'{GCP_PROJECT_ID}|{GCP_LOCATION}|{TEST_SERVICE}|{PRODUCTION_SERVICE}|{TEST_BASE_URL}|{PRODUCTION_BASE_URL}|{DISPLAY_TIMEZONE}|{FROM_EMAIL}')
-" 2>/dev/null)
+" 2>&1)
+
+# Check if the command succeeded by looking for the expected format
+PYTHON_CONFIG=$(echo "$PYTHON_OUTPUT" | grep '|' | head -1)
 
 if [ -z "$PYTHON_CONFIG" ]; then
     echo "ERROR: Failed to read configuration from config files"
-    echo "Please ensure config/cloud.py and config/organization.py are properly configured"
+    echo ""
+
+    # Check if it's a module import error
+    if echo "$PYTHON_OUTPUT" | grep -q "ModuleNotFoundError\|ImportError"; then
+        echo "This appears to be a missing Python dependency issue."
+        echo ""
+        echo "Possible solutions:"
+        echo "  1. Activate the virtual environment:"
+        echo "     source .venv/Scripts/activate  (Windows Git Bash)"
+        echo "     source .venv/bin/activate      (Linux/Mac)"
+        echo ""
+        echo "  2. Install dependencies:"
+        echo "     pip install -r requirements.txt"
+        echo ""
+        echo "Error details:"
+        echo "$PYTHON_OUTPUT" | head -5
+    else
+        echo "Please ensure config/cloud.py and config/organization.py are properly configured"
+        echo ""
+        echo "Error details:"
+        echo "$PYTHON_OUTPUT"
+    fi
     exit 1
 fi
 

@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2025-12-09
+# Updated by Claude AI on 2025-12-18
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response, g, current_app
 from google.cloud import firestore
 from config.database import get_firestore_client
@@ -8,6 +8,7 @@ from models.removal_log import RemovalLogModel
 from models.withdrawal_log import WithdrawalLogModel
 from models.area_signup_type import AreaSignupTypeModel
 from config.areas import get_area_info, get_all_areas
+from config.organization import get_registration_status
 from models.reassignment_log import ReassignmentLogModel
 from config.fields import (
     normalize_participant_record, get_participant_csv_fields,
@@ -79,6 +80,9 @@ def dashboard():
     total_unassigned = len(unassigned_participants)
     total_assigned = total_participants - total_unassigned
 
+    # Get registration status
+    reg_status = get_registration_status()
+
     return render_template('admin/dashboard.html',
                            selected_year=selected_year,
                            available_years=available_years,
@@ -92,7 +96,8 @@ def dashboard():
                            total_unassigned=total_unassigned,
                            total_assigned=total_assigned,
                            is_test_server=is_test_server(),
-                           current_user=get_current_user())
+                           current_user=get_current_user(),
+                           registration_status=reg_status)
 
 
 @admin_bp.route('/recent-registrations')

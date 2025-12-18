@@ -1,5 +1,5 @@
 # Vancouver Christmas Bird Count Registration App - Complete Specification
-{# Updated by Claude AI on 2025-12-11 #}
+{# Updated by Claude AI on 2025-12-18 #}
 
 ## Overview
 Web application for Nature Vancouver's annual Christmas Bird Count registration with interactive map-based area selection. Users can register by clicking count areas on a map or using a dropdown menu, with automatic assignment to areas needing volunteers.
@@ -118,6 +118,19 @@ def get_admin_emails():
 
 ### Registration System
 - **Count Date Display**: Prominent display of the upcoming count date (e.g., "Saturday, December 14, 2024") configured annually via `config/organization.py`
+- **Registration Window Management**:
+  - **Automatic Opening/Closing**: Registration opens X months before count date and closes X days before count date (configurable)
+  - **Configurable Parameters** (in `config/organization.py`):
+    - `REGISTRATION_CLOSES`: Days before count to close registration (0-21, default: 1)
+    - `REGISTRATION_OPENS`: Months before count to open registration (must be positive, default: 3)
+  - **Closing Behavior**: Registration closes at 00:00:01 on the closing date (Pacific timezone)
+  - **Cross-Year Support**: Handles count dates that span calendar years (e.g., 2025 count on Jan 7, 2026)
+  - **Warning System**: Displays alert banner 7 days before registration closes
+  - **Closed State**:
+    - Registration form hidden when closed
+    - Message displayed: "Thank you for your interest... Registration has closed for the season"
+    - Admins can still add participants manually via admin interface
+  - **Status Indicator**: Admin dashboard shows current registration status (open/closed) with countdown
 - **Personal Information**: First name, last name, email, primary phone number (labeled "Cell Phone"), optional secondary phone number
 - **Experience Data**: Birding skill level (Newbie|Beginner|Intermediate|Expert), CBC experience (None|1-2 counts|3+ counts)
 - **Participation Options**:
@@ -179,6 +192,10 @@ def get_admin_emails():
 ### Admin Interface
 **Dashboard (`/admin/`)**
 - Year selector with available years dropdown (defaults to current year)
+- **Registration Status Card**: Displays whether public registration is currently open or closed
+  - Shows countdown when open (e.g., "Registration closes in 5 days")
+  - Indicates admins can still add participants manually when closed
+  - Green border when open, yellow border when closed
 - Statistics overview: total participants, assigned/unassigned counts, areas needing leaders
 - Recent registrations preview (latest 10 participants)
 - Quick action buttons for common management tasks
@@ -866,7 +883,7 @@ deactivate_leaders_by_identity(first_name: str, last_name: str, email: str, remo
 ## File Structure
 ```
 app.py                          # Flask entry point with OAuth initialization
-requirements.txt                # Python dependencies (Flask, google-cloud-firestore, gunicorn, Flask-WTF, Flask-Limiter)
+requirements.txt                # Python dependencies (Flask, google-cloud-firestore, gunicorn, Flask-WTF, Flask-Limiter, python-dateutil, pytz)
 Dockerfile                      # Container configuration for Cloud Run
 deploy.sh                       # Automated deployment script (test/production/both)
 
@@ -878,7 +895,7 @@ config/
   database.py                   # Database configuration helper for environment-specific databases
   fields.py                     # Centralized field definitions for participants with defaults and ordering
   email_settings.py             # Email service configuration and SMTP settings
-  organization.py               # Club-specific settings for contact emails, organization details, and year-specific count dates (YEARLY_COUNT_DATES)
+  organization.py               # Club-specific settings: contact emails, organization details, year-specific count dates (YEARLY_COUNT_DATES), and registration window configuration (REGISTRATION_CLOSES, REGISTRATION_OPENS)
   rate_limits.py                # Rate limiting configuration with TEST_MODE-aware settings
 
 models/
@@ -946,6 +963,7 @@ tests/
   requirements.txt             # Test dependencies (pytest, selenium, faker, etc.)
   test_family_email_scenarios.py # Family email sharing and isolation tests (11 tests)
   test_identity_synchronization.py # Identity-based synchronization and validation tests (10 tests)
+  test_registration_window.py  # Registration window opening/closing tests (19 tests)
   utils/
     identity_utils.py          # Identity-based test utilities and helper functions
 

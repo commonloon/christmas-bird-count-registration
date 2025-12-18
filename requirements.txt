@@ -6,6 +6,7 @@ google-auth
 google-cloud-firestore
 google-cloud-functions
 gunicorn
+python-dateutil
 python-dotenv
 pytz
 coverage>=7.3.0

@@ -1,5 +1,5 @@
 # Club-specific settings for email customization
-# Updated by Claude AI on 2025-10-30
+# Updated by Claude AI on 2025-12-18
 
 """
 Organization configuration for Christmas Bird Count registration system.
@@ -14,7 +14,9 @@ To adapt this system for another club:
 """
 
 from config.cloud import TEST_BASE_URL, PRODUCTION_BASE_URL
-from datetime import datetime
+from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
+import pytz
 
 # Organization Information
 ORGANIZATION_NAME = "Nature Vancouver"
@@ -32,6 +34,21 @@ YEARLY_COUNT_DATES = {
     2024: '2024-12-14',
     2025: '2025-12-20',
 }
+
+# Registration Window Configuration
+# Number of days before the count to close registration
+# Valid range: 0-21 days
+# - Negative values are treated as positive (absolute value)
+# - Values > 21 or invalid values default to 1
+# - Zero is allowed (registration closes at 00:00:01 on count day)
+# Example: If count is Dec 20 and REGISTRATION_CLOSES = 1, registration closes at 00:00:01 on Dec 19
+REGISTRATION_CLOSES = 1
+
+# Number of months before the count to open registration
+# Valid range: Must be positive integer
+# - Invalid or non-positive values default to 3
+# Example: If count is Dec 20 and REGISTRATION_OPENS = 3, registration opens on Sept 20
+REGISTRATION_OPENS = 3
 
 # Email Configuration
 FROM_EMAIL = "cbc@naturevancouver.ca"  # Default sender email address
@@ -113,6 +130,130 @@ def get_organization_variables():
         'test_recipient': TEST_RECIPIENT,
         'display_timezone': DISPLAY_TIMEZONE
     }
+
+# Registration Window Helper Functions
+
+def _get_validated_registration_closes():
+    """Get validated REGISTRATION_CLOSES value with proper bounds checking."""
+    try:
+        value = abs(int(REGISTRATION_CLOSES))  # Treat negative as positive
+        if value > 21:
+            return 1  # Default for out of bounds
+        return value
+    except (ValueError, TypeError):
+        return 1  # Default for invalid values
+
+def _get_validated_registration_opens():
+    """Get validated REGISTRATION_OPENS value."""
+    try:
+        value = int(REGISTRATION_OPENS)
+        if value <= 0:
+            return 3  # Default for non-positive
+        return value
+    except (ValueError, TypeError):
+        return 3  # Default for invalid values
+
+def _get_pacific_now():
+    """Get current datetime in Pacific timezone."""
+    pacific_tz = pytz.timezone(DISPLAY_TIMEZONE)
+    return datetime.now(pacific_tz)
+
+def _make_date_pacific_aware(date_str):
+    """Convert date string to timezone-aware datetime at start of day in Pacific time.
+
+    Args:
+        date_str: Date string in 'YYYY-MM-DD' format
+
+    Returns:
+        Timezone-aware datetime at 00:00:01 in Pacific timezone, or None if invalid
+    """
+    try:
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+        pacific_tz = pytz.timezone(DISPLAY_TIMEZONE)
+        # Set to 00:00:01 (one second after midnight)
+        aware_datetime = pacific_tz.localize(datetime(date_obj.year, date_obj.month, date_obj.day, 0, 0, 1))
+        return aware_datetime
+    except (ValueError, TypeError):
+        return None
+
+def get_current_registration_year():
+    """Get the count year that registration is currently open for, or None if closed.
+
+    Returns:
+        Integer year if registration is open, None if closed
+    """
+    now = _get_pacific_now()
+    closes_days = _get_validated_registration_closes()
+    opens_months = _get_validated_registration_opens()
+
+    for count_year, count_date_str in YEARLY_COUNT_DATES.items():
+        count_date = _make_date_pacific_aware(count_date_str)
+        if not count_date:
+            continue
+
+        # Calculate registration window
+        opening = count_date - relativedelta(months=opens_months)
+        closing = count_date - timedelta(days=closes_days)
+
+        if opening <= now < closing:
+            return count_year
+
+    return None
+
+def get_registration_status():
+    """Get detailed registration status information.
+
+    Returns:
+        Dictionary with keys:
+        - is_open: Boolean indicating if registration is open
+        - count_year: Year registration is open for (None if closed)
+        - days_until_closing: Days until registration closes (None if closed)
+        - closing_date: Date when registration closes (None if closed)
+        - closed_message: Message to display when closed (None if open)
+    """
+    current_year = get_current_registration_year()
+
+    if current_year is None:
+        # Registration is closed
+        org_vars = get_organization_variables()
+        closed_message = (
+            f"Thank you for your interest in {org_vars['count_event_name']}. "
+            f"Registration for the count has closed for the season. "
+            f"Registration should reopen a few months prior to the next count. "
+            f"Please email {org_vars['count_contact']} with any inquiries."
+        )
+        return {
+            'is_open': False,
+            'count_year': None,
+            'days_until_closing': None,
+            'closing_date': None,
+            'closed_message': closed_message
+        }
+
+    # Registration is open
+    now = _get_pacific_now()
+    count_date_str = YEARLY_COUNT_DATES[current_year]
+    count_date = _make_date_pacific_aware(count_date_str)
+    closes_days = _get_validated_registration_closes()
+
+    closing_date = count_date - timedelta(days=closes_days)
+    days_until_closing = (closing_date.date() - now.date()).days
+
+    return {
+        'is_open': True,
+        'count_year': current_year,
+        'days_until_closing': days_until_closing,
+        'closing_date': closing_date,
+        'closed_message': None
+    }
+
+def is_registration_open():
+    """Simple check if registration is currently open.
+
+    Returns:
+        Boolean indicating if registration is open
+    """
+    return get_current_registration_year() is not None
 
 # Helper function for other clubs
 def validate_organization_config():
