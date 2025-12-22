@@ -19,24 +19,20 @@ from dateutil.relativedelta import relativedelta
 import pytz
 
 # Organization Information
-ORGANIZATION_NAME = "Nature Vancouver"
-ORGANIZATION_WEBSITE = "https://naturevancouver.ca"
-ORGANIZATION_CONTACT = "info@naturevancouver.ca"
+ORGANIZATION_NAME = "2025 Nanaimo Christmas Bird Count"
+ORGANIZATION_WEBSITE = "https://www.birdscanada.org/bird-science/christmas-bird-count"
+ORGANIZATION_CONTACT = "nanaimo-cbc@naturevancouver.ca"
 
 # Christmas Bird Count Specific Information
-COUNT_CONTACT = "cbc@naturevancouver.ca"
-COUNT_EVENT_NAME = "Vancouver Christmas Bird Count"
-COUNT_INFO_URL = "https://naturevancouver.ca/birding/vancouver-area-christmas-bird-count/"
+COUNT_CONTACT = "nanaimo-cbc@naturevancouver.ca"
+COUNT_EVENT_NAME = "Nanaimo Christmas Bird Count"
+COUNT_INFO_URL = "https://view.publitas.com/birds-canada-gykxaz9yrrpp/ebird-instructions-for-counters-2024/"
 
 # Year-specific count dates (YYYY-MM-DD format)
 # Update annually with the scheduled count date for each year
 YEARLY_COUNT_DATES = {
-    2024: '2024-12-14',
-    2025: '2025-12-20',
-    2026: '2026-12-19',
-    2027: '2027-12-18',
-    2028: '2028-12-16',
-    2029: '2029-12-15',
+    2024: '2024-12-27',
+    2025: '2025-12-28',
 }
 
 # Registration Window Configuration
@@ -46,7 +42,7 @@ YEARLY_COUNT_DATES = {
 # - Values > 21 or invalid values default to 1
 # - Zero is allowed (registration closes at 00:00:01 on count day)
 # Example: If count is Dec 20 and REGISTRATION_CLOSES = 1, registration closes at 00:00:01 on Dec 19
-REGISTRATION_CLOSES = 1
+REGISTRATION_CLOSES = 0
 
 # Number of months before the count to open registration
 # Valid range: Must be positive integer
@@ -55,7 +51,7 @@ REGISTRATION_CLOSES = 1
 REGISTRATION_OPENS = 3
 
 # Email Configuration
-FROM_EMAIL = "cbc@naturevancouver.ca"  # Default sender email address
+FROM_EMAIL = "nanaimo-cbc@naturevancouver.ca"  # Default sender email address
 
 # Timezone Configuration
 # For list of valid timezone values, see: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
@@ -66,7 +62,7 @@ DISPLAY_TIMEZONE = "America/Vancouver"  # Used for email timestamps and schedule
 TEST_RECIPIENT = "birdcount@naturevancouver.ca"  # All test server emails redirect here
 
 # Logo Configuration
-LOGO_PATH = "/static/icons/NV_logo.png"  # Path relative to base URL
+LOGO_PATH = "/static/icons/Nanaimo_CBC_Santa_small.png"  # Path relative to base URL
 
 # URL Functions (environment-aware)
 def get_base_url():

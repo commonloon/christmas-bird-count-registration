@@ -52,6 +52,11 @@ function loadAreasNeedingLeaders() {
             window.cachedAreaData = data.areas;
 
             displayAreasNeedingLeaders(data.areas, data.areas_without_leaders);
+
+            // Display count circle boundary if available
+            if (data.count_circle) {
+                displayCountCircle(data.count_circle);
+            }
         })
         .catch(error => {
             console.error('Error fetching areas needing leaders:', error);
@@ -128,6 +133,28 @@ function displayAreasNeedingLeaders(allAreas, areasWithoutLeaders) {
     // Update legend - use window.allAreas for consistent total count
     const totalAreas = window.allAreas ? window.allAreas.length : allAreas.length;
     updateLeadersMapLegend(areasWithoutLeaders.length, totalAreas - areasWithoutLeaders.length);
+}
+
+function displayCountCircle(countCircle) {
+    // Draw the count circle boundary as a non-interactive line
+    const coordinates = countCircle.geometry.coordinates;
+
+    // Convert coordinates to Leaflet format [lat, lng]
+    const leafletCoords = coordinates.map(coord => [coord[1], coord[0]]);
+
+    // Create a polyline (not polygon) for the count circle boundary
+    const circleStyle = {
+        color: '#0000FF',       // Blue color
+        weight: 3,              // Line thickness
+        opacity: 0.7,           // Slightly transparent
+        fillOpacity: 0,         // No fill
+        interactive: false,     // NOT clickable or hoverable
+        className: 'count-circle-boundary'
+    };
+
+    L.polyline(leafletCoords, circleStyle).addTo(leadersMap);
+
+    console.log('Count circle boundary displayed on leaders map');
 }
 
 function getLeadershipStyle(needsLeader) {

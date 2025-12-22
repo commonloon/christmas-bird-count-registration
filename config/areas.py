@@ -1,169 +1,165 @@
-# Updated by Claude AI on 2025-11-30
-# Area configuration for the application
+# Updated by Claude AI on 2025-12-22
+# Area configuration for Nanaimo Christmas Bird Count
 # Note: admin_assignment_only is now managed in Firestore collection 'area_signup_type'
 #       Use AreaSignupTypeModel.get_public_areas() to get areas available for public registration
+
 AREA_CONFIG = {
-    'A': {
-        'name': 'North Shore Uplands - West',
-        'description': 'West of the Capilano River, North of the Trans Canada Highway',
+    '1': {
+        'name': 'North Coast',
+        'description': 'Area 1 North Coast',
         'difficulty': 'Moderate',
-        'terrain': 'Mountainous, some trails'
+        'terrain': 'Coastal'
     },
-    'B': {
-        'name': 'Ambleside/West Van Coastal',
-        'description': 'South of Trans Canada, West of Capilano Road, marine boundary',
+    '2': {
+        'name': 'Brannen Lake',
+        'description': 'Area 2 Brannen Lake',
         'difficulty': 'Easy',
-        'terrain': 'Coastal, urban parks'
+        'terrain': 'Lake, wetland'
     },
-    'C': {
-        'name': 'North Shore Uplands - Capilano to Lynn Creek',
-        'description': 'North of Trans Canada Highway between Lynn Creek and Capilano River',
+    '3': {
+        'name': 'North Nanaimo',
+        'description': 'Area 3 North Nanaimo',
         'difficulty': 'Moderate',
-        'terrain': 'Forested, residential'
+        'terrain': 'Mixed'
     },
-    'D': {
-        'name': 'North Vancouver East',
-        'description': 'South of Trans Canada Highway, east from Capilano Rd',
+    '4A': {
+        'name': 'Stephenson Point',
+        'description': 'Area 4A Stephenson Point',
+        'difficulty': 'Easy',
+        'terrain': 'Coastal'
+    },
+    '4B': {
+        'name': '- Departure Bay',
+        'description': 'Area 4B - Departure Bay',
+        'difficulty': 'Easy',
+        'terrain': 'Coastal, urban'
+    },
+    '5': {
+        'name': 'East Wellington',
+        'description': 'Area 5 East Wellington',
+        'difficulty': 'Easy',
+        'terrain': 'Suburban, residential'
+    },
+    '6': {
+        'name': 'Buttertubs',
+        'description': 'Area 6 Buttertubs',
+        'difficulty': 'Easy',
+        'terrain': 'Urban park, marsh'
+    },
+    '7': {
+        'name': 'Downtown',
+        'description': 'Area 7 Downtown',
         'difficulty': 'Easy',
         'terrain': 'Urban, waterfront'
     },
-    'E': {
-        'name': 'Seymour to Cates Park, plus uplands',
-        'description': 'East from Lynn Creek, north from Burrard Inlet midpoint',
+    '8': {
+        'name': 'Newcastle Island',
+        'description': 'Area 8 Newcastle Island',
         'difficulty': 'Moderate',
-        'terrain': 'Hillside residential, parks'
+        'terrain': 'Island, provincial marine park'
     },
-    'F': {
-        'name': 'Burnaby North',
-        'description': 'East from Trans Canada, north from Lougheed to Burrard Inlet',
+    '9A': {
+        'name': 'Mid-Nanaimo Harbour',
+        'description': 'Area 9A Mid-Nanaimo Harbour',
         'difficulty': 'Moderate',
-        'terrain': 'University, conservation area'
+        'terrain': 'Marine, requires boat'
     },
-    'G': {
-        'name': 'Burnaby Central',
-        'description': 'Between Lougheed Highway and Kingsway, east of Boundary Road',
-        'difficulty': 'Easy',
-        'terrain': 'Suburban residential'
-    },
-    'H': {
-        'name': 'Burnaby South',
-        'description': 'North from Fraser River midpoint, east from Boundary Road',
-        'difficulty': 'Easy',
-        'terrain': 'Urban, riverfront'
-    },
-    'I': {
-        'name': 'East Vancouver - South',
-        'description': 'North from Fraser River, between Fraser Street and Boundary Road',
-        'difficulty': 'Easy',
-        'terrain': 'Industrial, residential'
-    },
-    'J': {
-        'name': 'East Vancouver - Trout Lake',
-        'description': 'West from Boundary Road, between Broadway and 41st Avenue',
-        'difficulty': 'Easy',
-        'terrain': 'Dense residential'
-    },
-    'K': {
-        'name': 'East Vancouver - North',
-        'description': 'North from Broadway, between Main Street and Boundary Road',
-        'difficulty': 'Easy',
-        'terrain': 'Urban, light industrial'
-    },
-    'L': {
-        'name': 'Downtown Vancouver',
-        'description': 'Downtown core plus False Creek Flats, marine boundaries',
-        'difficulty': 'Easy',
-        'terrain': 'Dense urban, waterfront'
-    },
-    'M': {
-        'name': 'Cambie Corridor - QE Park/VanDusen',
-        'description': 'East from Granville, between 7th Avenue and Kingsway',
-        'difficulty': 'Easy',
-        'terrain': 'Dense residential, transit corridor'
-    },
-    'N': {
-        'name': 'Cambie Corridor - South',
-        'description': 'South from 41st Avenue between Granville and Fraser River',
-        'difficulty': 'Easy',
-        'terrain': 'Suburban, some industrial'
-    },
-    'O': {
-        'name': 'Marpole/Southlands',
-        'description': 'South from 33rd between Granville and Camosun to Fraser River',
-        'difficulty': 'Easy',
-        'terrain': 'Residential, airport vicinity'
-    },
-    'P': {
-        'name': 'Kitsilano/Jericho',
-        'description': 'Central Vancouver, marine boundary considerations',
-        'difficulty': 'Easy',
-        'terrain': 'Dense residential, beaches'
-    },
-    'Q': {
-        'name': 'UBC North',
-        'description': 'West from Blanca, north from W 16th Avenue, marine boundaries',
+    '9B': {
+        'name': 'Northumberland Channel',
+        'description': 'Area 9B Northumberland Channel',
         'difficulty': 'Moderate',
-        'terrain': 'Beaches, parks, residential'
+        'terrain': 'Mixed'
     },
-    'R': {
-        'name': 'UBC South/Musqueam',
-        'description': 'University and endowment lands, Musqueam territory',
+    '9C': {
+        'name': 'Departure Bay & Outer Islets',
+        'description': 'Area 9C Departure Bay & Outer Islets',
         'difficulty': 'Moderate',
-        'terrain': 'University campus, forest, beach'
+        'terrain': 'Marine, requires boat'
     },
-    'S': {
-        'name': 'Iona',
-        'description': 'South shore areas with marine boundaries',
+    '10': {
+        'name': 'Gabriola Island',
+        'description': 'Area 10 Gabriola Island',
         'difficulty': 'Moderate',
-        'terrain': 'Riverfront, mixed development'
+        'terrain': 'Island, requires ferry'
     },
-    'T': {
-        'name': 'Airport and surrounds',
-        'description': 'Vancouver International Airport and surrounds',
-        'difficulty': 'Easy',
-        'terrain': 'Airport and surrounds'
-    },
-    'U': {
-        'name': 'Northwest Richmond',
-        'description': 'Central Richmond areas',
-        'difficulty': 'Easy',
-        'terrain': 'Suburban, agricultural'
-    },
-    'V': {
-        'name': 'Northeast Richmond',
-        'description': 'Richmond east of Number 5 Road, river counting coordination needed',
-        'difficulty': 'Easy',
-        'terrain': 'Agricultural, bog areas'
-    },
-    'W': {
-        'name': 'Stanley Park West',
-        'description': 'Stanley Park and surrounding marine areas',
-        'difficulty': 'Easy',
-        'terrain': 'Urban park, seawall, beaches'
-    },
-    'X': {
-        'name': 'Stanley Park East',
-        'description': 'North and east from Stanley Park Causeway, marine boundaries',
-        'difficulty': 'Easy',
-        'terrain': 'Urban waterfront, marinas'
-    },
-    'Y': {
-        'name': 'Burrard Inlet/English Bay',
-        'description': 'This area is counted from one or more boats',
+    '11': {
+        'name': 'Nanaimo River Estuary',
+        'description': 'Area 11 Nanaimo River Estuary',
         'difficulty': 'Moderate',
-        'terrain': 'Marine, boat-based counting'
-    }
+        'terrain': 'Estuary, wetland'
+    },
+    '12': {
+        'name': 'Cable Bay tp Boat Harbour',
+        'description': 'Area 12 Cable Bay to Boat Harbour',
+        'difficulty': 'Moderate',
+        'terrain': 'Coastal'
+    },
+    '13': {
+        'name': 'Cedar',
+        'description': 'Area 13 Cedar',
+        'difficulty': 'Easy',
+        'terrain': 'Rural, residential'
+    },
+    '14': {
+        'name': 'Cinnebar & S. Wellington',
+        'description': 'Area 14 Cinnabar & S. Wellington',
+        'difficulty': 'Easy',
+        'terrain': 'Suburban, wetland'
+    },
+    '15': {
+        'name': 'Nanaimo River_Morden Colliery',
+        'description': 'Area 15 Nanaimo River/Morden Colliery',
+        'difficulty': 'Moderate',
+        'terrain': 'River, historical site'
+    },
+    '16': {
+        'name': 'Mt. Benson',
+        'description': 'Area 16 Mt. Benson',
+        'difficulty': 'Difficult',
+        'terrain': 'Mountainous, forested'
+    },
+    '17': {
+        'name': 'Harewood Plains',
+        'description': 'Area 17 Harewood Plains',
+        'difficulty': 'Easy',
+        'terrain': 'Urban, plains'
+    },
+    '18': {
+        'name': 'Westwood Lake',
+        'description': 'Area 18 Westwood Lake',
+        'difficulty': 'Easy',
+        'terrain': 'Lake, park'
+    },
+    '19': {
+        'name': 'Protection Island',
+        'description': 'Area 19 Protection Island',
+        'difficulty': 'Moderate',
+        'terrain': 'Island, requires boat'
+    },
+    '20': {
+        'name': 'Mudge Island',
+        'description': 'Area 20 Mudge Island',
+        'difficulty': 'Moderate',
+        'terrain': 'Island, requires boat'
+    },
 }
 
 def get_area_info(letter_code):
-    """Get configuration info for a specific area."""
-    return AREA_CONFIG.get(letter_code.upper(), {
-        'name': f'Area {letter_code}',
-        'description': 'Area description not available',
-        'difficulty': 'Unknown',
-        'terrain': 'Unknown'
-    })
+    """Get configuration info for a specific area.
+
+    Args:
+        letter_code: Area code (e.g., '1', '4A', '16')
+
+    Returns:
+        Dictionary with area configuration, or empty dict if not found
+    """
+    return AREA_CONFIG.get(letter_code, {})
+
 
 def get_all_areas():
-    """Get list of all available area codes."""
-    return sorted(AREA_CONFIG.keys())
+    """Return list of all configured area codes.
+
+    Returns:
+        List of area codes as strings
+    """
+    return list(AREA_CONFIG.keys())

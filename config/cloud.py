@@ -4,16 +4,16 @@
 # IMPORTANT: Update these values when deploying for a different organization or GCP project
 
 # GCP Project Configuration
-GCP_PROJECT_ID = 'vancouver-cbc-registration'
+GCP_PROJECT_ID = 'nanaimo-cbc'
 GCP_LOCATION = 'us-west1'  # Oregon region
 
 # Firestore Database identifiers
-TEST_DATABASE = 'cbc-test'
-PRODUCTION_DATABASE = 'cbc-register'
+TEST_DATABASE = 'nanaimo-test'
+PRODUCTION_DATABASE = 'nanaimo-cbc'
 
 # Cloud Run Service Names (subdomain names)
-TEST_SERVICE = 'cbc-test'
-PRODUCTION_SERVICE = 'cbc-registration'
+TEST_SERVICE = 'nanaimo-test'
+PRODUCTION_SERVICE = 'nanaimo-cbc'
 
 # Base domain for URL construction
 BASE_DOMAIN = 'naturevancouver.ca'
