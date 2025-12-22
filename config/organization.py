@@ -33,6 +33,10 @@ COUNT_INFO_URL = "https://naturevancouver.ca/birding/vancouver-area-christmas-bi
 YEARLY_COUNT_DATES = {
     2024: '2024-12-14',
     2025: '2025-12-20',
+    2026: '2026-12-19',
+    2027: '2027-12-18',
+    2028: '2028-12-16',
+    2029: '2029-12-15',
 }
 
 # Registration Window Configuration
