@@ -76,11 +76,17 @@ def get_areas():
             else:
                 area['availability'] = 'low'
 
-        # Return areas with map configuration
-        return jsonify({
+        # Return areas with map configuration and count circle
+        response = {
             'areas': areas,
             'map_config': map_config
-        })
+        }
+
+        # Include count circle if present in data
+        if 'count_circle' in data:
+            response['count_circle'] = data['count_circle']
+
+        return jsonify(response)
 
     except FileNotFoundError:
         return jsonify({'error': 'Area boundaries not found'}), 500
@@ -130,11 +136,17 @@ def get_areas_needing_leaders():
         else:
             areas_without_leaders = []
 
-        return jsonify({
+        response = {
             'areas': areas,
             'areas_without_leaders': areas_without_leaders,
             'map_config': map_config
-        })
+        }
+
+        # Include count circle if present in data
+        if 'count_circle' in data:
+            response['count_circle'] = data['count_circle']
+
+        return jsonify(response)
 
     except FileNotFoundError:
         return jsonify({'error': 'Area boundaries not found'}), 500

@@ -50,6 +50,11 @@ function loadAreaData() {
             // Display areas
             const areas = data.areas || data;  // Support both new and old format
             displayAreas(areas);
+
+            // Display count circle boundary if available
+            if (data.count_circle) {
+                displayCountCircle(data.count_circle);
+            }
         })
         .catch(error => {
             console.error('Error fetching area data:', error);
@@ -93,6 +98,28 @@ function displayAreas(areas) {
             data: area
         };
     });
+}
+
+function displayCountCircle(countCircle) {
+    // Draw the count circle boundary as a non-interactive line
+    const coordinates = countCircle.geometry.coordinates;
+
+    // Convert coordinates to Leaflet format [lat, lng]
+    const leafletCoords = coordinates.map(coord => [coord[1], coord[0]]);
+
+    // Create a polyline (not polygon) for the count circle boundary
+    const circleStyle = {
+        color: '#0000FF',       // Blue color
+        weight: 3,              // Line thickness
+        opacity: 0.7,           // Slightly transparent
+        fillOpacity: 0,         // No fill
+        interactive: false,     // NOT clickable or hoverable
+        className: 'count-circle-boundary'
+    };
+
+    L.polyline(leafletCoords, circleStyle).addTo(map);
+
+    console.log('Count circle boundary displayed');
 }
 
 function getAreaStyle(count) {
