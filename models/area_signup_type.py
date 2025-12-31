@@ -1,6 +1,26 @@
-# Updated by Claude AI on 2025-11-30
+# Updated by Claude AI on 2025-12-31
 from datetime import datetime
+import re
 from config.areas import get_all_areas
+
+
+def natural_sort_key(area_code):
+    """Create a sort key for natural/numeric sorting of area codes.
+
+    Handles codes like: A, B, C (alphabetic) and 1, 2, 10, 4A, 9B (numeric/alphanumeric).
+    Sorts alphabetically for letter codes: A, B, C, ... X
+    Sorts numerically for numeric codes: 1, 2, 4A, 4B, 9A, 9B, 10, 11, etc.
+
+    Args:
+        area_code: Area code string (e.g., 'A', 'B', '1', '4A', '10')
+
+    Returns:
+        Tuple for natural sorting
+    """
+    # Extract numeric and alphabetic parts
+    parts = re.findall(r'(\d+|[A-Za-z]+)', str(area_code))
+    # Convert numeric parts to integers for proper numeric sorting
+    return tuple(int(p) if p.isdigit() else p for p in parts)
 
 
 class AreaSignupTypeModel:
@@ -92,11 +112,12 @@ class AreaSignupTypeModel:
         """Get list of area codes available for public registration (excludes admin-only areas).
 
         Returns:
-            Sorted list of public area codes
+            Naturally sorted list of public area codes (A, B, C or 1, 2, 4A, 4B, 9A, 10, etc.)
         """
         signup_types = self.get_all_signup_types()
-        return sorted([code for code, settings in signup_types.items()
-                       if not settings.get('admin_assignment_only', False)])
+        public_codes = [code for code, settings in signup_types.items()
+                        if not settings.get('admin_assignment_only', False)]
+        return sorted(public_codes, key=natural_sort_key)
 
     def initialize_all_areas(self):
         """Initialize all areas to open registration if they don't exist yet.
