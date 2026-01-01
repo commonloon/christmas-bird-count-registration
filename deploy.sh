@@ -121,6 +121,7 @@ deploy() {
     fi
 
     if gcloud run deploy $service \
+        --quiet \
         --source . \
         --platform managed \
         --region $GCP_LOCATION \
