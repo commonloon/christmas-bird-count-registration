@@ -98,11 +98,14 @@ def secret_manager_client():
         pytest.fail(f"Cannot run tests without Secret Manager access: {e}")
 
 @pytest.fixture(scope="session")
-def test_credentials(secret_manager_client):
+def test_credentials(secret_manager_client, request):
     """Retrieve test account credentials from Secret Manager.
 
     Session-scoped to avoid redundant credential retrieval across all tests.
     Credentials are static for the entire test suite run.
+
+    For smoke tests that don't need authentication, this fixture returns None
+    and only fails when the credentials are actually accessed.
     """
     credentials = {}
     missing_secrets = []
@@ -128,6 +131,11 @@ def test_credentials(secret_manager_client):
             })
 
     if missing_secrets:
+        # Check if this is a smoke test - if so, log warning but don't fail
+        if hasattr(request, 'node') and request.node.get_closest_marker('smoke'):
+            logger.warning(f"Test credentials missing but running smoke test - skipping credential validation")
+            return None
+
         error_msg = "\n" + "=" * 80 + "\n"
         error_msg += "ERROR: Test Account Credentials Not Configured\n"
         error_msg += "=" * 80 + "\n\n"
