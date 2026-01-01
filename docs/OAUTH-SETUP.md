@@ -20,7 +20,8 @@ If you haven't already created SMTP secrets, see **[DEPLOYMENT.md - Step 8: Set 
 - **SMTP2GO secrets created** (see note above)
 
 ## Step 1: Create OAuth Client Credentials
-
+Google keeps fiddling with the details of OAuth setup, so you will have to figure some stuff out on your own.
+One tip is to create a google group to receive the contact emails.  The account you use to host the cloud application should be the owner of the group, e.g. for Nature Vancouver that's birdcount@naturevancouver.ca, but the contact email is cbc@naturevancouver.ca which is a google group owned by birdcount that has all the admins as members.
 ### 1.1 Configure OAuth Consent Screen
 
 1. Go to [Google Cloud Console - OAuth Consent Screen](https://console.cloud.google.com/apis/credentials/consent)
@@ -28,8 +29,8 @@ If you haven't already created SMTP secrets, see **[DEPLOYMENT.md - Step 8: Set 
 3. Choose **"External"** user type (unless you have Google Workspace)
 4. Fill in required fields:
    - **App name**: "Christmas Bird Count Registration"
-   - **User support email**: `birdcount@naturevancouver.ca`
-   - **Developer contact email**: `birdcount@naturevancouver.ca`
+   - **User support email**: `cbc@naturevancouver.ca`
+   - **Developer contact email**: `cbc@naturevancouver.ca`
 5. Add scopes:
    - `../auth/userinfo.email`
    - `../auth/userinfo.profile`
@@ -122,11 +123,12 @@ Repeat steps 2-9 for your **production service** with domain `cbc-registration.n
 
 ### 4.2 Update DNS Records
 
-Add these CNAME records to your `naturevancouver.ca` domain:
+Add CNAME records to your `naturevancouver.ca` domain, e.g. for Vancouver we use:
 ```
 CNAME cbc-test.naturevancouver.ca → ghs.googlehosted.com
 CNAME cbc-registration.naturevancouver.ca → ghs.googlehosted.com
 ```
+These CNAME records allow access to the website via those urls.
 
 ## Step 5: Publish OAuth Consent Screen
 

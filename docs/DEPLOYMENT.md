@@ -293,6 +293,10 @@ See [DEPLOYMENT_TECHNICAL_REFERENCE.md](DEPLOYMENT_TECHNICAL_REFERENCE.md) for d
 
 ### 7. Create Firestore Databases
 
+Edit `config/cloud.py` and make the appropriate changes.
+See [DEPLOYMENT_WORKSHEET.md](DEPLOYMENT_WORKSHEET.md) and
+[DEPLOYMENT_TECHNICAL_REFERENCE.md](DEPLOYMENT_TECHNICAL_REFERENCE.md) for more details.
+
 ```bash
 # Install Python dependencies
 pip install -r utils/requirements.txt
@@ -315,13 +319,13 @@ The application uses SMTP2GO for sending email notifications to area leaders and
 ```
 
 The script will prompt you for:
-- SMTP2GO username
+- SMTP2GO username  (Note: this is the smtp user set up under "SMTP Users" in the smtp2go account, not the username used to log in to smtp2go.  That's a bit confusing, sorry.)
 - SMTP2GO password (entered securely, not displayed)
 
 **To get SMTP2GO credentials:**
 1. Sign up for a free account at https://www.smtp2go.com
 2. Verify your sending domain
-3. Get your SMTP username and password from the SMTP2GO dashboard
+3. Set up your SMTP username and password from the SMTP2GO dashboard (or find the values there under "SMTP Users" if you've already created the user)
 
 **Notes:**
 - If you don't have SMTP2GO credentials yet, you can use placeholder values for initial testing
@@ -407,12 +411,14 @@ gcloud iam service-accounts create cloud-scheduler-invoker \
     --display-name="Cloud Scheduler Email Invoker"
 
 # Grant permissions to test service
+# Replace <TEST-SERVICE> with the value from config/cloud.py
 gcloud run services add-iam-policy-binding <TEST-SERVICE> \
     --region=us-west1 \
     --member="serviceAccount:cloud-scheduler-invoker@<YOUR-PROJECT-ID>.iam.gserviceaccount.com" \
     --role="roles/run.invoker"
 
 # Grant permissions to production service
+# Replace <PROD-SERVICE> with the value of PRODUCTION_SERVICE from config/cloud.py
 gcloud run services add-iam-policy-binding <PROD-SERVICE> \
     --region=us-west1 \
     --member="serviceAccount:cloud-scheduler-invoker@<YOUR-PROJECT-ID>.iam.gserviceaccount.com" \
