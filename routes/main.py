@@ -4,7 +4,7 @@ from config.database import get_firestore_client
 from models.participant import ParticipantModel
 from models.area_signup_type import AreaSignupTypeModel
 from config.areas import get_area_info, get_all_areas
-from config.organization import COUNT_CONTACT, get_count_date, get_registration_status
+from config.organization import COUNT_CONTACT, LOGO_PATH, get_count_date, get_registration_status
 from services.email_service import email_service
 from services.security import (
     sanitize_name, sanitize_email, sanitize_phone, sanitize_notes,
@@ -91,7 +91,8 @@ def index():
                          all_areas=all_areas,
                          area_leaders=area_leaders,
                          count_date=count_date,
-                         registration_status=reg_status)
+                         registration_status=reg_status,
+                         logo_path=LOGO_PATH)
 
 
 @main_bp.route('/register', methods=['POST'])
@@ -257,7 +258,8 @@ def register():
                              count_contact=COUNT_CONTACT,
                              all_areas=all_areas,
                              area_leaders=area_leaders,
-                             count_date=count_date)
+                             count_date=count_date,
+                             logo_path=LOGO_PATH)
 
 
     # Create participant record

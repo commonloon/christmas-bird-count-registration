@@ -4,8 +4,15 @@
 {% block content %}
 <div class="row">
     <div class="col-lg-6">
-        <h1>Register for {{ count_event_name }}</h1>
-        <p class="lead">Join {{ organization_name }}'s annual {{ count_event_name }} and help us track bird populations in the area.</p>
+        <div class="d-flex align-items-center mb-3">
+            <img src="{{ logo_path }}"
+                 alt="{{ count_event_name }} Logo"
+                 class="registration-logo me-3">
+            <div>
+                <h1 class="mb-2" style="font-size: 1.75rem;">Register for the {{ count_event_name }}</h1>
+                <p class="lead mb-0" style="font-size: 1.1rem;">Join {{ organization_name }}'s annual {{ count_event_name }} and help us track bird populations in the area.</p>
+            </div>
+        </div>
         <div class="alert alert-info" role="alert">
             <strong>Count Date:</strong> {{ count_date }}
         </div>

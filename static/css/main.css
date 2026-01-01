@@ -208,6 +208,34 @@
     outline-offset: 2px;
 }
 
+/* Registration page logo */
+.registration-logo {
+    height: 130px;
+    width: auto;
+    flex-shrink: 0;
+}
+
+/* Responsive logo sizing */
+@media (max-width: 768px) {
+    .registration-logo {
+        height: 70px;
+    }
+
+    h1 {
+        font-size: 1.5rem !important;
+    }
+
+    .lead {
+        font-size: 1rem !important;
+    }
+}
+
+@media (max-width: 576px) {
+    .registration-logo {
+        height: 60px;
+    }
+}
+
 /* Print styles */
 @media print {
     .navbar,
