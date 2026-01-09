@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Updated by Claude AI on 2025-11-30
+Updated by Claude AI on 2026-01-05
 Test Participant Data Generator for Christmas Bird Count Registration
 
 This script generates test participants by submitting data to the registration endpoint.
@@ -388,7 +388,7 @@ Note: 10% of all participants randomly receive scribe interest regardless of --s
     print(f"Christmas Bird Count Test Data Generator")
     print(f"========================================")
     print(f"Target endpoint: {REGISTRATION_URL}")
-    print(f"Available areas: {', '.join(PUBLIC_AREAS)} + UNASSIGNED ({len(PUBLIC_AREAS) + 1} total)")
+    print(f"Available areas: {', '.join(ALL_AREAS)} + UNASSIGNED ({len(ALL_AREAS) + 1} total)")
     print(f"Regular participants: {num_regular}")
     print(f"Leadership-interested participants: {num_leadership}")
     print(f"Scribe-interested participants: {num_scribes}")
