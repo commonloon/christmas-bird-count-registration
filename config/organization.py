@@ -28,6 +28,12 @@ COUNT_CONTACT = "cbc@naturevancouver.ca"
 COUNT_EVENT_NAME = "Vancouver Christmas Bird Count"
 COUNT_INFO_URL = "https://naturevancouver.ca/birding/vancouver-area-christmas-bird-count/"
 
+# UI Customization - Customize these for your specific bird count
+IS_CBC = True  # True for Christmas Bird Counts, False for other counts (Spring, etc.)
+COUNT_EXPERIENCE_LABEL = "CBC Experience"  # Label for the experience field
+FEEDER_COUNTER_LABEL = "Count birds at my home feeder"  # Label for feeder counter option
+NOTES_PLACEHOLDER_EXAMPLE = "I would prefer to be assigned to an area in East Vancouver"  # Example text for notes field
+
 # Year-specific count dates (YYYY-MM-DD format)
 # Update annually with the scheduled count date for each year
 YEARLY_COUNT_DATES = {
@@ -132,7 +138,11 @@ def get_organization_variables():
         'leader_url': get_leader_url(),
         'logo_url': get_logo_url(),
         'test_recipient': TEST_RECIPIENT,
-        'display_timezone': DISPLAY_TIMEZONE
+        'display_timezone': DISPLAY_TIMEZONE,
+        'is_cbc': IS_CBC,
+        'count_experience_label': COUNT_EXPERIENCE_LABEL,
+        'feeder_counter_label': FEEDER_COUNTER_LABEL,
+        'notes_placeholder_example': NOTES_PLACEHOLDER_EXAMPLE
     }
 
 # Registration Window Helper Functions
