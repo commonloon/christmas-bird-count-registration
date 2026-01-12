@@ -1,10 +1,10 @@
-# Updated by Claude AI on 2025-12-18
+# Updated by Claude AI on 2026-01-12
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g, send_from_directory, abort
 from config.database import get_firestore_client
 from models.participant import ParticipantModel
 from models.area_signup_type import AreaSignupTypeModel
 from config.areas import get_area_info, get_all_areas
-from config.organization import COUNT_CONTACT, LOGO_PATH, get_count_date, get_registration_status
+from config.organization import LOGO_PATH, get_count_date, get_registration_status, get_organization_variables
 from services.email_service import email_service
 from services.security import (
     sanitize_name, sanitize_email, sanitize_phone, sanitize_notes,
@@ -82,17 +82,18 @@ def index():
             area_leaders[area_code] = []
 
     count_date = get_count_date()
+    org_vars = get_organization_variables()
 
     return render_template('index.html',
                          public_areas=public_areas,
                          get_area_info=get_area_info,
                          form_data=form_data,
-                         count_contact=COUNT_CONTACT,
                          all_areas=all_areas,
                          area_leaders=area_leaders,
                          count_date=count_date,
                          registration_status=reg_status,
-                         logo_path=LOGO_PATH)
+                         logo_path=LOGO_PATH,
+                         **org_vars)
 
 
 @main_bp.route('/register', methods=['POST'])
@@ -250,16 +251,17 @@ def register():
                 area_leaders[area_code] = []
 
         count_date = get_count_date()
+        org_vars = get_organization_variables()
 
         return render_template('index.html',
                              public_areas=public_areas,
                              get_area_info=get_area_info,
                              form_data=form_data,
-                             count_contact=COUNT_CONTACT,
                              all_areas=all_areas,
                              area_leaders=area_leaders,
                              count_date=count_date,
-                             logo_path=LOGO_PATH)
+                             logo_path=LOGO_PATH,
+                             **org_vars)
 
 
     # Create participant record
@@ -323,10 +325,12 @@ def registration_success():
     else:
         area_info = get_area_info(area)
 
+    org_vars = get_organization_variables()
     return render_template('registration_success.html',
                            area=area,
                            area_info=area_info,
-                           participant_id=participant_id)
+                           participant_id=participant_id,
+                           **org_vars)
 
 
 @main_bp.route('/area-leader-info')
@@ -334,7 +338,8 @@ def area_leader_info():
     """Information about area leader responsibilities."""
     # Pass all query parameters to template for form restoration links
     form_data = dict(request.args)
-    return render_template('area_leader_info.html', form_data=form_data)
+    org_vars = get_organization_variables()
+    return render_template('area_leader_info.html', form_data=form_data, **org_vars)
 
 
 @main_bp.route('/scribe-info')
@@ -342,7 +347,8 @@ def scribe_info():
     """Information about scribe responsibilities."""
     # Pass all query parameters to template for form restoration links
     form_data = dict(request.args)
-    return render_template('scribe_info.html', form_data=form_data)
+    org_vars = get_organization_variables()
+    return render_template('scribe_info.html', form_data=form_data, **org_vars)
 
 
 @main_bp.route('/robots.txt')

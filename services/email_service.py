@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2025-10-22
+# Updated by Claude AI on 2026-01-12
 import os
 import smtplib
 from email.mime.text import MIMEText
@@ -274,6 +274,8 @@ This is an automated notification from the CBC registration system.
             'count_contact': org_vars['count_contact'],
             'organization_contact': org_vars['organization_contact'],
             'count_info_url': org_vars['count_info_url'],
+            'count_experience_label': org_vars['count_experience_label'],
+            'is_cbc': org_vars['is_cbc'],
             'test_mode': is_test_server(),
             'branding': get_email_branding()
         }

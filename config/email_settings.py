@@ -1,8 +1,9 @@
-# Updated by Claude AI on 2025-10-12
+# Updated by Claude AI on 2026-01-12
 # Email service configuration and SMTP settings
 import os
 from flask import request
 from typing import Dict, Any, Optional
+from config.organization import ORGANIZATION_NAME
 
 
 # Email provider configurations - provider-agnostic design
@@ -174,9 +175,9 @@ EMAIL_SUBJECTS = {
 
 # Email branding configuration
 EMAIL_BRANDING = {
-    'organization_name': 'Nature Vancouver',
+    'organization_name': ORGANIZATION_NAME,
     'logo_url': None,  # Will be set based on environment
-    'logo_alt': 'Nature Vancouver Logo',
+    'logo_alt': f'{ORGANIZATION_NAME} Logo',
     'primary_color': '#2e8b57',      # Sea green (matches logo)
     'secondary_color': '#1e5c3a',    # Darker green
     'accent_color': '#90ee90',       # Light green

@@ -1,4 +1,4 @@
-{# Updated by Claude AI on 2025-12-18 #}
+{# Updated by Claude AI on 2026-01-12 #}
 {% extends "base.html" %}
 
 {% block content %}
@@ -78,12 +78,18 @@
             </div>
             
             <div class="mb-3">
-                <label for="experience" class="form-label">CBC Experience *</label>
+                <label for="experience" class="form-label">{{ count_experience_label }} *</label>
                 <select class="form-select" id="experience" name="experience" required>
                     <option value="">Choose...</option>
+                    {% if is_cbc %}
                     <option value="None">This is my first Christmas Bird Count</option>
                     <option value="1-2 counts">I've done 1-2 Christmas Bird Counts</option>
                     <option value="3+ counts">I've done 3 or more Christmas Bird Counts</option>
+                    {% else %}
+                    <option value="None">This is my first count</option>
+                    <option value="1-2 counts">I've done 1-2 counts</option>
+                    <option value="3+ counts">I've done 3 or more counts</option>
+                    {% endif %}
                 </select>
             </div>
             
@@ -95,7 +101,7 @@
                 </div>
                 <div class="form-check">
                     <input class="form-check-input" type="radio" name="participation_type" id="feeder" value="FEEDER" required>
-                    <label class="form-check-label" for="feeder">Count birds at my home feeder</label>
+                    <label class="form-check-label" for="feeder">{{ feeder_counter_label }}</label>
                 </div>
                 <div class="mt-2">
                     <a href="https://view.publitas.com/birds-canada-gykxaz9yrrpp/field-counters-guide-to-cbc_cheat-sheet-with-datasheet/page/1" 
@@ -146,7 +152,7 @@
             <div class="mb-3">
                 <label for="notes_to_organizers" class="form-label">Notes to Organizers</label>
                 <textarea class="form-control" id="notes_to_organizers" name="notes_to_organizers"
-                          placeholder="I would like to car pool to the meeting point&#10;I would prefer to be assigned to an area in East Vancouver"
+                          placeholder="I would like to car pool to the meeting point&#10;{{ notes_placeholder_example }}"
                           rows="3"></textarea>
             </div>
 

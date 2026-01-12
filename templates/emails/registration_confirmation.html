@@ -155,7 +155,7 @@
                 {% endif %}
             </p>
             <p><strong>Skill Level:</strong> {{ skill_level or 'Not specified' }}</p>
-            <p><strong>CBC Experience:</strong> {{ experience or 'Not specified' }}</p>
+            <p><strong>{{ count_experience_label }}:</strong> {{ experience or 'Not specified' }}</p>
             <p><strong>Equipment:</strong>
                 Binoculars: {{ '✓' if has_binoculars else '✗' }},
                 Spotting Scope: {{ '✓' if spotting_scope else '✗' }}
@@ -207,7 +207,7 @@
                     {% endif %}
                 {% endif %}
                 <li><strong>Count Day Schedule:</strong> The count typically begins early in the morning and lasts until dusk. Please let your area leader know if you aren't available for the full day.</li>
-                <li><strong>Weather:</strong> The Christmas Bird Count happens rain or shine. Dress to stay warm and dry.</li>
+                <li><strong>Weather:</strong> The {{ count_event_name }} happens rain or shine. Dress to stay warm and dry.</li>
                 <li><strong>Equipment:</strong> Bring binoculars and a sense of adventure!</li>
                 {% if participation_type == 'FEEDER' %}
                 <li><strong>FEEDER Instructions:</strong> You'll receive specific instructions for counting birds at your feeders closer to count day.</li>
@@ -246,4 +246,4 @@
     </div>
 </body>
 </html>
-<!-- Updated by Claude AI on 2025-10-22 -->
+<!-- Updated by Claude AI on 2026-01-12 -->
