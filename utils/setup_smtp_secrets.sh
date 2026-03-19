@@ -9,6 +9,11 @@
 
 set -e  # Exit on error
 
+# Secrets are created with single-region replication. All services run in
+# us-west1, so replicating to additional regions provides no availability
+# benefit and increases cost.
+REGION="us-west1"
+
 echo "=== SMTP2GO Secret Manager Setup ==="
 echo ""
 echo "This script will create secrets for SMTP2GO email functionality."
@@ -46,7 +51,8 @@ if [ "$SKIP_USERNAME" != "true" ]; then
         exit 1
     fi
 
-    echo -n "$SMTP_USERNAME" | gcloud secrets create smtp2go-username --data-file=- 2>/dev/null || \
+    echo -n "$SMTP_USERNAME" | gcloud secrets create smtp2go-username \
+        --replication-policy="user-managed" --locations="$REGION" --data-file=- 2>/dev/null || \
         echo -n "$SMTP_USERNAME" | gcloud secrets versions add smtp2go-username --data-file=-
 
     echo "✓ SMTP2GO username stored in Secret Manager"
@@ -63,7 +69,8 @@ if [ "$SKIP_PASSWORD" != "true" ]; then
         exit 1
     fi
 
-    echo -n "$SMTP_PASSWORD" | gcloud secrets create smtp2go-password --data-file=- 2>/dev/null || \
+    echo -n "$SMTP_PASSWORD" | gcloud secrets create smtp2go-password \
+        --replication-policy="user-managed" --locations="$REGION" --data-file=- 2>/dev/null || \
         echo -n "$SMTP_PASSWORD" | gcloud secrets versions add smtp2go-password --data-file=-
 
     echo "✓ SMTP2GO password stored in Secret Manager"

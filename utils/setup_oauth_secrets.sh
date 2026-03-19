@@ -5,6 +5,11 @@
 # Use Git Bash to run from Windows
 set -e  # Exit on any error
 
+# Secrets are created with single-region replication. All services run in
+# us-west1, so replicating to additional regions provides no availability
+# benefit and increases cost.
+REGION="us-west1"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -100,7 +105,8 @@ create_or_update_secret() {
         echo "$secret_value" | gcloud secrets versions add "$secret_name" --data-file=-
     else
         echo "Creating new secret: $secret_name"
-        echo "$secret_value" | gcloud secrets create "$secret_name" --data-file=-
+        echo "$secret_value" | gcloud secrets create "$secret_name" \
+            --replication-policy="user-managed" --locations="$REGION" --data-file=-
     fi
 }
 
