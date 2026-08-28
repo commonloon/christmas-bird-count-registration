@@ -4,21 +4,24 @@ IP blocking service for bot defense.
 Tracks 404 errors, manages honeypot traps, and maintains blocked IP list in Firestore.
 """
 
+import time
 from datetime import datetime, timedelta
 from typing import Optional, Dict, List
 from cachetools import TTLCache
 from threading import Lock
 import logging
 from flask import request
+from google.cloud import firestore
 from config.ip_blocking import *
 
 logger = logging.getLogger(__name__)
 
-# In-memory caches with thread safety
+# In-memory cache for the blocked-IP lookup only. This is safe to keep
+# per-instance: a cache miss just costs one extra Firestore read, it never
+# causes a missed block. Violation counting (below) cannot use per-instance
+# memory the same way - see track_404().
 BLOCKED_IP_CACHE = TTLCache(maxsize=CACHE_SIZE, ttl=CACHE_TTL_SECONDS)
-VIOLATION_TRACKER = TTLCache(maxsize=VIOLATION_TRACKER_SIZE, ttl=VIOLATION_WINDOW_SECONDS)
 CACHE_LOCK = Lock()
-TRACKER_LOCK = Lock()
 
 
 class IPBlockerService:
@@ -140,6 +143,10 @@ class IPBlockerService:
         """
         Track 404 violation for IP. Returns block ID if threshold exceeded.
 
+        Counter is stored in Firestore (not per-instance memory) because Cloud Run
+        can spread a single IP's burst across multiple instances, each of which
+        would otherwise keep its own undersized count and never see the true total.
+
         Args:
             ip_address: Client IP that triggered 404
             url_path: URL path that was not found
@@ -148,42 +155,34 @@ class IPBlockerService:
         Returns:
             IP address if blocked, None otherwise
         """
-        with TRACKER_LOCK:
-            if ip_address not in VIOLATION_TRACKER:
-                VIOLATION_TRACKER[ip_address] = {
-                    'count': 0,
-                    'first_seen': datetime.now(),
-                    'urls': []
-                }
+        window_bucket = int(time.time() // VIOLATION_WINDOW_SECONDS)
+        doc_ref = self.db.collection('ip_violations').document(f'{ip_address}_{window_bucket}')
 
-            tracker = VIOLATION_TRACKER[ip_address]
-            tracker['count'] += 1
-            tracker['urls'].append({
-                'timestamp': datetime.now(),
-                'path': url_path
-            })
+        doc_ref.set({
+            'ip_address': ip_address,
+            'count': firestore.Increment(1),
+            'last_violation_url': url_path,
+            'last_seen': datetime.now(),
+            # TTL policy on this collection's expires_at field cleans these up automatically
+            'expires_at': datetime.now() + timedelta(minutes=5),
+        }, merge=True)
 
-            # Limit history size
-            if len(tracker['urls']) > MAX_VIOLATION_HISTORY:
-                tracker['urls'] = tracker['urls'][-MAX_VIOLATION_HISTORY:]
+        count = doc_ref.get().to_dict().get('count', 0)
 
-            # Check threshold
-            if tracker['count'] >= MAX_404_PER_MINUTE:
-                # Block this IP
-                violation_history = tracker['urls'].copy()
-                block_id = self.add_block(
-                    ip_address=ip_address,
-                    reason='404_threshold',
-                    trigger_count=tracker['count'],
-                    user_agent=user_agent,
-                    violation_url=url_path,
-                    violation_history=violation_history
-                )
+        if count >= MAX_404_PER_MINUTE:
+            block_id = self.add_block(
+                ip_address=ip_address,
+                reason='404_threshold',
+                trigger_count=count,
+                user_agent=user_agent,
+                violation_url=url_path,
+                violation_history=[{'timestamp': datetime.now(), 'path': url_path}]
+            )
 
-                # Clear tracker (already blocked)
-                del VIOLATION_TRACKER[ip_address]
+            # Already blocked - no need to keep counting this window
+            doc_ref.delete()
 
-                return block_id
+            return block_id
 
         return None
 
@@ -348,7 +347,6 @@ class IPBlockerService:
             'honeypot_blocks': len([b for b in active_blocks if b['reason'] == 'honeypot_trap']),
             '404_blocks': len([b for b in active_blocks if b['reason'] == '404_threshold']),
             'cache_size': len(BLOCKED_IP_CACHE),
-            'tracker_size': len(VIOLATION_TRACKER)
         }
 
         return stats

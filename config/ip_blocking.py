@@ -35,9 +35,7 @@ CACHE_SIZE = int(os.getenv('IP_BLOCK_CACHE_SIZE', 1000))
 CACHE_TTL_SECONDS = int(os.getenv('IP_BLOCK_CACHE_TTL', 300))  # 5 minutes
 
 # Violation tracking settings
-VIOLATION_TRACKER_SIZE = int(os.getenv('VIOLATION_TRACKER_SIZE', 5000))
-VIOLATION_WINDOW_SECONDS = 60  # Sliding window for 404 counting
+VIOLATION_WINDOW_SECONDS = 60  # Fixed window for 404 counting (stored in Firestore, see services/ip_blocker.py)
 
 # Admin and logging settings
 ENABLE_BLOCK_LOGGING = True  # Log all blocks to Cloud Logging
-MAX_VIOLATION_HISTORY = 10   # Store last N URLs per IP in block record
