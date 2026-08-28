@@ -58,7 +58,7 @@ REGISTRATION_CLOSES = 1
 # Valid range: Must be positive integer
 # - Invalid or non-positive values default to 3
 # Example: If count is Dec 20 and REGISTRATION_OPENS = 3, registration opens on Sept 20
-REGISTRATION_OPENS = 3
+REGISTRATION_OPENS = 4
 
 # Email Configuration
 FROM_EMAIL = "cbc@naturevancouver.ca"  # Default sender email address
