@@ -202,7 +202,7 @@ def participants():
     all_participants = participant_model.get_all_participants()
     all_leaders = participant_model.get_leaders()
 
-    # Filter out UNASSIGNED participants - they have their own dedicated interface at /admin/unassigned
+    # Filter out UNASSIGNED participants - they have their own dedicated interface at /bigbird/unassigned
     assigned_participants = [p for p in all_participants if p.get('preferred_area') != 'UNASSIGNED']
 
     # Normalize participant data to ensure all fields are present

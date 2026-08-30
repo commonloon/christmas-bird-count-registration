@@ -57,7 +57,7 @@ init_auth(app)
 
 # Register blueprints
 app.register_blueprint(main_bp)
-app.register_blueprint(admin_bp, url_prefix='/admin')
+app.register_blueprint(admin_bp, url_prefix='/bigbird')
 app.register_blueprint(leader_bp, url_prefix='/leader')
 app.register_blueprint(api_bp, url_prefix='/api')
 app.register_blueprint(auth_bp, url_prefix='/auth')

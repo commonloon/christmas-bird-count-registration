@@ -357,11 +357,17 @@ def robots_txt():
 @main_bp.route('/administrator')
 @main_bp.route('/admin.php')
 @main_bp.route('/login.php')
-def honeypot_trap():
+@main_bp.route('/admin')
+@main_bp.route('/admin/<path:_subpath>')
+def honeypot_trap(_subpath=None):
     """
     Honeypot trap - immediate block for bots that ignore robots.txt.
     Good bots respect robots.txt and never access these URLs.
     Bad bots ignore robots.txt and fall into the trap.
+
+    /admin and /admin/* are included here because the real admin blueprint
+    moved to /bigbird - anything still guessing the old, common /admin path
+    is a bot, not a legitimate user (nobody has /admin bookmarked or linked).
     """
     if not HONEYPOT_ENABLED:
         abort(404)

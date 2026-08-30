@@ -115,8 +115,13 @@ def get_registration_url():
     return get_base_url()
 
 def get_admin_url():
-    """Get environment-appropriate admin interface URL."""
-    return f"{get_base_url()}/admin"
+    """Get environment-appropriate admin interface URL.
+
+    Path is /bigbird, not /admin - deliberately, so bots that default to
+    guessing "/admin" don't land on the real admin panel (see routes/main.py's
+    honeypot_trap, which now catches /admin and /admin/* instead).
+    """
+    return f"{get_base_url()}/bigbird"
 
 def get_leader_url():
     """Get environment-appropriate leader dashboard URL."""

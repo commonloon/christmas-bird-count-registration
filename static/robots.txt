@@ -4,8 +4,8 @@
 
 User-agent: *
 
-# Disallow admin and leader areas
-Disallow: /admin/
+# Disallow leader area (admin moved to /bigbird - deliberately not listed
+# here, since this file is public and listing it would defeat the point)
 Disallow: /leader/
 
 # Honeypot traps - good bots respect these, bad bots fall into trap
@@ -13,6 +13,7 @@ Disallow: /wp-admin.php
 Disallow: /administrator
 Disallow: /admin.php
 Disallow: /login.php
+Disallow: /admin/
 
 # Allow public pages
 Allow: /

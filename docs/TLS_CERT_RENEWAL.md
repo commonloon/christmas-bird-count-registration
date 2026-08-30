@@ -24,11 +24,14 @@ wsl
   --manual --preferred-challenges dns \
   --key-type rsa \
   -d "*.cbc.birdcount.ca" \
+  -d "cbc.birdcount.ca" \
   --config-dir ~/letsencrypt-birdcount/config \
   --work-dir ~/letsencrypt-birdcount/work \
   --logs-dir ~/letsencrypt-birdcount/logs \
   --force-renewal
 ```
+
+Both `-d` flags are needed — a wildcard SAN (`*.cbc.birdcount.ca`) does **not** cover the bare parent domain, and `cbc.birdcount.ca` itself serves the cross-circle landing page (and eventually the super-admin console), so it needs its own SAN on the same cert.
 
 (If `~/certbot-venv` doesn't exist yet: `python3 -m venv ~/certbot-venv && ~/certbot-venv/bin/pip install certbot` first.)
 
