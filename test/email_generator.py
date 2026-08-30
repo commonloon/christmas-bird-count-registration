@@ -17,10 +17,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple, Any
 from flask import render_template, current_app
 from jinja2 import Template
-from google.cloud import firestore
 import logging
 
-from config.database import get_firestore_client
+from config.database import get_db_session
+from models.db import EmailTimestamp, DEFAULT_CIRCLE_SLUG
 from config.admins import ADMIN_EMAILS
 from config.email_settings import (
     is_test_server, get_admin_unassigned_url, get_leader_dashboard_url,
@@ -38,36 +38,42 @@ logger = logging.getLogger(__name__)
 
 class EmailTimestampModel:
     """Handle email timestamp tracking to prevent race conditions."""
-    
-    def __init__(self, db_client, year: int = None):
-        self.db = db_client
+
+    def __init__(self, db_session, year: int = None, circle_slug: str = None):
+        self.db = db_session
         self.year = year or datetime.now().year
-        self.collection = f'email_timestamps_{self.year}'
-    
+        self.circle_slug = circle_slug or DEFAULT_CIRCLE_SLUG
+
     def get_last_email_sent(self, area_code: str, email_type: str) -> Optional[datetime]:
         """Get the last email sent timestamp for an area and email type."""
         try:
-            doc_ref = self.db.collection(self.collection).document(f'{area_code}_{email_type}')
-            doc = doc_ref.get()
-            if doc.exists:
-                return doc.get('last_sent')
-            return None
+            row = self.db.query(EmailTimestamp).filter_by(
+                circle_slug=self.circle_slug, year=self.year,
+                area_code=area_code, email_type=email_type,
+            ).first()
+            return row.last_sent if row else None
         except Exception as e:
             logger.error(f"Error getting last email sent for {area_code}_{email_type}: {e}")
             return None
-    
+
     def update_last_email_sent(self, area_code: str, email_type: str, timestamp: datetime) -> bool:
         """Update the last email sent timestamp for an area and email type."""
         try:
-            doc_ref = self.db.collection(self.collection).document(f'{area_code}_{email_type}')
-            doc_ref.set({
-                'area_code': area_code,
-                'email_type': email_type,
-                'last_sent': timestamp,
-                'year': self.year
-            })
+            row = self.db.query(EmailTimestamp).filter_by(
+                circle_slug=self.circle_slug, year=self.year,
+                area_code=area_code, email_type=email_type,
+            ).first()
+            if row:
+                row.last_sent = timestamp
+            else:
+                self.db.add(EmailTimestamp(
+                    circle_slug=self.circle_slug, year=self.year,
+                    area_code=area_code, email_type=email_type, last_sent=timestamp,
+                ))
+            self.db.commit()
             return True
         except Exception as e:
+            self.db.rollback()
             logger.error(f"Error updating last email sent for {area_code}_{email_type}: {e}")
             return False
 
@@ -166,16 +172,9 @@ def calculate_net_withdrawal_reactivation_changes(
     if since_timestamp.tzinfo is None:
         since_timestamp = since_timestamp.replace(tzinfo=timezone.utc)
 
-    # Fetch all withdrawal log entries for this area since timestamp
+    # Fetch withdrawal/reactivation log entries for this area since timestamp
     try:
-        all_entries = withdrawal_model._fetch_all_for_filtering()
-        area_events = [
-            entry for entry in all_entries
-            if (entry.get('area_code') == area_code and
-                entry.get('recorded_at') and
-                entry.get('recorded_at') >= since_timestamp and
-                entry.get('status') in ['withdrawn', 'reactivated'])
-        ]
+        area_events = withdrawal_model.get_events_for_area_since(area_code, since_timestamp)
     except Exception as e:
         logger.error(f"Failed to get withdrawal events for area {area_code}: {e}")
         return [], []
@@ -322,7 +321,7 @@ def get_participants_changes_since(participant_model: ParticipantModel, area_cod
 def generate_team_update_emails(app=None) -> Dict[str, Any]:
     """Generate twice-daily team update emails for areas with changes."""
     try:
-        db, _ = get_firestore_client()
+        db = get_db_session()
         current_year = datetime.now().year
         utc_now = datetime.now(timezone.utc)  # Race condition prevention: pick timestamp first
         current_time, display_timezone = convert_to_display_timezone(utc_now)
@@ -467,7 +466,7 @@ def generate_team_update_emails(app=None) -> Dict[str, Any]:
 def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
     """Generate weekly summary emails for ALL area leaders."""
     try:
-        db, _ = get_firestore_client()
+        db = get_db_session()
         current_year = datetime.now().year
         utc_now = datetime.now(timezone.utc)
         current_time, display_timezone = convert_to_display_timezone(utc_now)
@@ -615,7 +614,7 @@ def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
 def generate_admin_digest_email(app=None) -> Dict[str, Any]:
     """Generate daily admin digest with unassigned participants."""
     try:
-        db, _ = get_firestore_client()
+        db = get_db_session()
         current_year = datetime.now().year
         utc_now = datetime.now(timezone.utc)
         current_time, display_timezone = convert_to_display_timezone(utc_now)

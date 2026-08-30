@@ -1,6 +1,6 @@
 # Updated by Claude AI on 2026-01-12
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g, send_from_directory, abort
-from config.database import get_firestore_client
+from config.database import get_db_session
 from models.participant import ParticipantModel
 from models.area_signup_type import AreaSignupTypeModel
 from config.areas import get_area_info, get_all_areas
@@ -25,12 +25,8 @@ main_bp = Blueprint('main', __name__)
 
 @main_bp.before_request
 def load_db():
-    """Load database client for this request."""
-    try:
-        g.db, _ = get_firestore_client()
-    except Exception as e:
-        g.db = None
-        print(f"Warning: Could not initialize Firestore: {e}")
+    """Load database session for this request."""
+    g.db = get_db_session()
 
 
 @main_bp.route('/')

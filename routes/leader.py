@@ -1,6 +1,6 @@
 # Updated by Claude AI on 2025-10-03
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g, session
-from config.database import get_firestore_client
+from config.database import get_db_session
 from models.participant import ParticipantModel
 from routes.auth import require_leader, get_current_user
 from config.areas import get_area_info
@@ -15,25 +15,21 @@ logger = logging.getLogger(__name__)
 
 @leader_bp.before_request
 def load_db():
-    """Load database client for leader routes and re-validate role."""
-    try:
-        g.db, _ = get_firestore_client()
+    """Load database session for leader routes and re-validate role."""
+    g.db = get_db_session()
 
-        # Re-validate leader status on each request to leader routes
-        # This ensures role changes are reflected immediately without re-login
-        if 'user_email' in session:
-            from routes.auth import get_user_role
-            user_email = session['user_email']
-            current_role = session.get('user_role')
-            actual_role = get_user_role(user_email, g.db)
+    # Re-validate leader status on each request to leader routes
+    # This ensures role changes are reflected immediately without re-login
+    if 'user_email' in session:
+        from routes.auth import get_user_role
+        user_email = session['user_email']
+        current_role = session.get('user_role')
+        actual_role = get_user_role(user_email, g.db)
 
-            # Update session if role has changed
-            if actual_role != current_role:
-                session['user_role'] = actual_role
-                logger.info(f"Updated role for {user_email}: {current_role} -> {actual_role}")
-    except Exception as e:
-        g.db = None
-        flash('Database unavailable.', 'error')
+        # Update session if role has changed
+        if actual_role != current_role:
+            session['user_role'] = actual_role
+            logger.info(f"Updated role for {user_email}: {current_role} -> {actual_role}")
 
 
 def get_current_user_email():
@@ -48,9 +44,6 @@ def get_current_user_email():
 @limiter.limit(RATE_LIMITS['admin_general'])
 def dashboard():
     """Leader dashboard showing their team roster with historical year support."""
-    if not g.db:
-        return render_template('leader/dashboard.html', error="Database unavailable")
-
     user_email = get_current_user_email()
     if not user_email:
         flash('Authentication error. Please log in again.', 'error')

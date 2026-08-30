@@ -1,7 +1,6 @@
-# Updated by Claude AI on 2025-11-30
+# Updated by Claude AI on 2026-08-29
 from flask import Blueprint, jsonify, request
-from google.cloud import firestore
-from config.database import get_firestore_client
+from config.database import get_db_session
 from models.participant import ParticipantModel
 from models.area_signup_type import AreaSignupTypeModel
 from services.limiter import limiter
@@ -9,17 +8,6 @@ from config.rate_limits import RATE_LIMITS
 import json
 
 api_bp = Blueprint('api', __name__)
-
-# Initialize Firestore and models
-try:
-    db, _ = get_firestore_client()
-    participant_model = ParticipantModel(db)
-    signup_type_model = AreaSignupTypeModel(db)
-except Exception as e:
-    print(f"Warning: Could not initialize Firestore: {e}")
-    db = None
-    participant_model = None
-    signup_type_model = None
 
 
 @api_bp.route('/areas')
@@ -40,19 +28,23 @@ def get_areas():
             areas = data
             map_config = {}
 
+        db = get_db_session()
+        participant_model = ParticipantModel(db)
+        signup_type_model = AreaSignupTypeModel(db)
+
         # Get current registration counts
-        if participant_model:
+        try:
             area_counts = participant_model.get_area_counts()
-        else:
+        except Exception as e:
+            print(f"Warning: Could not get area counts: {e}")
             area_counts = {}
 
         # Get signup type information
-        signup_types = {}
-        if signup_type_model:
-            try:
-                signup_types = signup_type_model.get_all_signup_types()
-            except Exception as e:
-                print(f"Warning: Could not get signup types: {e}")
+        try:
+            signup_types = signup_type_model.get_all_signup_types()
+        except Exception as e:
+            print(f"Warning: Could not get signup types: {e}")
+            signup_types = {}
 
         # Add current counts and signup type to area data
         for area in areas:
@@ -98,10 +90,8 @@ def get_areas():
 @limiter.limit(RATE_LIMITS['api_general'])
 def get_area_counts():
     """Get current registration counts by area."""
-    if not participant_model:
-        return jsonify({'error': 'Database unavailable'}), 500
-
     try:
+        participant_model = ParticipantModel(get_db_session())
         counts = participant_model.get_area_counts()
         return jsonify(counts)
     except Exception as e:
@@ -129,11 +119,12 @@ def get_areas_needing_leaders():
         # Get areas without leaders from current year
         from datetime import datetime
 
-        if db:
+        try:
             current_year = datetime.now().year
-            current_year_participant_model = ParticipantModel(db, current_year)
+            current_year_participant_model = ParticipantModel(get_db_session(), current_year)
             areas_without_leaders = current_year_participant_model.get_areas_without_leaders()
-        else:
+        except Exception as e:
+            print(f"Warning: Could not get areas without leaders: {e}")
             areas_without_leaders = []
 
         response = {

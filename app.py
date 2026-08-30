@@ -2,13 +2,10 @@
 # Updated by Claude AI on 2025-12-09
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session, g, send_file
 from flask_wtf.csrf import CSRFProtect
-from google.cloud import firestore
-from config.database import get_firestore_client
+from config.database import get_db_session, teardown_db_session
 from config.organization import get_organization_variables
 from services.limiter import limiter
 from services.ip_blocker import IPBlockerService, get_client_ip
-from google.oauth2 import id_token
-from google.auth.transport import requests as google_requests
 import os
 from datetime import datetime
 import json
@@ -39,17 +36,8 @@ limiter.init_app(app)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# OAuth configuration
-GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
-GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
-
-# Initialize Firestore client
-try:
-    db, database_id = get_firestore_client()
-    logger.info(f"Firestore client initialized successfully for database: {database_id}")
-except Exception as e:
-    logger.error(f"Warning: Could not initialize Firestore client: {e}")
-    db = None
+# Release the request-scoped DB session at the end of every request
+app.teardown_appcontext(teardown_db_session)
 
 # Import route modules
 from routes.main import main_bp
@@ -93,15 +81,14 @@ def set_security_headers(response):
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
 
     # Content-Security-Policy: Restrict resource loading to trusted sources
-    # Note: Allows Google OAuth, Bootstrap CDN, and Leaflet map resources
+    # Note: Allows Bootstrap CDN and Leaflet map resources
     response.headers['Content-Security-Policy'] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://accounts.google.com https://cdn.jsdelivr.net https://unpkg.com; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; "
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; "
         "img-src 'self' data: https:; "
         "font-src 'self' https://cdn.jsdelivr.net; "
-        "connect-src 'self' https://accounts.google.com; "
-        "frame-src https://accounts.google.com;"
+        "connect-src 'self';"
     )
 
     return response
@@ -164,12 +151,14 @@ def check_blocked_ip():
     # Get client IP
     client_ip = get_client_ip(request)
 
-    # Check if blocked
-    if db:
-        blocker = IPBlockerService(db)
+    # Check if blocked (best-effort - don't let a DB hiccup break normal request handling)
+    try:
+        blocker = IPBlockerService(get_db_session())
         if blocker.is_blocked(client_ip):
             logger.warning(f"BLOCKED_REQUEST: {client_ip} attempted access to {request.path}")
             return render_template('errors/403.html'), 403
+    except Exception as e:
+        logger.error(f"IP block check failed: {e}")
 
     return None
 
@@ -178,19 +167,22 @@ def check_blocked_ip():
 def not_found_error(error):
     """Handle 404 errors with IP tracking."""
     # Only track unauthenticated users
-    if 'user_email' not in session and db:
+    if 'user_email' not in session:
         from config.ip_blocking import EXCLUDED_404_PATHS
 
         # Skip tracking for common browser resource requests
         if request.path not in EXCLUDED_404_PATHS:
-            client_ip = get_client_ip(request)
-            user_agent = request.headers.get('User-Agent', '')
+            try:
+                client_ip = get_client_ip(request)
+                user_agent = request.headers.get('User-Agent', '')
 
-            blocker = IPBlockerService(db)
-            block_id = blocker.track_404(client_ip, request.path, user_agent)
+                blocker = IPBlockerService(get_db_session())
+                block_id = blocker.track_404(client_ip, request.path, user_agent)
 
-            if block_id:
-                logger.warning(f"IP_AUTO_BLOCKED: {client_ip} exceeded 404 threshold")
+                if block_id:
+                    logger.warning(f"IP_AUTO_BLOCKED: {client_ip} exceeded 404 threshold")
+            except Exception as e:
+                logger.error(f"404 IP tracking failed: {e}")
 
     return render_template('errors/404.html'), 404
 

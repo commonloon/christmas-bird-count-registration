@@ -1,11 +1,14 @@
-from flask import Blueprint, session, request, redirect, url_for, flash
-from google.oauth2 import id_token
-from google.auth.transport import requests
+from flask import Blueprint, session, request, redirect, url_for, flash, render_template
 from functools import wraps
-import os
+from datetime import datetime, timedelta, timezone
+import hashlib
+import hmac
 import logging
+import secrets
 
 from config.admins import is_admin
+from config.database import get_db_session
+from models.db import MagicLinkToken
 from models.participant import ParticipantModel
 from services.limiter import limiter
 from config.rate_limits import RATE_LIMITS, get_rate_limit_message
@@ -16,12 +19,10 @@ from app import csrf
 auth_bp = Blueprint('auth', __name__)
 logger = logging.getLogger(__name__)
 
-# Google OAuth configuration
-GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '').strip()
-GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '').strip()
+MAGIC_LINK_EXPIRY_MINUTES = 15
 
 
-def get_user_role(email, db_client, year=None):
+def get_user_role(email, db_session, year=None):
     """Determine user role based on email address."""
     if not email:
         return 'public'
@@ -32,7 +33,7 @@ def get_user_role(email, db_client, year=None):
 
     # Check area leader status
     try:
-        participant_model = ParticipantModel(db_client, year)
+        participant_model = ParticipantModel(db_session, year)
         if participant_model.is_area_leader(email):
             return 'leader'
     except Exception as e:
@@ -47,7 +48,6 @@ def require_auth(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_email' not in session:
-            # Force HTTPS in next URL for OAuth security
             next_url = request.url.replace('http://', 'https://')
             return redirect(url_for('auth.login', next=next_url))
         return f(*args, **kwargs)
@@ -63,11 +63,18 @@ def require_admin(f):
         if 'user_email' not in session:
             return redirect(url_for('auth.login', next=request.url))
 
-        if session.get('user_role') != 'admin':
-            flash('Admin access required.', 'error')
-            return redirect(url_for('main.index'))
+        user_role = session.get('user_role')
+        if user_role == 'admin':
+            return f(*args, **kwargs)
 
-        return f(*args, **kwargs)
+        if user_role == 'leader':
+            # Leaders sometimes land on an admin URL (bookmarked, or bounced back
+            # here after a magic-link login) - send them somewhere useful instead
+            # of a bare access-denied error.
+            return redirect(url_for('leader.dashboard'))
+
+        flash('Admin access required.', 'error')
+        return redirect(url_for('main.index'))
 
     return decorated_function
 
@@ -90,76 +97,104 @@ def require_leader(f):
     return decorated_function
 
 
-@auth_bp.route('/login')
+def _hash_token(raw_token: str) -> str:
+    return hashlib.sha256(raw_token.encode('utf-8')).hexdigest()
+
+
+@auth_bp.route('/login', methods=['GET'])
 @limiter.limit(RATE_LIMITS['auth'])
 def login():
-    """Initiate Google OAuth login."""
-    # In a real implementation, this would redirect to Google OAuth
-    # For now, return a simple page with Google Sign-In button
-    from flask import render_template
-    return render_template('auth/login.html',
-                           google_client_id=GOOGLE_CLIENT_ID,
-                           next_url=request.args.get('next', '/'))
+    """Show the email-entry form to request a magic link."""
+    return render_template('auth/login.html', next_url=request.args.get('next', '/'))
 
 
-@auth_bp.route('/oauth/callback', methods=['POST'])
-@csrf.exempt
+@auth_bp.route('/login', methods=['POST'])
 @limiter.limit(RATE_LIMITS['auth'], error_message=get_rate_limit_message('auth'))
-def oauth_callback():
-    """Handle Google OAuth callback."""
-    try:
-        # Get the ID token from the request
-        token = request.form.get('credential')
-        if not token:
-            flash('Authentication failed. Please try again.', 'error')
-            return redirect(url_for('main.index'))
+def request_magic_link():
+    """Handle a request for a magic login link.
 
-        # Verify the token
-        idinfo = id_token.verify_oauth2_token(
-            token, requests.Request(), GOOGLE_CLIENT_ID)
+    Always shows the same confirmation regardless of whether the email is a known
+    admin/leader, so this endpoint can't be used to probe which addresses have access.
+    """
+    email = (request.form.get('email') or '').strip().lower()
+    next_url = request.form.get('next') or '/'
 
-        # Extract user information
-        email = idinfo.get('email')
-        name = idinfo.get('name')
-
-        if not email:
-            flash('Could not retrieve email from Google account.', 'error')
-            return redirect(url_for('main.index'))
-
-        # Determine user role
-        from google.cloud import firestore
-        from config.database import get_firestore_client
+    if email:
         try:
-            db_client, _ = get_firestore_client()
-            user_role = get_user_role(email, db_client)
-        except Exception as e:
-            logger.error(f"Database connection error: {e}")
-            # Default to public role if database unavailable
-            user_role = 'public'
+            db = get_db_session()
+            role = get_user_role(email, db)
 
-        # Store in session
+            if role in ('admin', 'leader'):
+                raw_token = secrets.token_urlsafe(32)
+                token_record = MagicLinkToken(
+                    email=email,
+                    token_hash=_hash_token(raw_token),
+                    expires_at=datetime.now(timezone.utc) + timedelta(minutes=MAGIC_LINK_EXPIRY_MINUTES),
+                    created_at=datetime.now(timezone.utc),
+                )
+                db.add(token_record)
+                db.commit()
+
+                verify_url = url_for('auth.verify', token=raw_token, next=next_url, _external=True)
+
+                from services.email_service import email_service
+                email_service.send_magic_link(email, verify_url)
+
+                logger.info(f"Magic link requested for {email} (role: {role})")
+            else:
+                logger.info(f"Magic link requested for non-admin/leader email {email} - not sent")
+        except Exception as e:
+            logger.error(f"Error processing magic link request: {e}")
+
+    return render_template('auth/login.html', link_sent=True, next_url=next_url)
+
+
+@auth_bp.route('/verify/<token>')
+@limiter.limit(RATE_LIMITS['auth'])
+def verify(token):
+    """Verify a magic link token and log the user in."""
+    next_url = request.args.get('next') or '/'
+
+    try:
+        db = get_db_session()
+        token_hash = _hash_token(token)
+
+        record = db.query(MagicLinkToken).filter_by(token_hash=token_hash).first()
+
+        if not record:
+            flash('That login link is invalid. Please request a new one.', 'error')
+            return redirect(url_for('auth.login'))
+
+        if record.used_at is not None:
+            flash('That login link has already been used. Please request a new one.', 'error')
+            return redirect(url_for('auth.login'))
+
+        if datetime.now(timezone.utc) > record.expires_at:
+            flash('That login link has expired. Please request a new one.', 'error')
+            return redirect(url_for('auth.login'))
+
+        # Mark used (single-use) before establishing the session
+        record.used_at = datetime.now(timezone.utc)
+        db.commit()
+
+        email = record.email
+        user_role = get_user_role(email, db)
+
         session['user_email'] = email
-        session['user_name'] = name
+        session['user_name'] = email
         session['user_role'] = user_role
 
         logger.info(f"User {email} logged in with role: {user_role}")
 
-        # Redirect based on role and next parameter
-        next_url = request.form.get('next') or request.args.get('next') or session.pop('next_url', None)
-
         if user_role == 'admin':
-            return redirect(next_url or url_for('admin.dashboard'))
+            return redirect(next_url if next_url != '/' else url_for('admin.dashboard'))
         elif user_role == 'leader':
-            return redirect(next_url or url_for('leader.dashboard'))
+            return redirect(next_url if next_url != '/' else url_for('leader.dashboard'))
         else:
-            return redirect(next_url or url_for('main.index'))
+            return redirect(next_url)
 
-    except ValueError as e:
-        logger.error(f"OAuth token verification failed: {e}")
-        flash('Authentication failed. Please try again.', 'error')
-        return redirect(url_for('main.index'))
     except Exception as e:
-        logger.error(f"OAuth callback error: {e}")
+        logger.error(f"Magic link verification error: {e}")
         flash('Login error. Please try again.', 'error')
         return redirect(url_for('main.index'))
 
@@ -176,7 +211,7 @@ def logout():
 
 def init_auth(app):
     """Initialize authentication for the Flask app."""
-    from datetime import timedelta
+    import os
 
     # Set up session configuration
     app.config['SESSION_TYPE'] = 'filesystem'
@@ -188,16 +223,10 @@ def init_auth(app):
     # Session cookie security attributes (CRITICAL for XSS/CSRF protection)
     app.config['SESSION_COOKIE_HTTPONLY'] = True      # Prevent JavaScript access to session cookie
     app.config['SESSION_COOKIE_SECURE'] = True        # Only send cookie over HTTPS
-    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'     # Prevent CSRF while allowing OAuth redirects
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'     # Prevent CSRF while allowing magic-link redirects
 
     # Session timeout (security best practice for admin sessions)
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
-
-    # Ensure Google OAuth credentials are available
-    if not GOOGLE_CLIENT_ID:
-        logger.warning("GOOGLE_CLIENT_ID not set - OAuth will not work")
-    if not GOOGLE_CLIENT_SECRET:
-        logger.warning("GOOGLE_CLIENT_SECRET not set - OAuth will not work")
 
 
 def get_current_user():

@@ -1,23 +1,23 @@
-# Updated by Claude AI on 2025-12-09
+# Updated by Claude AI on 2026-08-29
 """
 IP blocking service for bot defense.
-Tracks 404 errors, manages honeypot traps, and maintains blocked IP list in Firestore.
+Tracks 404 errors, manages honeypot traps, and maintains blocked IP list in PostgreSQL.
 """
 
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, List
 from cachetools import TTLCache
 from threading import Lock
 import logging
-from flask import request
-from google.cloud import firestore
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from config.ip_blocking import *
+from models.db import BlockedIP, IPViolation
 
 logger = logging.getLogger(__name__)
 
 # In-memory cache for the blocked-IP lookup only. This is safe to keep
-# per-instance: a cache miss just costs one extra Firestore read, it never
+# per-instance: a cache miss just costs one extra DB read, it never
 # causes a missed block. Violation counting (below) cannot use per-instance
 # memory the same way - see track_404().
 BLOCKED_IP_CACHE = TTLCache(maxsize=CACHE_SIZE, ttl=CACHE_TTL_SECONDS)
@@ -25,40 +25,25 @@ CACHE_LOCK = Lock()
 
 
 class IPBlockerService:
-    """Service for managing IP blocking with Firestore persistence."""
+    """Service for managing IP blocking with PostgreSQL persistence."""
 
-    def __init__(self, db_client):
-        self.db = db_client
-        self.collection = 'blocked_ips'
+    def __init__(self, db_session):
+        self.db = db_session
 
     def is_blocked(self, ip_address: str) -> bool:
-        """
-        Check if IP is currently blocked (cache-first approach).
-
-        Args:
-            ip_address: Client IP address to check
-
-        Returns:
-            True if IP is blocked, False otherwise
-        """
-        # Check cache first (fast path)
+        """Check if IP is currently blocked (cache-first approach)."""
         with CACHE_LOCK:
             if ip_address in BLOCKED_IP_CACHE:
                 return BLOCKED_IP_CACHE[ip_address]
 
-        # Check Firestore (slow path)
-        doc = self.db.collection(self.collection).document(ip_address).get()
+        row = self.db.query(BlockedIP).filter_by(ip_address=ip_address).first()
 
-        if doc.exists:
-            data = doc.to_dict()
-            # Check if block expired
-            if datetime.now() < data['expires_at']:
-                # Still blocked - cache result
+        if row:
+            if datetime.now(timezone.utc) < row.expires_at:
                 with CACHE_LOCK:
                     BLOCKED_IP_CACHE[ip_address] = True
                 return True
             else:
-                # Expired - auto cleanup
                 self._auto_unblock(ip_address)
                 return False
 
@@ -67,75 +52,58 @@ class IPBlockerService:
     def add_block(self, ip_address: str, reason: str,
                   trigger_count: int = 0, user_agent: str = '',
                   violation_url: str = '', violation_history: List[Dict] = None) -> str:
-        """
-        Add IP to block list with Firestore persistence.
-
-        Args:
-            ip_address: IP to block
-            reason: "404_threshold" or "honeypot_trap"
-            trigger_count: Number of violations that triggered block
-            user_agent: Browser/bot user agent string
-            violation_url: Last URL that triggered the block
-            violation_history: List of recent violations
-
-        Returns:
-            IP address (document ID)
-        """
-        now = datetime.now()
+        """Add IP to block list with PostgreSQL persistence."""
+        now = datetime.now(timezone.utc)
         expires = now + timedelta(hours=BLOCK_DURATION_HOURS)
 
-        # Convert datetime objects in violation history to timestamps
-        if violation_history:
-            for entry in violation_history:
-                if isinstance(entry.get('timestamp'), datetime):
-                    entry['timestamp'] = entry['timestamp']
+        row = self.db.query(BlockedIP).filter_by(ip_address=ip_address).first()
+        if row:
+            row.blocked_at = now
+            row.expires_at = expires
+            row.reason = reason
+            row.trigger_count = trigger_count
+            row.user_agent = user_agent
+            row.last_violation_url = violation_url
+            row.violation_history = violation_history or []
+            row.total_violations = trigger_count
+            row.auto_unblocked = False
+        else:
+            row = BlockedIP(
+                ip_address=ip_address,
+                blocked_at=now,
+                expires_at=expires,
+                reason=reason,
+                trigger_count=trigger_count,
+                user_agent=user_agent,
+                last_violation_url=violation_url,
+                violation_history=violation_history or [],
+                total_violations=trigger_count,
+                auto_unblocked=False,
+            )
+            self.db.add(row)
+        self.db.commit()
 
-        block_data = {
-            'ip_address': ip_address,
-            'blocked_at': now,
-            'expires_at': expires,
-            'reason': reason,
-            'trigger_count': trigger_count,
-            'user_agent': user_agent,
-            'last_violation_url': violation_url,
-            'violation_history': violation_history or [],
-            'total_violations': trigger_count,
-            'auto_unblocked': False
-        }
-
-        # Store in Firestore with IP as document ID
-        self.db.collection(self.collection).document(ip_address).set(block_data)
-
-        # Update cache
         with CACHE_LOCK:
             BLOCKED_IP_CACHE[ip_address] = True
 
-        # Log security event
         if ENABLE_BLOCK_LOGGING:
             logger.warning(f"IP_BLOCK: {ip_address} blocked for {reason} (count: {trigger_count}, url: {violation_url})")
 
         return ip_address
 
     def remove_block(self, ip_address: str) -> bool:
-        """
-        Manually unblock an IP (admin action).
-
-        Args:
-            ip_address: IP to unblock
-
-        Returns:
-            True if successful, False otherwise
-        """
+        """Manually unblock an IP (admin action)."""
         try:
-            self.db.collection(self.collection).document(ip_address).delete()
+            self.db.query(BlockedIP).filter_by(ip_address=ip_address).delete()
+            self.db.commit()
 
-            # Clear from cache
             with CACHE_LOCK:
                 BLOCKED_IP_CACHE.pop(ip_address, None)
 
             logger.info(f"IP_UNBLOCK: {ip_address} manually unblocked")
             return True
         except Exception as e:
+            self.db.rollback()
             logger.error(f"Failed to unblock {ip_address}: {e}")
             return False
 
@@ -143,31 +111,39 @@ class IPBlockerService:
         """
         Track 404 violation for IP. Returns block ID if threshold exceeded.
 
-        Counter is stored in Firestore (not per-instance memory) because Cloud Run
-        can spread a single IP's burst across multiple instances, each of which
-        would otherwise keep its own undersized count and never see the true total.
+        Counter is stored in PostgreSQL (not per-instance memory) because the app can run
+        with multiple processes/instances, each of which would otherwise keep its own
+        undersized count and never see the true total (see services/limiter.py for the
+        one remaining per-instance gap, and REMINDER.md for the planned fix).
 
-        Args:
-            ip_address: Client IP that triggered 404
-            url_path: URL path that was not found
-            user_agent: Browser/bot user agent string
-
-        Returns:
-            IP address if blocked, None otherwise
+        Uses an atomic upsert-increment (INSERT ... ON CONFLICT) rather than read-then-write,
+        to avoid a race between concurrent requests from the same IP.
         """
         window_bucket = int(time.time() // VIOLATION_WINDOW_SECONDS)
-        doc_ref = self.db.collection('ip_violations').document(f'{ip_address}_{window_bucket}')
+        now = datetime.now(timezone.utc)
 
-        doc_ref.set({
-            'ip_address': ip_address,
-            'count': firestore.Increment(1),
-            'last_violation_url': url_path,
-            'last_seen': datetime.now(),
-            # TTL policy on this collection's expires_at field cleans these up automatically
-            'expires_at': datetime.now() + timedelta(minutes=5),
-        }, merge=True)
+        stmt = pg_insert(IPViolation).values(
+            ip_address=ip_address,
+            window_bucket=window_bucket,
+            count=1,
+            last_violation_url=url_path,
+            last_seen=now,
+            expires_at=now + timedelta(minutes=5),
+        ).on_conflict_do_update(
+            index_elements=['ip_address', 'window_bucket'],
+            set_={
+                'count': IPViolation.count + 1,
+                'last_violation_url': url_path,
+                'last_seen': now,
+            },
+        )
+        self.db.execute(stmt)
+        self.db.commit()
 
-        count = doc_ref.get().to_dict().get('count', 0)
+        row = self.db.query(IPViolation).filter_by(
+            ip_address=ip_address, window_bucket=window_bucket
+        ).first()
+        count = row.count if row else 0
 
         if count >= MAX_404_PER_MINUTE:
             block_id = self.add_block(
@@ -176,28 +152,21 @@ class IPBlockerService:
                 trigger_count=count,
                 user_agent=user_agent,
                 violation_url=url_path,
-                violation_history=[{'timestamp': datetime.now(), 'path': url_path}]
+                violation_history=[{'timestamp': now.isoformat(), 'path': url_path}],
             )
 
             # Already blocked - no need to keep counting this window
-            doc_ref.delete()
+            self.db.query(IPViolation).filter_by(
+                ip_address=ip_address, window_bucket=window_bucket
+            ).delete()
+            self.db.commit()
 
             return block_id
 
         return None
 
     def trigger_honeypot(self, ip_address: str, trap_url: str, user_agent: str = '') -> str:
-        """
-        Immediately block IP that accessed honeypot trap.
-
-        Args:
-            ip_address: IP that accessed honeypot
-            trap_url: Honeypot URL that was accessed
-            user_agent: Browser/bot user agent string
-
-        Returns:
-            IP address (document ID)
-        """
+        """Immediately block IP that accessed honeypot trap."""
         return self.add_block(
             ip_address=ip_address,
             reason='honeypot_trap',
@@ -205,143 +174,88 @@ class IPBlockerService:
             user_agent=user_agent,
             violation_url=trap_url,
             violation_history=[{
-                'timestamp': datetime.now(),
-                'path': trap_url
-            }]
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'path': trap_url,
+            }],
         )
 
     def cleanup_expired(self, delete_old: bool = True) -> int:
         """
-        Clean up expired blocks (run periodically or on-demand).
-        Updated by Claude AI on 2025-12-12 - Avoid compound index by filtering in Python
-
-        Args:
-            delete_old: If True, delete records older than 7 days. Otherwise just mark as auto-unblocked.
-
-        Returns:
-            Number of blocks cleaned up
+        Clean up expired blocks (must now be run periodically via FullHost Task Scheduler -
+        PostgreSQL has no equivalent of Firestore's TTL-policy auto-expiry).
         """
-        from datetime import timedelta
-
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         count = 0
 
-        # Fetch all blocks (no filter, no index needed)
-        query = self.db.collection(self.collection)
-        all_blocks = list(query.stream())
-
-        # Filter expired blocks in Python
-        expired_blocks = [doc for doc in all_blocks
-                          if doc.to_dict().get('expires_at', datetime.max) < now
-                          and not doc.to_dict().get('auto_unblocked', False)]
+        expired_blocks = self.db.query(BlockedIP).filter(
+            BlockedIP.expires_at < now, BlockedIP.auto_unblocked == False  # noqa: E712
+        ).all()
 
         if delete_old:
-            # Delete records older than 7 days to keep collection small
             delete_cutoff = now - timedelta(days=7)
-            batch = self.db.batch()
-
-            for doc in expired_blocks:
-                block_data = doc.to_dict()
-                expires_at = block_data.get('expires_at', now)
-
-                if expires_at < delete_cutoff:
-                    # Delete old expired blocks
-                    doc_ref = self.db.collection(self.collection).document(doc.id)
-                    batch.delete(doc_ref)
-                    count += 1
+            for row in expired_blocks:
+                if row.expires_at < delete_cutoff:
+                    self.db.delete(row)
                 else:
-                    # Just mark as auto-unblocked (recent, keep for audit)
-                    doc_ref = self.db.collection(self.collection).document(doc.id)
-                    batch.update(doc_ref, {'auto_unblocked': True})
-                    count += 1
-
-                # Clear from cache
-                with CACHE_LOCK:
-                    BLOCKED_IP_CACHE.pop(doc.id, None)
-        else:
-            # Just mark as auto-unblocked (keep all for audit trail)
-            batch = self.db.batch()
-            for doc in expired_blocks:
-                doc_ref = self.db.collection(self.collection).document(doc.id)
-                batch.update(doc_ref, {'auto_unblocked': True})
+                    row.auto_unblocked = True
                 count += 1
-
-                # Clear from cache
                 with CACHE_LOCK:
-                    BLOCKED_IP_CACHE.pop(doc.id, None)
+                    BLOCKED_IP_CACHE.pop(row.ip_address, None)
+        else:
+            for row in expired_blocks:
+                row.auto_unblocked = True
+                count += 1
+                with CACHE_LOCK:
+                    BLOCKED_IP_CACHE.pop(row.ip_address, None)
 
         if count > 0:
-            batch.commit()
+            self.db.commit()
             logger.info(f"IP_CLEANUP: Processed {count} expired blocks")
+
+        # Also prune stale violation-window rows (Firestore's TTL policy handled this before)
+        self.db.query(IPViolation).filter(IPViolation.expires_at < now).delete()
+        self.db.commit()
 
         return count
 
     def _auto_unblock(self, ip_address: str) -> None:
-        """
-        Mark block as auto-unblocked (called when expired block is accessed).
-
-        Args:
-            ip_address: IP to mark as auto-unblocked
-        """
+        """Mark block as auto-unblocked (called when expired block is accessed)."""
         try:
-            self.db.collection(self.collection).document(ip_address).update({
-                'auto_unblocked': True
-            })
+            row = self.db.query(BlockedIP).filter_by(ip_address=ip_address).first()
+            if row:
+                row.auto_unblocked = True
+                self.db.commit()
 
             with CACHE_LOCK:
                 BLOCKED_IP_CACHE.pop(ip_address, None)
         except Exception as e:
+            self.db.rollback()
             logger.error(f"Failed to auto-unblock {ip_address}: {e}")
 
     def get_all_blocks(self, include_expired: bool = False) -> List[Dict]:
-        """
-        Get all blocked IPs for admin dashboard.
-        Updated by Claude AI on 2025-12-12 - Avoid compound index by filtering in Python
-
-        Args:
-            include_expired: If True, include expired blocks
-
-        Returns:
-            List of block records
-        """
-        blocks = []
-
-        # Fetch all blocks (no filter, no order, no index needed)
-        query = self.db.collection(self.collection)
-
-        for doc in query.stream():
-            data = doc.to_dict()
-            data['ip_address'] = doc.id  # Document ID is the IP
-            blocks.append(data)
-
+        """Get all blocked IPs for admin dashboard."""
+        query = self.db.query(BlockedIP)
         if not include_expired:
-            # Filter active blocks in Python
-            now = datetime.now()
-            blocks = [b for b in blocks if b.get('expires_at', datetime.min) > now]
+            query = query.filter(BlockedIP.expires_at > datetime.now(timezone.utc))
 
-        # Sort in Python (expires_at ascending, then blocked_at descending)
-        # For expired blocks, just sort by blocked_at descending
+        blocks = [row.to_dict() for row in query.all()]
+
         if include_expired:
-            blocks.sort(key=lambda x: x.get('blocked_at', datetime.min), reverse=True)
+            blocks.sort(key=lambda x: x.get('blocked_at') or datetime.min, reverse=True)
         else:
             blocks.sort(key=lambda x: (
-                x.get('expires_at', datetime.min),
-                -x.get('blocked_at', datetime.min).timestamp() if x.get('blocked_at') else 0
+                x.get('expires_at') or datetime.min,
+                -(x.get('blocked_at') or datetime.min).timestamp() if x.get('blocked_at') else 0,
             ))
 
         return blocks
 
     def get_block_stats(self) -> Dict:
-        """
-        Get statistics for monitoring.
-
-        Returns:
-            Dictionary with block statistics
-        """
+        """Get statistics for monitoring."""
         all_blocks = self.get_all_blocks(include_expired=True)
         active_blocks = [b for b in all_blocks if not b.get('auto_unblocked', False)]
 
-        stats = {
+        return {
             'total_blocks': len(all_blocks),
             'active_blocks': len(active_blocks),
             'honeypot_blocks': len([b for b in active_blocks if b['reason'] == 'honeypot_trap']),
@@ -349,22 +263,10 @@ class IPBlockerService:
             'cache_size': len(BLOCKED_IP_CACHE),
         }
 
-        return stats
-
 
 def get_client_ip(request) -> str:
-    """
-    Extract client IP from request (handles X-Forwarded-For behind Cloud Run proxy).
-
-    Args:
-        request: Flask request object
-
-    Returns:
-        Client IP address
-    """
-    # Use X-Forwarded-For header if behind a proxy (like Cloud Run)
+    """Extract client IP from request (handles X-Forwarded-For behind a reverse proxy)."""
     forwarded_for = request.headers.get('X-Forwarded-For')
     if forwarded_for:
-        # Take first IP in chain (original client)
         return forwarded_for.split(',')[0].strip()
     return request.remote_addr or 'unknown'

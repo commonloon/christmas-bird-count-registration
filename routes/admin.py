@@ -1,7 +1,6 @@
 # Updated by Claude AI on 2025-12-18
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response, g, current_app
-from google.cloud import firestore
-from config.database import get_firestore_client
+from config.database import get_db_session
 from config.email_settings import is_test_server
 from models.participant import ParticipantModel
 from models.removal_log import RemovalLogModel
@@ -30,7 +29,7 @@ from services.security import (
 from services.csv_security import escape_csv_formula
 from services.limiter import limiter
 from config.rate_limits import RATE_LIMITS, get_rate_limit_message
-from datetime import datetime
+from datetime import datetime, timezone
 import csv
 import logging
 import os
@@ -41,12 +40,8 @@ admin_bp = Blueprint('admin', __name__)
 
 @admin_bp.before_request
 def load_db():
-    """Load database client and check admin access."""
-    try:
-        g.db, _ = get_firestore_client()
-    except Exception as e:
-        g.db = None
-        flash('Database unavailable.', 'error')
+    """Load database session and check admin access."""
+    g.db = get_db_session()
 
 
 @admin_bp.route('/')
@@ -978,7 +973,7 @@ def edit_leader():
             'email': email,
             'phone': phone,
             'phone2': phone2,
-            'updated_at': datetime.now()
+            'updated_at': datetime.now(timezone.utc)
         }
 
         if not participant_model.update_participant(leader_id, updates):
@@ -1120,7 +1115,7 @@ def edit_participant():
             'first_name': first_name,
             'last_name': last_name,
             'email': email.lower(),
-            'updated_at': datetime.now()
+            'updated_at': datetime.now(timezone.utc)
         }
 
         # Only update these fields if they are explicitly provided in the request
@@ -1154,7 +1149,7 @@ def edit_participant():
                 updates['is_leader'] = False
                 updates['assigned_area_leader'] = None
                 updates['leadership_removed_by'] = user['email']
-                updates['leadership_removed_at'] = datetime.now()
+                updates['leadership_removed_at'] = datetime.now(timezone.utc)
 
         if not participant_model.update_participant(participant_id, updates):
             return jsonify({'success': False, 'message': 'Failed to update participant'})
@@ -1375,7 +1370,7 @@ def blocked_ips():
     blocks = blocker.get_all_blocks(include_expired=False)
     stats = blocker.get_block_stats()
 
-    return render_template('admin/blocked_ips.html', blocks=blocks, stats=stats)
+    return render_template('admin/blocked_ips.html', blocks=blocks, stats=stats, current_user=get_current_user())
 
 
 @admin_bp.route('/blocked-ips/<ip_address>/unblock', methods=['POST'])

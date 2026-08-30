@@ -1,228 +1,171 @@
-# Updated by Claude AI on 2025-12-09
-from google.cloud import firestore
-from google.cloud.firestore_v1.base_query import FieldFilter
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Optional
 import logging
 
+from models.db import Participant, DEFAULT_CIRCLE_SLUG
+
 
 class ParticipantModel:
-    """Handle Firestore operations for participants with year-aware collections."""
+    """Handle PostgreSQL operations for participants, scoped by year (and circle_slug for
+    future multi-circle support - see the multi-circle-architecture note)."""
 
-    def __init__(self, db_client, year: int = None):
-        self.db = db_client
+    def __init__(self, db_session, year: int = None, circle_slug: str = None):
+        self.db = db_session
         self.year = year or datetime.now().year
-        self.collection = f'participants_{self.year}'
+        self.circle_slug = circle_slug or DEFAULT_CIRCLE_SLUG
         self.logger = logging.getLogger(__name__)
 
+    def _base_query(self):
+        return self.db.query(Participant).filter_by(year=self.year, circle_slug=self.circle_slug)
+
     def add_participant(self, participant_data: Dict) -> str:
-        """Add a new participant to the year-specific collection."""
-        participant_data['created_at'] = datetime.now()
-        participant_data['updated_at'] = datetime.now()
-        participant_data['year'] = self.year
+        """Add a new participant to the year/circle scope."""
+        now = datetime.now(timezone.utc)
 
-        # Ensure leadership fields default to appropriate values
-        participant_data.setdefault('is_leader', False)
-        participant_data.setdefault('assigned_area_leader', None)
-        participant_data.setdefault('leadership_assigned_by', None)
-        participant_data.setdefault('leadership_assigned_at', None)
-        participant_data.setdefault('leadership_removed_by', None)
-        participant_data.setdefault('leadership_removed_at', None)
+        participant = Participant(
+            year=self.year,
+            circle_slug=self.circle_slug,
+            first_name=participant_data.get('first_name'),
+            last_name=participant_data.get('last_name'),
+            email=(participant_data.get('email') or '').lower(),
+            phone=participant_data.get('phone'),
+            phone2=participant_data.get('phone2'),
+            preferred_area=participant_data.get('preferred_area'),
+            status=participant_data.get('status', 'active'),
+            skill_level=participant_data.get('skill_level'),
+            experience=participant_data.get('experience'),
+            participation_type=participant_data.get('participation_type', 'regular'),
+            is_leader=participant_data.get('is_leader', False),
+            assigned_area_leader=participant_data.get('assigned_area_leader'),
+            leadership_assigned_by=participant_data.get('leadership_assigned_by'),
+            leadership_assigned_at=participant_data.get('leadership_assigned_at'),
+            leadership_removed_by=participant_data.get('leadership_removed_by'),
+            leadership_removed_at=participant_data.get('leadership_removed_at'),
+            has_binoculars=participant_data.get('has_binoculars', False),
+            spotting_scope=participant_data.get('spotting_scope', False),
+            interested_in_scribe=participant_data.get('interested_in_scribe', False),
+            interested_in_leadership=participant_data.get('interested_in_leadership', False),
+            notes_to_organizers=participant_data.get('notes_to_organizers', ''),
+            created_at=now,
+            updated_at=now,
+        )
+        self.db.add(participant)
+        self.db.commit()
+        self.logger.info(f"Added participant to year {self.year}: {participant.email}")
+        return str(participant.id)
 
-        # Set defaults for new fields
-        participant_data.setdefault('notes_to_organizers', '')
-        participant_data.setdefault('has_binoculars', False)
-        participant_data.setdefault('spotting_scope', False)
-        participant_data.setdefault('participation_type', 'regular')
-        participant_data.setdefault('status', 'active')
-
-        doc_ref = self.db.collection(self.collection).add(participant_data)
-        self.logger.info(f"Added participant to {self.collection}: {participant_data.get('email')}")
-        return doc_ref[1].id
-
-    def get_participant(self, participant_id: str) -> Optional[Dict]:
-        """Get a participant by ID from the year-specific collection."""
-        doc = self.db.collection(self.collection).document(participant_id).get()
-        if doc.exists:
-            data = doc.to_dict()
-            data['id'] = doc.id
-            return data
-        return None
+    def get_participant(self, participant_id) -> Optional[Dict]:
+        """Get a participant by ID, scoped to this year/circle."""
+        participant = self._base_query().filter_by(id=int(participant_id)).first()
+        return participant.to_dict() if participant else None
 
     def get_participants_by_area(self, area_code: str) -> List[Dict]:
         """Get all active participants for a specific area in the current year."""
-        # Fetch all participants and filter in Python to avoid compound index requirements
-        all_participants = self._fetch_all_for_filtering()
-
-        # Filter by status and area
-        return [
-            p for p in all_participants
-            if p.get('status') == 'active' and p.get('preferred_area') == area_code
-        ]
+        rows = self._base_query().filter_by(status='active', preferred_area=area_code).all()
+        return [r.to_dict() for r in rows]
 
     def get_withdrawn_participants_by_area(self, area_code: str) -> List[Dict]:
         """Get all withdrawn participants for a specific area in the current year."""
-        # Fetch all participants and filter in Python to avoid compound index requirements
-        all_participants = self._fetch_all_for_filtering()
-
-        # Filter by status and area
-        return [
-            p for p in all_participants
-            if p.get('status') == 'withdrawn' and p.get('preferred_area') == area_code
-        ]
+        rows = self._base_query().filter_by(status='withdrawn', preferred_area=area_code).all()
+        return [r.to_dict() for r in rows]
 
     def get_unassigned_participants(self) -> List[Dict]:
         """Get all active participants with preferred_area = 'UNASSIGNED'."""
-        # Fetch all participants and filter in Python to avoid compound index requirements
-        all_participants = self._fetch_all_for_filtering()
+        rows = self._base_query().filter_by(status='active', preferred_area='UNASSIGNED').all()
+        return [r.to_dict() for r in rows]
 
-        # Filter by status and UNASSIGNED area
-        return [
-            p for p in all_participants
-            if p.get('status') == 'active' and p.get('preferred_area') == 'UNASSIGNED'
-        ]
-
-    def assign_participant_to_area(self, participant_id: str, area_code: str, assigned_by: str) -> bool:
+    def assign_participant_to_area(self, participant_id, area_code: str, assigned_by: str) -> bool:
         """Assign an unassigned participant to a specific area."""
         try:
-            updates = {
-                'preferred_area': area_code,
-                'updated_at': datetime.now(),
-                'assigned_by': assigned_by,
-                'assigned_at': datetime.now()
-            }
-            self.db.collection(self.collection).document(participant_id).update(updates)
+            participant = self._base_query().filter_by(id=int(participant_id)).first()
+            if not participant:
+                return False
+            participant.preferred_area = area_code
+            participant.updated_at = datetime.now(timezone.utc)
+            participant.assigned_by = assigned_by
+            participant.assigned_at = datetime.now(timezone.utc)
+            self.db.commit()
             self.logger.info(f"Assigned participant {participant_id} to area {area_code}")
             return True
         except Exception as e:
+            self.db.rollback()
             self.logger.error(f"Failed to assign participant {participant_id}: {e}")
             return False
 
     def get_area_counts(self) -> Dict[str, int]:
         """Get active participant count by area for the current year."""
         counts = {}
-        query = self.db.collection(self.collection).where(filter=FieldFilter('status', '==', 'active'))
-
-        for doc in query.stream():
-            data = doc.to_dict()
-            area = data.get('preferred_area', 'UNKNOWN')
-            if area != 'UNASSIGNED':  # Don't count unassigned in area totals
+        rows = self._base_query().filter_by(status='active').all()
+        for row in rows:
+            area = row.preferred_area or 'UNKNOWN'
+            if area != 'UNASSIGNED':
                 counts[area] = counts.get(area, 0) + 1
-
         return counts
 
     def get_participants_by_email(self, email: str) -> List[Dict]:
         """Get all participants with a specific email address."""
-        participants = []
-        query = self.db.collection(self.collection).where(filter=FieldFilter('email', '==', email.lower()))
-        
-        for doc in query.stream():
-            data = doc.to_dict()
-            data['id'] = doc.id
-            participants.append(data)
-        
-        return participants
+        rows = self._base_query().filter_by(email=email.lower()).all()
+        return [r.to_dict() for r in rows]
 
     def get_participant_by_email_and_names(self, email: str, first_name: str, last_name: str) -> Optional[Dict]:
         """Get participant by exact email + first_name + last_name match."""
-        # Use existing get_participants_by_email() (single-field query) then filter by names
-        email_matches = self.get_participants_by_email(email)
+        row = self._base_query().filter_by(
+            email=email.lower(), first_name=first_name, last_name=last_name
+        ).first()
+        return row.to_dict() if row else None
 
-        # Filter by names in Python
-        for participant in email_matches:
-            if (participant.get('first_name') == first_name and
-                participant.get('last_name') == last_name):
-                return participant
-
-        return None
-
-    def update_participant(self, participant_id: str, updates: Dict) -> bool:
+    def update_participant(self, participant_id, updates: Dict) -> bool:
         """Update a participant's information."""
         try:
-            updates['updated_at'] = datetime.now()
-            self.db.collection(self.collection).document(participant_id).update(updates)
+            participant = self._base_query().filter_by(id=int(participant_id)).first()
+            if not participant:
+                return False
+            for key, value in updates.items():
+                if hasattr(participant, key):
+                    setattr(participant, key, value)
+            participant.updated_at = datetime.now(timezone.utc)
+            self.db.commit()
             return True
         except Exception as e:
+            self.db.rollback()
             self.logger.error(f"Failed to update participant {participant_id}: {e}")
             return False
 
-    def delete_participant(self, participant_id: str) -> bool:
+    def delete_participant(self, participant_id) -> bool:
         """Delete a participant (single table - no synchronization needed)."""
         try:
-            participant = self.get_participant(participant_id)
+            participant = self._base_query().filter_by(id=int(participant_id)).first()
             if not participant:
                 self.logger.error(f"Participant {participant_id} not found for deletion")
                 return False
-
-            self.db.collection(self.collection).document(participant_id).delete()
-            self.logger.info(f"Deleted participant {participant_id} from {self.collection}")
+            self.db.delete(participant)
+            self.db.commit()
+            self.logger.info(f"Deleted participant {participant_id} from year {self.year}")
             return True
         except Exception as e:
+            self.db.rollback()
             self.logger.error(f"Failed to delete participant {participant_id}: {e}")
             return False
 
     def get_all_participants(self) -> List[Dict]:
         """Get all participants for the current year."""
-        participants = []
-        query = self.db.collection(self.collection).order_by('created_at', direction=firestore.Query.DESCENDING)
-
-        for doc in query.stream():
-            data = doc.to_dict()
-            data['id'] = doc.id
-            participants.append(data)
-
-        return participants
-
-    def _fetch_all_for_filtering(self) -> List[Dict]:
-        """
-        Fetch all participants for Python-based filtering.
-
-        Note: Using fetch-all pattern instead of compound Firestore queries
-        to avoid index creation delays (5-10 minutes per new compound query).
-        This is performant for our dataset size (~hundreds of participants).
-        """
-        participants = []
-        query = self.db.collection(self.collection).stream()
-
-        for doc in query:
-            data = doc.to_dict()
-            data['id'] = doc.id
-            participants.append(data)
-
-        return participants
+        rows = self._base_query().order_by(Participant.created_at.desc()).all()
+        return [r.to_dict() for r in rows]
 
     def email_exists(self, email: str) -> bool:
         """Check if an email is already registered for the current year."""
-        query = self.db.collection(self.collection).where(filter=FieldFilter('email', '==', email.lower()))
-        docs = list(query.stream())
-        return len(docs) > 0
+        return self._base_query().filter_by(email=email.lower()).first() is not None
 
     def email_name_exists(self, email: str, first_name: str, last_name: str) -> bool:
         """Check if email+name combination exists for current year."""
-        # Use existing get_participants_by_email() (single-field query) then filter by names
-        email_matches = self.get_participants_by_email(email)
-
-        # Check if any match has the same first and last name
-        for participant in email_matches:
-            if (participant.get('first_name') == first_name and
-                participant.get('last_name') == last_name):
-                return True
-
-        return False
+        return self.get_participant_by_email_and_names(email, first_name, last_name) is not None
 
     def get_participants_interested_in_leadership(self) -> List[Dict]:
         """Get active participants who expressed interest in leadership but aren't assigned as leaders."""
-        # Fetch all participants and filter in Python to avoid compound index requirements
-        all_participants = self._fetch_all_for_filtering()
-
-        # Filter by status, leadership interest, and not currently a leader
-        return [
-            p for p in all_participants
-            if (p.get('status') == 'active' and
-                p.get('interested_in_leadership') == True and
-                p.get('is_leader') == False)
-        ]
-
+        rows = self._base_query().filter_by(
+            status='active', interested_in_leadership=True, is_leader=False
+        ).all()
+        return [r.to_dict() for r in rows]
 
     def get_historical_participants(self, area_code: str, years_back: int = 3) -> List[Dict]:
         """Get participants for an area across multiple years, with email deduplication."""
@@ -231,133 +174,96 @@ class ParticipantModel:
 
         for year in range(current_year - years_back, current_year + 1):
             try:
-                year_model = ParticipantModel(self.db, year)
+                year_model = ParticipantModel(self.db, year, self.circle_slug)
                 year_participants = year_model.get_participants_by_area(area_code)
 
                 for participant in year_participants:
-                    email = participant.get('email', '').lower()
+                    email = (participant.get('email') or '').lower()
                     if email:
-                        # Keep most recent data (later years override earlier ones)
                         participants[email] = participant
-
             except Exception as e:
-                self.logger.warning(f"Could not access participants_{year}: {e}")
+                self.logger.warning(f"Could not access participants for year {year}: {e}")
                 continue
 
         return list(participants.values())
 
     def get_leaders(self) -> List[Dict]:
         """Get all active leaders for the current year."""
-        leaders = []
-        query = (self.db.collection(self.collection)
-                 .where(filter=FieldFilter('is_leader', '==', True)))
-
-        for doc in query.stream():
-            data = doc.to_dict()
-            data['id'] = doc.id
-            leaders.append(data)
-
-        return leaders
+        rows = self._base_query().filter_by(is_leader=True).all()
+        return [r.to_dict() for r in rows]
 
     def get_leaders_by_area(self, area_code: str) -> List[Dict]:
         """Get all active leaders for a specific area."""
-        # Use existing get_leaders() (single-field query) and filter by area in Python
-        all_leaders = self.get_leaders()
-
-        # Filter by area
-        return [
-            leader for leader in all_leaders
-            if leader.get('assigned_area_leader') == area_code
-        ]
+        rows = self._base_query().filter_by(is_leader=True, assigned_area_leader=area_code).all()
+        return [r.to_dict() for r in rows]
 
     def is_area_leader(self, email: str, area_code: str = None) -> bool:
         """Check if an email is an area leader (optionally for a specific area)."""
-        # Use existing get_leaders() (single-field query) and filter in Python
-        all_leaders = self.get_leaders()
-
-        email_lower = email.lower()
-
-        # Check if email matches any leader, optionally filtered by area
-        for leader in all_leaders:
-            if leader.get('email', '').lower() == email_lower:
-                # If area_code specified, check it matches
-                if area_code is None or leader.get('assigned_area_leader') == area_code:
-                    return True
-
-        return False
+        query = self._base_query().filter_by(is_leader=True, email=email.lower())
+        if area_code is not None:
+            query = query.filter_by(assigned_area_leader=area_code)
+        return query.first() is not None
 
     def get_leaders_by_identity(self, first_name: str, last_name: str, email: str) -> List[Dict]:
         """Get all leaders matching exact identity (first_name, last_name, email)."""
-        leaders = []
-        query = (self.db.collection(self.collection)
-                 .where(filter=FieldFilter('is_leader', '==', True)))
-
-        search_first = first_name.strip().lower()
-        search_last = last_name.strip().lower()
-        search_email = email.lower().strip()
-
-        for doc in query.stream():
-            data = doc.to_dict()
-            data['id'] = doc.id
-
-            stored_first = data.get('first_name', '').strip().lower()
-            stored_last = data.get('last_name', '').strip().lower()
-            stored_email = data.get('email', '').strip().lower()
-
-            if (stored_first == search_first and
-                stored_last == search_last and
-                stored_email == search_email):
-                leaders.append(data)
-
-        return leaders
+        rows = self._base_query().filter_by(
+            is_leader=True,
+            first_name=first_name.strip(),
+            last_name=last_name.strip(),
+            email=email.lower().strip(),
+        ).all()
+        return [r.to_dict() for r in rows]
 
     def get_areas_without_leaders(self) -> List[str]:
         """Get list of area codes that don't have assigned leaders."""
         from config.areas import get_all_areas
 
         all_areas = set(get_all_areas())
-        assigned_areas = set()
-
-        leaders = self.get_leaders()
-        for leader in leaders:
-            area_code = leader.get('assigned_area_leader')
-            if area_code:
-                assigned_areas.add(area_code)
-
+        assigned_areas = {
+            leader.get('assigned_area_leader')
+            for leader in self.get_leaders()
+            if leader.get('assigned_area_leader')
+        }
         return sorted(all_areas - assigned_areas)
 
-    def assign_area_leadership(self, participant_id: str, area_code: str, assigned_by: str) -> bool:
+    def assign_area_leadership(self, participant_id, area_code: str, assigned_by: str) -> bool:
         """Assign area leadership to a participant."""
         try:
-            updates = {
-                'is_leader': True,
-                'assigned_area_leader': area_code,
-                'preferred_area': area_code,  # Update participant area to match leadership area
-                'leadership_assigned_by': assigned_by,
-                'leadership_assigned_at': datetime.now(),
-                'updated_at': datetime.now()
-            }
-            self.db.collection(self.collection).document(participant_id).update(updates)
-            self.logger.info(f"Assigned area leadership of {area_code} to participant {participant_id} and updated their area preference")
+            participant = self._base_query().filter_by(id=int(participant_id)).first()
+            if not participant:
+                return False
+            now = datetime.now(timezone.utc)
+            participant.is_leader = True
+            participant.assigned_area_leader = area_code
+            participant.preferred_area = area_code
+            participant.leadership_assigned_by = assigned_by
+            participant.leadership_assigned_at = now
+            participant.updated_at = now
+            self.db.commit()
+            self.logger.info(f"Assigned area leadership of {area_code} to participant {participant_id}")
             return True
         except Exception as e:
+            self.db.rollback()
             self.logger.error(f"Failed to assign area leadership: {e}")
             return False
 
-    def remove_area_leadership(self, participant_id: str, removed_by: str) -> bool:
+    def remove_area_leadership(self, participant_id, removed_by: str) -> bool:
         """Remove area leadership from a participant."""
         try:
-            updates = {
-                'is_leader': False,
-                'assigned_area_leader': None,
-                'leadership_removed_by': removed_by,
-                'leadership_removed_at': datetime.now(),
-                'updated_at': datetime.now()
-            }
-            self.db.collection(self.collection).document(participant_id).update(updates)
+            participant = self._base_query().filter_by(id=int(participant_id)).first()
+            if not participant:
+                return False
+            now = datetime.now(timezone.utc)
+            participant.is_leader = False
+            participant.assigned_area_leader = None
+            participant.leadership_removed_by = removed_by
+            participant.leadership_removed_at = now
+            participant.updated_at = now
+            self.db.commit()
             self.logger.info(f"Removed area leadership from participant {participant_id}")
             return True
         except Exception as e:
+            self.db.rollback()
             self.logger.error(f"Failed to remove area leadership: {e}")
             return False
 
@@ -365,7 +271,6 @@ class ParticipantModel:
         """Deactivate all leaders matching exact identity (first_name, last_name, email)."""
         try:
             matching_leaders = self.get_leaders_by_identity(first_name, last_name, email)
-
             if not matching_leaders:
                 self.logger.info(f"No active leaders found for identity: {first_name} {last_name} <{email}>")
                 return True
@@ -374,8 +279,6 @@ class ParticipantModel:
             for leader in matching_leaders:
                 if self.remove_area_leadership(leader['id'], removed_by):
                     deactivated_count += 1
-                    area_code = leader.get('assigned_area_leader', 'unknown')
-                    self.logger.info(f"Deactivated leader {leader['id']} for {first_name} {last_name} in area {area_code}")
                 else:
                     self.logger.error(f"Failed to deactivate leader {leader['id']} for {first_name} {last_name}")
 
@@ -384,9 +287,7 @@ class ParticipantModel:
                 self.logger.info(f"Successfully deactivated {deactivated_count} leader(s) for {first_name} {last_name} <{email}>")
             else:
                 self.logger.error(f"Only deactivated {deactivated_count}/{len(matching_leaders)} leader(s) for {first_name} {last_name} <{email}>")
-
             return success
-
         except Exception as e:
             self.logger.error(f"Failed to deactivate leaders by identity {first_name} {last_name} <{email}>: {e}")
             return False
@@ -397,12 +298,13 @@ class ParticipantModel:
         last_name = leader_data.get('last_name', '')
         email = leader_data.get('email', '')
 
-        # Check if participant with this identity already exists
         existing = self.get_participant_by_email_and_names(email, first_name, last_name)
         if existing:
-            raise ValueError(f"Participant with identity ({first_name}, {last_name}, {email}) already exists. Use participant editing to update existing records.")
+            raise ValueError(
+                f"Participant with identity ({first_name}, {last_name}, {email}) already exists. "
+                f"Use participant editing to update existing records."
+            )
 
-        # Create new participant with leadership
         participant_data = {
             'first_name': first_name,
             'last_name': last_name,
@@ -412,115 +314,80 @@ class ParticipantModel:
             'is_leader': True,
             'assigned_area_leader': leader_data.get('area_code'),
             'leadership_assigned_by': leader_data.get('assigned_by'),
-            'leadership_assigned_at': datetime.now(),
-            'preferred_area': leader_data.get('area_code'),  # Leader's preferred area matches their leadership area
+            'leadership_assigned_at': datetime.now(timezone.utc),
+            'preferred_area': leader_data.get('area_code'),
             'skill_level': leader_data.get('skill_level', 'Expert'),
             'experience': leader_data.get('experience', '3+ counts'),
             'participation_type': 'regular',
             'has_binoculars': leader_data.get('has_binoculars', False),
             'spotting_scope': leader_data.get('spotting_scope', False),
             'interested_in_scribe': leader_data.get('interested_in_scribe', False),
-            'interested_in_leadership': True,  # Leaders are by definition interested in leadership
-            'notes_to_organizers': leader_data.get('notes', '')
+            'interested_in_leadership': True,
+            'notes_to_organizers': leader_data.get('notes', ''),
         }
-
         return self.add_participant(participant_data)
 
-    def remove_leader(self, participant_id: str, removed_by: str) -> bool:
+    def remove_leader(self, participant_id, removed_by: str) -> bool:
         """Remove leadership from a participant (wrapper for remove_area_leadership)."""
         return self.remove_area_leadership(participant_id, removed_by)
 
-    def withdraw_participant(self, participant_id: str) -> bool:
+    def withdraw_participant(self, participant_id) -> bool:
         """Withdraw a participant from the count, removing leadership if applicable."""
         try:
-            participant = self.get_participant(participant_id)
+            participant = self._base_query().filter_by(id=int(participant_id)).first()
             if not participant:
                 self.logger.error(f"Participant {participant_id} not found for withdrawal")
                 return False
 
-            updates = {
-                'status': 'withdrawn',
-                'updated_at': datetime.now()
-            }
+            participant.status = 'withdrawn'
+            participant.updated_at = datetime.now(timezone.utc)
 
-            # Remove leadership if participant is a leader
-            if participant.get('is_leader'):
-                updates['is_leader'] = False
-                updates['assigned_area_leader'] = None
-                updates['leadership_removed_by'] = 'system-withdrawal'
-                updates['leadership_removed_at'] = datetime.now()
+            if participant.is_leader:
+                participant.is_leader = False
+                participant.assigned_area_leader = None
+                participant.leadership_removed_by = 'system-withdrawal'
+                participant.leadership_removed_at = datetime.now(timezone.utc)
 
-            self.db.collection(self.collection).document(participant_id).update(updates)
-            self.logger.info(f"Withdrew participant {participant_id} from {self.collection}")
+            self.db.commit()
+            self.logger.info(f"Withdrew participant {participant_id} from year {self.year}")
             return True
         except Exception as e:
+            self.db.rollback()
             self.logger.error(f"Failed to withdraw participant {participant_id}: {e}")
             return False
 
-    def reactivate_participant(self, participant_id: str) -> bool:
+    def reactivate_participant(self, participant_id) -> bool:
         """Reactivate a withdrawn participant."""
         try:
-            participant = self.get_participant(participant_id)
+            participant = self._base_query().filter_by(id=int(participant_id)).first()
             if not participant:
                 self.logger.error(f"Participant {participant_id} not found for reactivation")
                 return False
-
-            if participant.get('status') != 'withdrawn':
+            if participant.status != 'withdrawn':
                 self.logger.warning(f"Participant {participant_id} is not withdrawn, cannot reactivate")
                 return False
 
-            updates = {
-                'status': 'active',
-                'updated_at': datetime.now()
-            }
-
-            self.db.collection(self.collection).document(participant_id).update(updates)
-            self.logger.info(f"Reactivated participant {participant_id} in {self.collection}")
+            participant.status = 'active'
+            participant.updated_at = datetime.now(timezone.utc)
+            self.db.commit()
+            self.logger.info(f"Reactivated participant {participant_id} in year {self.year}")
             return True
         except Exception as e:
+            self.db.rollback()
             self.logger.error(f"Failed to reactivate participant {participant_id}: {e}")
             return False
 
-    def get_withdrawn_participants_by_area(self, area_code: str) -> List[Dict]:
-        """Get all withdrawn participants for a specific area in the current year."""
-        # Fetch all participants and filter in Python to avoid compound index requirements
-        all_participants = self._fetch_all_for_filtering()
-
-        # Filter by withdrawn status and area
-        return [
-            p for p in all_participants
-            if p.get('status') == 'withdrawn' and p.get('preferred_area') == area_code
-        ]
-
     def get_withdrawn_participants(self) -> List[Dict]:
         """Get all withdrawn participants for the current year."""
-        participants = []
-        query = self.db.collection(self.collection).where(filter=FieldFilter('status', '==', 'withdrawn'))
-
-        for doc in query.stream():
-            data = doc.to_dict()
-            data['id'] = doc.id
-            participants.append(data)
-
-        return participants
+        rows = self._base_query().filter_by(status='withdrawn').all()
+        return [r.to_dict() for r in rows]
 
     @classmethod
-    def get_available_years(cls, db_client) -> List[int]:
+    def get_available_years(cls, db_session) -> List[int]:
         """Get list of years that have participant data."""
         try:
-            collections = db_client.collections()
-            years = []
-
-            for collection in collections:
-                if collection.id.startswith('participants_'):
-                    try:
-                        year = int(collection.id.split('_')[1])
-                        years.append(year)
-                    except (ValueError, IndexError):
-                        continue
-
-            return sorted(years, reverse=True)
-
+            years = [row[0] for row in db_session.query(Participant.year).distinct().all()]
+            return sorted(years, reverse=True) or [datetime.now().year]
         except Exception as e:
-            logging.error(f"Failed to get available years: {e}")
+            logging.getLogger(__name__).error(f"Failed to get available years: {e}")
             return [datetime.now().year]

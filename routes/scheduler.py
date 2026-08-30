@@ -1,17 +1,21 @@
-# Updated by Claude AI on 2025-11-04
+# Updated by Claude AI on 2026-08-29
 """
 Scheduler routes for automated email triggers.
 
-These routes are designed to be called by Google Cloud Scheduler for automated email delivery.
-They are protected by OIDC token verification to prevent unauthorized access.
+These routes are designed to be called by FullHost's Task Scheduler for automated email
+delivery. They are protected by a shared-secret bearer token (SCHEDULER_SECRET env var)
+rather than OIDC, since this is no longer running on Google infrastructure.
+
+Note: FullHost's exact Task Scheduler calling convention (HTTP hit vs. an in-container
+command) hasn't been confirmed yet - this HTTP-based approach may need revisiting once
+that's checked against the real dashboard.
 """
 
 from flask import Blueprint, jsonify, request, current_app, session
 from functools import wraps
+import hmac
 import logging
 import os
-from google.oauth2 import id_token
-from google.auth.transport import requests as google_requests
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +23,7 @@ scheduler_bp = Blueprint('scheduler', __name__)
 
 
 def require_cloud_scheduler(f):
-    """Decorator to verify requests come from Cloud Scheduler with OIDC token."""
+    """Decorator to verify requests come from the Task Scheduler via a shared secret."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         # In TEST_MODE, allow admin-authenticated requests
@@ -31,45 +35,24 @@ def require_cloud_scheduler(f):
                 logger.info("Allowing scheduler request from authenticated admin in TEST_MODE")
                 return f(*args, **kwargs)
 
-        # Verify OIDC token from Cloud Scheduler
         auth_header = request.headers.get('Authorization', '')
         if not auth_header.startswith('Bearer '):
             logger.warning(f"No valid Authorization header from {request.remote_addr}")
-            return jsonify({'error': 'Unauthorized - OIDC token required'}), 403
+            return jsonify({'error': 'Unauthorized - bearer token required'}), 403
 
         token = auth_header.split('Bearer ')[1]
+        expected_secret = os.environ.get('SCHEDULER_SECRET', '')
 
-        try:
-            # Verify token signature and claims
-            # Cloud Scheduler sends tokens with audience = target URL (HTTPS)
-            # Flask's request.url_root may return HTTP behind a proxy, so we ensure HTTPS
-            url_root = request.url_root.rstrip('/')
-            if url_root.startswith('http://'):
-                url_root = url_root.replace('http://', 'https://', 1)
-            expected_audience = url_root
+        if not expected_secret:
+            logger.error("SCHEDULER_SECRET is not configured - refusing all scheduler requests")
+            return jsonify({'error': 'Scheduler not configured'}), 500
 
-            claims = id_token.verify_oauth2_token(
-                token,
-                google_requests.Request(),
-                expected_audience
-            )
+        if hmac.compare_digest(token, expected_secret):
+            logger.info("Authenticated scheduler request")
+            return f(*args, **kwargs)
 
-            # Verify the service account email
-            # Built dynamically from GCP_PROJECT_ID to support multiple deployments
-            email = claims.get('email', '')
-            from config.cloud import GCP_PROJECT_ID
-            expected_sa = f'cloud-scheduler-invoker@{GCP_PROJECT_ID}.iam.gserviceaccount.com'
-
-            if email == expected_sa:
-                logger.info(f"Authenticated Cloud Scheduler request from {email}")
-                return f(*args, **kwargs)
-            else:
-                logger.warning(f"Invalid service account in token: {email}, expected: {expected_sa}")
-                return jsonify({'error': 'Unauthorized service account'}), 403
-
-        except ValueError as e:
-            logger.error(f"Token verification failed: {e}")
-            return jsonify({'error': 'Invalid OIDC token'}), 403
+        logger.warning(f"Invalid scheduler token from {request.remote_addr}")
+        return jsonify({'error': 'Unauthorized'}), 403
 
     return decorated_function
 

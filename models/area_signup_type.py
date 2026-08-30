@@ -1,7 +1,8 @@
-# Updated by Claude AI on 2025-12-31
-from datetime import datetime
+from datetime import datetime, timezone
 import re
+
 from config.areas import get_all_areas
+from models.db import AreaSignupType, DEFAULT_CIRCLE_SLUG
 
 
 def natural_sort_key(area_code):
@@ -10,58 +11,35 @@ def natural_sort_key(area_code):
     Handles codes like: A, B, C (alphabetic) and 1, 2, 10, 4A, 9B (numeric/alphanumeric).
     Sorts alphabetically for letter codes: A, B, C, ... X
     Sorts numerically for numeric codes: 1, 2, 4A, 4B, 9A, 9B, 10, 11, etc.
-
-    Args:
-        area_code: Area code string (e.g., 'A', 'B', '1', '4A', '10')
-
-    Returns:
-        Tuple for natural sorting
     """
-    # Extract numeric and alphabetic parts
     parts = re.findall(r'(\d+|[A-Za-z]+)', str(area_code))
-    # Convert numeric parts to integers for proper numeric sorting
     return tuple(int(p) if p.isdigit() else p for p in parts)
 
 
 class AreaSignupTypeModel:
-    """Manage area signup type settings (open vs admin-only) in Firestore."""
+    """Manage area signup type settings (open vs admin-only) in PostgreSQL."""
 
-    COLLECTION_NAME = 'area_signup_type'
+    def __init__(self, db_session, circle_slug: str = None):
+        self.db = db_session
+        self.circle_slug = circle_slug or DEFAULT_CIRCLE_SLUG
 
-    def __init__(self, db):
-        """Initialize with Firestore client."""
-        self.db = db
-        self.collection = db.collection(self.COLLECTION_NAME)
+    def _base_query(self):
+        return self.db.query(AreaSignupType).filter_by(circle_slug=self.circle_slug)
 
     def get_area_signup_type(self, area_code):
-        """Get signup type for a specific area (admin_assignment_only flag).
-
-        Args:
-            area_code: The area code (e.g., 'A', 'B')
-
-        Returns:
-            dict with 'admin_assignment_only' boolean, defaults to False if not found
-        """
-        doc = self.collection.document(area_code.upper()).get()
-        if doc.exists:
-            return doc.to_dict()
-        # Default to open registration
-        return {'admin_assignment_only': False, 'area_code': area_code.upper()}
+        """Get signup type for a specific area (admin_assignment_only flag)."""
+        area_code = area_code.upper()
+        row = self._base_query().filter_by(area_code=area_code).first()
+        if row:
+            return row.to_dict()
+        return {'admin_assignment_only': False, 'area_code': area_code}
 
     def get_all_signup_types(self):
-        """Get signup types for all areas.
-
-        Returns:
-            dict mapping area codes to {admin_assignment_only: bool}
-        """
+        """Get signup types for all areas."""
         result = {}
-        docs = self.collection.stream()
+        for row in self._base_query().all():
+            result[row.area_code] = row.to_dict()
 
-        for doc in docs:
-            area_code = doc.id
-            result[area_code] = doc.to_dict()
-
-        # Fill in missing areas with defaults
         for area_code in get_all_areas():
             if area_code not in result:
                 result[area_code] = {'admin_assignment_only': False, 'area_code': area_code}
@@ -69,72 +47,55 @@ class AreaSignupTypeModel:
         return result
 
     def set_admin_assignment_only(self, area_code, admin_assignment_only, updated_by=None):
-        """Set the admin assignment only flag for an area.
-
-        Args:
-            area_code: The area code
-            admin_assignment_only: Boolean flag
-            updated_by: Email of admin making the change
-
-        Returns:
-            True if successful
-        """
+        """Set the admin assignment only flag for an area."""
         area_code = area_code.upper()
-
-        # Prepare update data
-        data = {
-            'area_code': area_code,
-            'admin_assignment_only': admin_assignment_only,
-            'updated_at': datetime.now(),
-            'updated_by': updated_by
-        }
-
         try:
-            self.collection.document(area_code).set(data, merge=True)
+            row = self._base_query().filter_by(area_code=area_code).first()
+            now = datetime.now(timezone.utc)
+            if row:
+                row.admin_assignment_only = admin_assignment_only
+                row.updated_at = now
+                row.updated_by = updated_by
+            else:
+                row = AreaSignupType(
+                    circle_slug=self.circle_slug,
+                    area_code=area_code,
+                    admin_assignment_only=admin_assignment_only,
+                    created_at=now,
+                    updated_at=now,
+                    updated_by=updated_by,
+                )
+                self.db.add(row)
+            self.db.commit()
             return True
         except Exception as e:
+            self.db.rollback()
             print(f"Error updating area signup type: {e}")
             return False
 
     def is_admin_assignment_only(self, area_code):
-        """Check if an area is admin-assignment-only.
-
-        Args:
-            area_code: The area code
-
-        Returns:
-            Boolean
-        """
-        signup_type = self.get_area_signup_type(area_code)
-        return signup_type.get('admin_assignment_only', False)
+        """Check if an area is admin-assignment-only."""
+        return self.get_area_signup_type(area_code).get('admin_assignment_only', False)
 
     def get_public_areas(self):
-        """Get list of area codes available for public registration (excludes admin-only areas).
-
-        Returns:
-            Naturally sorted list of public area codes (A, B, C or 1, 2, 4A, 4B, 9A, 10, etc.)
-        """
+        """Get list of area codes available for public registration (excludes admin-only areas)."""
         signup_types = self.get_all_signup_types()
         public_codes = [code for code, settings in signup_types.items()
                         if not settings.get('admin_assignment_only', False)]
         return sorted(public_codes, key=natural_sort_key)
 
     def initialize_all_areas(self):
-        """Initialize all areas to open registration if they don't exist yet.
+        """Initialize all areas to open registration if they don't exist yet."""
+        now = datetime.now(timezone.utc)
+        existing = {row.area_code for row in self._base_query().all()}
 
-        This is called during initial setup to ensure all areas have entries.
-        """
-        all_areas = get_all_areas()
-        batch = self.db.batch()
-
-        for area_code in all_areas:
-            doc = self.collection.document(area_code).get()
-            if not doc.exists:
-                data = {
-                    'area_code': area_code,
-                    'admin_assignment_only': False,
-                    'created_at': datetime.now()
-                }
-                batch.set(self.collection.document(area_code), data)
-
-        batch.commit()
+        for area_code in get_all_areas():
+            if area_code not in existing:
+                self.db.add(AreaSignupType(
+                    circle_slug=self.circle_slug,
+                    area_code=area_code,
+                    admin_assignment_only=False,
+                    created_at=now,
+                    updated_at=now,
+                ))
+        self.db.commit()

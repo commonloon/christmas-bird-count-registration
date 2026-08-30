@@ -1,6 +1,9 @@
 .idea/
 __pycache__/
 client_secret.json
+.env
+.env.*
+!.env.example
 utils/*.csv
 foo
 nul

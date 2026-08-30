@@ -237,7 +237,7 @@ This is an automated notification from the CBC registration system.
 
             # Get area leaders
             try:
-                db, _ = self._get_db_client()
+                db = self._get_db_session()
                 participant_model = ParticipantModel(db, current_year)
                 area_leaders = participant_model.get_leaders_by_area(assigned_area)
             except Exception as e:
@@ -321,10 +321,35 @@ Best regards,
 
         return self.send_email([participant_email], subject, body)
 
-    def _get_db_client(self):
-        """Get Firestore database client."""
-        from config.database import get_firestore_client
-        return get_firestore_client()
+    def _get_db_session(self):
+        """Get the request-scoped database session."""
+        from config.database import get_db_session
+        return get_db_session()
+
+    def send_magic_link(self, email: str, verify_url: str) -> bool:
+        """Send a magic-link login email."""
+        org_vars = get_organization_variables()
+
+        subject = f"{org_vars['count_event_name']} - Login Link"
+
+        body = f"""
+Click the link below to log in to the {org_vars['count_event_name']} registration system:
+
+{verify_url}
+
+This link expires in 15 minutes and can only be used once.
+
+If you didn't request this, you can safely ignore this email.
+        """
+
+        html_body = f"""
+        <p>Click the link below to log in to the {org_vars['count_event_name']} registration system:</p>
+        <p><a href="{verify_url}">{verify_url}</a></p>
+        <p>This link expires in 15 minutes and can only be used once.</p>
+        <p>If you didn't request this, you can safely ignore this email.</p>
+        """
+
+        return self.send_email([email], subject, body, html_body)
 
 
 # Global email service instance
