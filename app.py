@@ -15,6 +15,7 @@ import json
 import logging
 
 CIRCLE_SUBDOMAIN_PATTERN = re.compile(r'^([a-z0-9-]+)\.cbc\.birdcount\.ca$', re.IGNORECASE)
+LANDING_HOST = 'cbc.birdcount.ca'
 
 # Initialize coverage if enabled (test server only)
 coverage_instance = None
@@ -152,6 +153,19 @@ def resolve_circle():
         return None
 
     host = request.host.split(':', 1)[0]
+
+    if host.lower() == LANDING_HOST:
+        # The bare apex-of-subdomains host: a cross-circle landing page, not any
+        # one circle's registration site. Not an unmatched circle subdomain, so
+        # no 404 - g.circle stays None and callers already fall back gracefully
+        # (see config/organization.py's _circle_value) to Vancouver's static
+        # module constants for anything that isn't landing-page-aware yet.
+        g.circle = None
+        g.circle_slug = None
+        g.is_landing_host = True
+        return None
+
+    g.is_landing_host = False
     match = CIRCLE_SUBDOMAIN_PATTERN.match(host)
     slug = match.group(1).lower() if match else os.environ.get('DEFAULT_CIRCLE_SLUG', DEFAULT_CIRCLE_SLUG)
 

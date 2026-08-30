@@ -1,0 +1,44 @@
+{# Updated by Claude AI on 2026-08-30 #}
+{% extends "base.html" %}
+
+{% block title %}Christmas Bird Count Circles{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12 mb-4">
+        <h1 class="mb-2" style="font-size: 1.75rem;">Christmas Bird Count Circles</h1>
+        <p class="lead mb-0" style="font-size: 1.1rem;">Find a count circle near you and register to take part in this year's count.</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-7 mb-4">
+        <div id="circles-map" style="height: 500px; border: 1px solid #ccc;"></div>
+    </div>
+
+    <div class="col-lg-5">
+        <h3>Count Circles</h3>
+        {% if circles %}
+        <ul class="list-group">
+            {% for circle in circles|sort(attribute='name') %}
+            <li class="list-group-item">
+                <a href="https://{{ circle.slug|e }}.cbc.birdcount.ca/">{{ circle.name|e }}</a>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="text-muted">No count circles are set up yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/landing-map.js') }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const circles = {{ circles|tojson }};
+    initializeLandingMap(circles);
+});
+</script>
+{% endblock %}

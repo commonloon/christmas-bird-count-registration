@@ -1,7 +1,7 @@
 import os
 
 from sqlalchemy import (
-    Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, Text,
+    Boolean, Column, DateTime, Float, ForeignKey, Integer, JSON, String, Text,
     UniqueConstraint, create_engine, inspect
 )
 from sqlalchemy.orm import declarative_base, scoped_session, sessionmaker
@@ -207,6 +207,8 @@ class Circle(Base, DictMixin):
     yearly_count_dates = Column(JSON, nullable=False, default=dict)
     registration_opens_months = Column(Integer, nullable=False, default=4)
     registration_closes_days = Column(Integer, nullable=False, default=1)
+    latitude = Column(Float)
+    longitude = Column(Float)
     created_at = Column(DateTime(timezone=True), nullable=False)
     updated_at = Column(DateTime(timezone=True), nullable=False)
 

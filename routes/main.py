@@ -32,6 +32,15 @@ def load_db():
 @main_bp.route('/')
 def index():
     """Main registration page."""
+    if getattr(g, 'is_landing_host', False):
+        from models.circle import CircleModel
+        all_circles = CircleModel(g.db).get_all() if g.db else []
+        circles = [
+            {'slug': c['slug'], 'name': c['name'], 'latitude': c['latitude'], 'longitude': c['longitude']}
+            for c in all_circles
+        ]
+        return render_template('landing.html', circles=circles)
+
     # Check registration status
     reg_status = get_registration_status()
 
