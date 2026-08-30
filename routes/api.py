@@ -1,6 +1,7 @@
 # Updated by Claude AI on 2026-08-29
-from flask import Blueprint, jsonify, request, current_app
+from flask import Blueprint, jsonify, request, current_app, g
 from config.database import get_db_session
+from config.circles import get_area_boundaries_filename, get_default_circle_slug
 from models.participant import ParticipantModel
 from models.area_signup_type import AreaSignupTypeModel
 from services.limiter import limiter
@@ -17,7 +18,8 @@ def get_areas():
     """Get all areas with current registration counts and signup type info for map display."""
     try:
         # Load area boundaries and map configuration
-        path = os.path.join(current_app.root_path, 'static', 'data', 'area_boundaries.json')
+        circle_slug = getattr(g, 'circle_slug', None) or get_default_circle_slug()
+        path = os.path.join(current_app.root_path, 'static', 'data', get_area_boundaries_filename(circle_slug))
         with open(path, 'r') as f:
             data = json.load(f)
 
@@ -106,7 +108,8 @@ def get_areas_needing_leaders():
     """Get all areas with leadership status for map display."""
     try:
         # Load area boundaries and map configuration
-        path = os.path.join(current_app.root_path, 'static', 'data', 'area_boundaries.json')
+        circle_slug = getattr(g, 'circle_slug', None) or get_default_circle_slug()
+        path = os.path.join(current_app.root_path, 'static', 'data', get_area_boundaries_filename(circle_slug))
         with open(path, 'r') as f:
             data = json.load(f)
 

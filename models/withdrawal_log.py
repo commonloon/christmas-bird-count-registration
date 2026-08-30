@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import List, Dict
 import logging
 
-from models.db import WithdrawalLog, DEFAULT_CIRCLE_SLUG
+from models.db import WithdrawalLog, resolve_default_circle_slug
 
 
 class WithdrawalLogModel:
@@ -11,7 +11,7 @@ class WithdrawalLogModel:
     def __init__(self, db_session, year: int = None, circle_slug: str = None):
         self.db = db_session
         self.year = year or datetime.now().year
-        self.circle_slug = circle_slug or DEFAULT_CIRCLE_SLUG
+        self.circle_slug = circle_slug or resolve_default_circle_slug()
         self.logger = logging.getLogger(__name__)
 
     def _base_query(self):

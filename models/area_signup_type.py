@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 import re
 
 from config.areas import get_all_areas
-from models.db import AreaSignupType, DEFAULT_CIRCLE_SLUG
+from models.db import AreaSignupType, resolve_default_circle_slug
 
 
 def natural_sort_key(area_code):
@@ -21,7 +21,7 @@ class AreaSignupTypeModel:
 
     def __init__(self, db_session, circle_slug: str = None):
         self.db = db_session
-        self.circle_slug = circle_slug or DEFAULT_CIRCLE_SLUG
+        self.circle_slug = circle_slug or resolve_default_circle_slug()
 
     def _base_query(self):
         return self.db.query(AreaSignupType).filter_by(circle_slug=self.circle_slug)

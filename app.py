@@ -1,15 +1,20 @@
 # app.py - Flask application entry point
 # Updated by Claude AI on 2025-12-09
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session, g, send_file
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session, g, send_file, abort
 from flask_wtf.csrf import CSRFProtect
 from config.database import get_db_session, teardown_db_session
 from config.organization import get_organization_variables
 from services.limiter import limiter
 from services.ip_blocker import IPBlockerService, get_client_ip
+from models.circle import CircleModel
+from models.db import DEFAULT_CIRCLE_SLUG
 import os
+import re
 from datetime import datetime
 import json
 import logging
+
+CIRCLE_SUBDOMAIN_PATTERN = re.compile(r'^([a-z0-9-]+)\.cbc\.birdcount\.ca$', re.IGNORECASE)
 
 # Initialize coverage if enabled (test server only)
 coverage_instance = None
@@ -97,7 +102,9 @@ def set_security_headers(response):
 def load_area_boundaries():
     """Load area boundary data from JSON file."""
     try:
-        path = os.path.join(app.root_path, 'static', 'data', 'area_boundaries.json')
+        from config.circles import get_area_boundaries_filename, get_default_circle_slug
+        circle_slug = getattr(g, 'circle_slug', None) or get_default_circle_slug()
+        path = os.path.join(app.root_path, 'static', 'data', get_area_boundaries_filename(circle_slug))
         with open(path, 'r') as f:
             return json.load(f)
     except FileNotFoundError:
@@ -128,6 +135,35 @@ def inject_common_data():
         'logo_url': org_vars['logo_url'],
         'display_timezone': org_vars['display_timezone']
     }
+
+# Before request handler for multi-circle resolution (must run before anything that
+# reads g.circle/g.circle_slug, including model construction in later before_request
+# hooks and in route handlers)
+@app.before_request
+def resolve_circle():
+    """Resolve which count circle this request is for, from the Host header.
+
+    e.g. vancouver.cbc.birdcount.ca -> the 'vancouver' circle. Hosts that aren't a
+    *.cbc.birdcount.ca subdomain (localhost, FullHost's default *.oncoregrid.ca
+    hostname, etc.) fall back to DEFAULT_CIRCLE_SLUG so local dev and the platform's
+    default hostname keep working unchanged.
+    """
+    if request.endpoint == 'static':
+        return None
+
+    host = request.host.split(':', 1)[0]
+    match = CIRCLE_SUBDOMAIN_PATTERN.match(host)
+    slug = match.group(1).lower() if match else os.environ.get('DEFAULT_CIRCLE_SLUG', DEFAULT_CIRCLE_SLUG)
+
+    circle = CircleModel(get_db_session()).get_by_slug(slug)
+
+    if circle is None and match:
+        # A real circle subdomain that doesn't correspond to any known circle.
+        abort(404)
+
+    g.circle = circle
+    g.circle_slug = slug
+    return None
 
 # Before request handler for authentication context
 @app.before_request

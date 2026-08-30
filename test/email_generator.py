@@ -20,7 +20,7 @@ from jinja2 import Template
 import logging
 
 from config.database import get_db_session
-from models.db import EmailTimestamp, DEFAULT_CIRCLE_SLUG
+from models.db import EmailTimestamp, resolve_default_circle_slug
 from config.admins import ADMIN_EMAILS
 from config.email_settings import (
     is_test_server, get_admin_unassigned_url, get_leader_dashboard_url,
@@ -42,7 +42,7 @@ class EmailTimestampModel:
     def __init__(self, db_session, year: int = None, circle_slug: str = None):
         self.db = db_session
         self.year = year or datetime.now().year
-        self.circle_slug = circle_slug or DEFAULT_CIRCLE_SLUG
+        self.circle_slug = circle_slug or resolve_default_circle_slug()
 
     def get_last_email_sent(self, area_code: str, email_type: str) -> Optional[datetime]:
         """Get the last email sent timestamp for an area and email type."""

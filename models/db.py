@@ -11,6 +11,24 @@ Base = declarative_base()
 DEFAULT_CIRCLE_SLUG = 'vancouver'
 
 
+def resolve_default_circle_slug():
+    """Resolve the circle_slug a model should use when the caller didn't pass one explicitly.
+
+    Prefers the circle resolved from the current request's Host header (see app.py's
+    before_request hook, which sets flask.g.circle_slug) so existing call sites that don't
+    yet pass circle_slug explicitly still get correct per-circle isolation automatically.
+    Falls back to DEFAULT_CIRCLE_SLUG outside a request context (scripts, tests, scheduler
+    jobs invoked without a resolved circle).
+    """
+    try:
+        from flask import g, has_request_context
+        if has_request_context() and getattr(g, 'circle_slug', None):
+            return g.circle_slug
+    except RuntimeError:
+        pass
+    return DEFAULT_CIRCLE_SLUG
+
+
 class DictMixin:
     """Convert an ORM row to a plain dict, matching the shape callers already expect
     from the old Firestore-backed models (dict with an 'id' key, not an ORM object)."""
@@ -164,6 +182,49 @@ class EmailTimestamp(Base, DictMixin):
     area_code = Column(String(10), nullable=False)
     email_type = Column(String(50), nullable=False)
     last_sent = Column(DateTime(timezone=True), nullable=False)
+
+
+class Circle(Base, DictMixin):
+    """One row per bird count circle (Vancouver, Nanaimo, ...). Replaces the old
+    single-organization config/organization.py module constants for multi-circle support."""
+    __tablename__ = 'circles'
+
+    slug = Column(String(50), primary_key=True)
+    name = Column(String(200), nullable=False)
+    website = Column(String(500))
+    contact = Column(String(254))
+    count_contact = Column(String(254))
+    count_event_name = Column(String(200))
+    count_info_url = Column(String(500))
+    from_email = Column(String(254))
+    logo_path = Column(String(500))
+    test_recipient = Column(String(254))
+    display_timezone = Column(String(100), nullable=False, default='America/Vancouver')
+    is_cbc = Column(Boolean, nullable=False, default=True)
+    count_experience_label = Column(String(200))
+    feeder_counter_label = Column(String(200))
+    notes_placeholder_example = Column(Text)
+    yearly_count_dates = Column(JSON, nullable=False, default=dict)
+    registration_opens_months = Column(Integer, nullable=False, default=4)
+    registration_closes_days = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class CircleArea(Base, DictMixin):
+    """Per-circle area definitions, replacing the old static config/areas.py AREA_CONFIG
+    dict (which only ever described Vancouver's 24 areas). Area codes are arbitrary
+    strings, not necessarily single letters - Comox/Nanaimo use alphanumeric codes."""
+    __tablename__ = 'circle_areas'
+    __table_args__ = (UniqueConstraint('circle_slug', 'code', name='uq_circle_areas_circle_code'),)
+
+    id = Column(Integer, primary_key=True)
+    circle_slug = Column(String(50), ForeignKey('circles.slug'), nullable=False, index=True)
+    code = Column(String(10), nullable=False)
+    name = Column(String(200), nullable=False)
+    description = Column(Text)
+    difficulty = Column(String(50))
+    terrain = Column(String(200))
 
 
 class MagicLinkToken(Base, DictMixin):

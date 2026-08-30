@@ -74,6 +74,33 @@ TEST_RECIPIENT = "birdcount@naturevancouver.ca"  # All test server emails redire
 # Logo Configuration
 LOGO_PATH = "/static/icons/NV_logo.png"  # Path relative to base URL
 
+
+def _active_circle():
+    """The circle resolved for the current request (see app.py's resolve_circle
+    before_request hook), or None outside a request context / before resolution has
+    run (scripts, tests) - callers fall back to this module's constants in that case.
+    """
+    try:
+        from flask import g, has_request_context
+        if has_request_context():
+            return getattr(g, 'circle', None)
+    except RuntimeError:
+        pass
+    return None
+
+
+def _circle_value(key, default):
+    """Get a config value from the active circle if resolved, else the module default.
+
+    This is how config/organization.py and config/areas.py stay per-circle without
+    requiring every call site to be updated - see the multi-circle-architecture note.
+    """
+    circle = _active_circle()
+    if circle is not None and circle.get(key) is not None:
+        return circle[key]
+    return default
+
+
 # URL Functions (environment-aware)
 def get_base_url():
     """Get environment-appropriate base URL."""
@@ -97,7 +124,7 @@ def get_leader_url():
 
 def get_logo_url():
     """Get environment-appropriate logo URL."""
-    return f"{get_base_url()}{LOGO_PATH}"
+    return f"{get_base_url()}{_circle_value('logo_path', LOGO_PATH)}"
 
 def get_count_date(year=None):
     """Get formatted count date with day of week for the given year.
@@ -111,7 +138,7 @@ def get_count_date(year=None):
     if year is None:
         year = datetime.now().year
 
-    date_str = YEARLY_COUNT_DATES.get(year)
+    date_str = _circle_value('yearly_count_dates', YEARLY_COUNT_DATES).get(year)
     if not date_str:
         return "TBD"
 
@@ -126,31 +153,31 @@ def get_count_date(year=None):
 def get_organization_variables():
     """Get all organization variables for email template rendering."""
     return {
-        'organization_name': ORGANIZATION_NAME,
-        'organization_website': ORGANIZATION_WEBSITE,
-        'organization_contact': ORGANIZATION_CONTACT,
-        'count_contact': COUNT_CONTACT,
-        'count_event_name': COUNT_EVENT_NAME,
-        'count_info_url': COUNT_INFO_URL,
-        'from_email': FROM_EMAIL,
+        'organization_name': _circle_value('name', ORGANIZATION_NAME),
+        'organization_website': _circle_value('website', ORGANIZATION_WEBSITE),
+        'organization_contact': _circle_value('contact', ORGANIZATION_CONTACT),
+        'count_contact': _circle_value('count_contact', COUNT_CONTACT),
+        'count_event_name': _circle_value('count_event_name', COUNT_EVENT_NAME),
+        'count_info_url': _circle_value('count_info_url', COUNT_INFO_URL),
+        'from_email': _circle_value('from_email', FROM_EMAIL),
         'registration_url': get_registration_url(),
         'admin_url': get_admin_url(),
         'leader_url': get_leader_url(),
         'logo_url': get_logo_url(),
-        'test_recipient': TEST_RECIPIENT,
-        'display_timezone': DISPLAY_TIMEZONE,
-        'is_cbc': IS_CBC,
-        'count_experience_label': COUNT_EXPERIENCE_LABEL,
-        'feeder_counter_label': FEEDER_COUNTER_LABEL,
-        'notes_placeholder_example': NOTES_PLACEHOLDER_EXAMPLE
+        'test_recipient': _circle_value('test_recipient', TEST_RECIPIENT),
+        'display_timezone': _circle_value('display_timezone', DISPLAY_TIMEZONE),
+        'is_cbc': _circle_value('is_cbc', IS_CBC),
+        'count_experience_label': _circle_value('count_experience_label', COUNT_EXPERIENCE_LABEL),
+        'feeder_counter_label': _circle_value('feeder_counter_label', FEEDER_COUNTER_LABEL),
+        'notes_placeholder_example': _circle_value('notes_placeholder_example', NOTES_PLACEHOLDER_EXAMPLE)
     }
 
 # Registration Window Helper Functions
 
 def _get_validated_registration_closes():
-    """Get validated REGISTRATION_CLOSES value with proper bounds checking."""
+    """Get validated registration-closes-days value with proper bounds checking."""
     try:
-        value = abs(int(REGISTRATION_CLOSES))  # Treat negative as positive
+        value = abs(int(_circle_value('registration_closes_days', REGISTRATION_CLOSES)))  # Treat negative as positive
         if value > 21:
             return 1  # Default for out of bounds
         return value
@@ -158,9 +185,9 @@ def _get_validated_registration_closes():
         return 1  # Default for invalid values
 
 def _get_validated_registration_opens():
-    """Get validated REGISTRATION_OPENS value."""
+    """Get validated registration-opens-months value."""
     try:
-        value = int(REGISTRATION_OPENS)
+        value = int(_circle_value('registration_opens_months', REGISTRATION_OPENS))
         if value <= 0:
             return 3  # Default for non-positive
         return value
@@ -168,22 +195,24 @@ def _get_validated_registration_opens():
         return 3  # Default for invalid values
 
 def _get_pacific_now():
-    """Get current datetime in Pacific timezone."""
-    pacific_tz = pytz.timezone(DISPLAY_TIMEZONE)
+    """Get current datetime in the active circle's timezone (named for its historical
+    Pacific-only default; DISPLAY_TIMEZONE/circle timezone may differ per circle)."""
+    pacific_tz = pytz.timezone(_circle_value('display_timezone', DISPLAY_TIMEZONE))
     return datetime.now(pacific_tz)
 
 def _make_date_pacific_aware(date_str):
-    """Convert date string to timezone-aware datetime at start of day in Pacific time.
+    """Convert date string to timezone-aware datetime at start of day in the active
+    circle's timezone.
 
     Args:
         date_str: Date string in 'YYYY-MM-DD' format
 
     Returns:
-        Timezone-aware datetime at 00:00:01 in Pacific timezone, or None if invalid
+        Timezone-aware datetime at 00:00:01 in the circle's timezone, or None if invalid
     """
     try:
         date_obj = datetime.strptime(date_str, '%Y-%m-%d')
-        pacific_tz = pytz.timezone(DISPLAY_TIMEZONE)
+        pacific_tz = pytz.timezone(_circle_value('display_timezone', DISPLAY_TIMEZONE))
         # Set to 00:00:01 (one second after midnight)
         aware_datetime = pacific_tz.localize(datetime(date_obj.year, date_obj.month, date_obj.day, 0, 0, 1))
         return aware_datetime
@@ -200,7 +229,7 @@ def get_current_registration_year():
     closes_days = _get_validated_registration_closes()
     opens_months = _get_validated_registration_opens()
 
-    for count_year, count_date_str in YEARLY_COUNT_DATES.items():
+    for count_year, count_date_str in _circle_value('yearly_count_dates', YEARLY_COUNT_DATES).items():
         count_date = _make_date_pacific_aware(count_date_str)
         if not count_date:
             continue
@@ -246,7 +275,7 @@ def get_registration_status():
 
     # Registration is open
     now = _get_pacific_now()
-    count_date_str = YEARLY_COUNT_DATES[current_year]
+    count_date_str = _circle_value('yearly_count_dates', YEARLY_COUNT_DATES)[current_year]
     count_date = _make_date_pacific_aware(count_date_str)
     closes_days = _get_validated_registration_closes()
 

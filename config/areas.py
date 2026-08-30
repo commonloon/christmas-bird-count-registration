@@ -155,8 +155,43 @@ AREA_CONFIG = {
     }
 }
 
+def _get_circle_areas():
+    """Areas for the currently-resolved circle (see app.py's resolve_circle hook), as a
+    dict keyed by code, or None outside a request context / before resolution has run
+    (scripts, tests) - callers fall back to the static AREA_CONFIG (Vancouver only) then.
+    """
+    try:
+        from flask import g, has_request_context
+        if not has_request_context() or not getattr(g, 'circle_slug', None):
+            return None
+    except RuntimeError:
+        return None
+
+    from config.database import get_db_session
+    from models.circle import CircleAreaModel
+    areas = CircleAreaModel(get_db_session()).get_areas_for_circle(g.circle_slug)
+    if not areas:
+        return None
+    return {area['code']: area for area in areas}
+
 def get_area_info(letter_code):
     """Get configuration info for a specific area."""
+    circle_areas = _get_circle_areas()
+    if circle_areas is not None:
+        area = circle_areas.get(letter_code.upper())
+        if area:
+            return {
+                'name': area['name'],
+                'description': area['description'],
+                'difficulty': area['difficulty'],
+                'terrain': area['terrain'],
+            }
+        return {
+            'name': f'Area {letter_code}',
+            'description': 'Area description not available',
+            'difficulty': 'Unknown',
+            'terrain': 'Unknown'
+        }
     return AREA_CONFIG.get(letter_code.upper(), {
         'name': f'Area {letter_code}',
         'description': 'Area description not available',
@@ -165,5 +200,11 @@ def get_area_info(letter_code):
     })
 
 def get_all_areas():
-    """Get list of all available area codes."""
-    return sorted(AREA_CONFIG.keys())
+    """Get list of all available area codes, naturally sorted."""
+    from models.area_signup_type import natural_sort_key  # local import: avoids a
+    # module-load cycle (models.area_signup_type imports this module's get_all_areas)
+
+    circle_areas = _get_circle_areas()
+    if circle_areas is not None:
+        return sorted(circle_areas.keys(), key=natural_sort_key)
+    return sorted(AREA_CONFIG.keys(), key=natural_sort_key)
