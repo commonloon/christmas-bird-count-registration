@@ -1,11 +1,12 @@
 # Updated by Claude AI on 2026-08-29
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, current_app
 from config.database import get_db_session
 from models.participant import ParticipantModel
 from models.area_signup_type import AreaSignupTypeModel
 from services.limiter import limiter
 from config.rate_limits import RATE_LIMITS
 import json
+import os
 
 api_bp = Blueprint('api', __name__)
 
@@ -16,7 +17,8 @@ def get_areas():
     """Get all areas with current registration counts and signup type info for map display."""
     try:
         # Load area boundaries and map configuration
-        with open('static/data/area_boundaries.json', 'r') as f:
+        path = os.path.join(current_app.root_path, 'static', 'data', 'area_boundaries.json')
+        with open(path, 'r') as f:
             data = json.load(f)
 
         # Handle both old format (array) and new format (object with map_config)
@@ -104,7 +106,8 @@ def get_areas_needing_leaders():
     """Get all areas with leadership status for map display."""
     try:
         # Load area boundaries and map configuration
-        with open('static/data/area_boundaries.json', 'r') as f:
+        path = os.path.join(current_app.root_path, 'static', 'data', 'area_boundaries.json')
+        with open(path, 'r') as f:
             data = json.load(f)
 
         # Handle both old format (array) and new format (object with map_config)

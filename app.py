@@ -97,7 +97,8 @@ def set_security_headers(response):
 def load_area_boundaries():
     """Load area boundary data from JSON file."""
     try:
-        with open('static/data/area_boundaries.json', 'r') as f:
+        path = os.path.join(app.root_path, 'static', 'data', 'area_boundaries.json')
+        with open(path, 'r') as f:
             return json.load(f)
     except FileNotFoundError:
         print("Warning: Area boundaries file not found")
