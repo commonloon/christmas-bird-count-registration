@@ -116,12 +116,19 @@
         </div>
 
         <div class="row">
+            <div class="col-12 mb-1">
+                <div class="form-text">
+                    Used to place this circle's pin on the cross-circle landing map. Leave blank if
+                    you don't know it offhand - it isn't required, and will be filled in automatically
+                    once area-boundary import (from your Google My Maps KML export) is available.
+                </div>
+            </div>
             <div class="col-md-6 mb-3">
-                <label class="form-label">Map latitude</label>
+                <label class="form-label">Map latitude (optional)</label>
                 <input type="number" step="any" name="latitude" class="form-control" value="{{ circle.latitude if circle else '' }}">
             </div>
             <div class="col-md-6 mb-3">
-                <label class="form-label">Map longitude</label>
+                <label class="form-label">Map longitude (optional)</label>
                 <input type="number" step="any" name="longitude" class="form-control" value="{{ circle.longitude if circle else '' }}">
             </div>
         </div>
