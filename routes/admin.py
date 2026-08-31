@@ -39,10 +39,28 @@ from io import StringIO
 admin_bp = Blueprint('admin', __name__)
 
 
+# Endpoints that make sense with no circle context (they take an explicit
+# slug, or manage the cross-circle circle list itself) - everything else in
+# this blueprint implicitly acts on g.circle_slug, which is meaningless on
+# the landing host (see app.py's LANDING_HOST branch).
+_CIRCLE_CONSOLE_ENDPOINTS = {
+    'admin.list_circles', 'admin.new_circle', 'admin.edit_circle',
+    'admin.circle_admins', 'admin.circle_areas_manage',
+}
+
+
 @admin_bp.before_request
 def load_db():
     """Load database session and check admin access."""
     g.db = get_db_session()
+
+    if getattr(g, 'is_landing_host', False) and request.endpoint not in _CIRCLE_CONSOLE_ENDPOINTS:
+        # No circle context here - every other /bigbird/* route would otherwise
+        # silently act on Vancouver's data via the DEFAULT_CIRCLE_SLUG fallback,
+        # which is correct for local dev but wrong here. The circles console's
+        # own require_super_admin/require_admin decorators still gate access
+        # after this redirect - this only redirects, it doesn't authorize.
+        return redirect(url_for('admin.list_circles'))
 
 
 @admin_bp.route('/')
