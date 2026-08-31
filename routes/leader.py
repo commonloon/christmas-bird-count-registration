@@ -24,7 +24,7 @@ def load_db():
         from routes.auth import get_user_role
         user_email = session['user_email']
         current_role = session.get('user_role')
-        actual_role = get_user_role(user_email, g.db)
+        actual_role = get_user_role(user_email, g.db, g.circle_slug)
 
         # Update session if role has changed
         if actual_role != current_role:

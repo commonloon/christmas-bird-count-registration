@@ -1,0 +1,40 @@
+{# Updated by Claude AI on 2026-08-30 #}
+{% extends "base.html" %}
+
+{% block title %}Manage Circles{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Count Circles</h1>
+    <a href="{{ url_for('admin.new_circle') }}" class="btn btn-primary">Add Circle</a>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <table class="table table-striped align-middle">
+            <thead>
+                <tr>
+                    <th>Circle</th>
+                    <th>Managing Organization</th>
+                    <th>Slug</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for circle in circles %}
+                <tr>
+                    <td>{{ circle.circle_name|e }}</td>
+                    <td>{{ circle.name|e }}</td>
+                    <td><code>{{ circle.slug|e }}</code></td>
+                    <td>
+                        <a href="{{ url_for('admin.edit_circle', slug=circle.slug) }}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                        <a href="{{ url_for('admin.circle_areas_manage', slug=circle.slug) }}" class="btn btn-sm btn-outline-secondary">Areas</a>
+                        <a href="{{ url_for('admin.circle_admins', slug=circle.slug) }}" class="btn btn-sm btn-outline-secondary">Admins</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -1,5 +1,5 @@
 # Updated by Claude AI on 2025-12-18
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response, g, current_app
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response, g, current_app, session
 from config.database import get_db_session
 from config.email_settings import is_test_server
 from models.participant import ParticipantModel
@@ -14,7 +14,8 @@ from config.fields import (
     get_participant_field_default, get_participant_display_name
 )
 from config.admins import get_admin_emails
-from routes.auth import require_admin, get_current_user
+from routes.auth import require_admin, require_super_admin, get_current_user
+from models.circle import CircleModel, CircleAreaModel, CircleAdminModel
 from services.email_service import email_service
 from services.ip_blocker import IPBlockerService
 from test.email_generator import (
@@ -23,7 +24,7 @@ from test.email_generator import (
     generate_admin_digest_email
 )
 from services.security import (
-    sanitize_name, sanitize_email, sanitize_phone, sanitize_notes,
+    sanitize_name, sanitize_email, sanitize_phone, sanitize_notes, sanitize_text_input,
     validate_area_code, validate_experience, validate_email_format, is_suspicious_input, log_security_event
 )
 from services.csv_security import escape_csv_formula
@@ -1397,6 +1398,186 @@ def cleanup_blocks():
     flash(f'Cleaned up {count} expired blocks.', 'success')
 
     return redirect(url_for('admin.blocked_ips'))
+
+
+CIRCLE_SLUG_PATTERN_MESSAGE = 'Slug must be lowercase letters, numbers, and hyphens only.'
+
+
+def _valid_circle_slug(slug):
+    import re as _re
+    return bool(_re.match(r'^[a-z0-9-]+$', slug or ''))
+
+
+def _can_manage_circle(slug):
+    """True if the current session may edit this circle's own config/areas -
+    either a super-admin (any circle) or a circle-admin for THIS circle only."""
+    user_role = session.get('user_role')
+    if user_role == 'super_admin':
+        return True
+    return user_role == 'admin' and g.circle_slug == slug
+
+
+def _require_circle_manage_access(slug):
+    """Returns a redirect response if access should be denied, else None."""
+    if 'user_email' not in session:
+        return redirect(url_for('auth.login', next=request.url))
+    if not _can_manage_circle(slug):
+        flash('You do not have permission to manage this circle.', 'error')
+        return redirect(url_for('main.index'))
+    return None
+
+
+def _circle_form_data(form):
+    """Extract and sanitize circle config fields from a submitted form."""
+    return {
+        'circle_name': sanitize_text_input(form.get('circle_name', ''), max_length=200),
+        'name': sanitize_text_input(form.get('name', ''), max_length=200),
+        'website': sanitize_text_input(form.get('website', ''), max_length=500),
+        'contact': sanitize_email(form.get('contact', '')),
+        'count_contact': sanitize_email(form.get('count_contact', '')),
+        'count_event_name': sanitize_text_input(form.get('count_event_name', ''), max_length=200),
+        'count_info_url': sanitize_text_input(form.get('count_info_url', ''), max_length=500),
+        'from_email': sanitize_email(form.get('from_email', '')),
+        'logo_path': sanitize_text_input(form.get('logo_path', ''), max_length=500),
+        'test_recipient': sanitize_email(form.get('test_recipient', '')),
+        'display_timezone': sanitize_text_input(form.get('display_timezone', 'America/Vancouver'), max_length=100),
+        'is_cbc': form.get('is_cbc') == 'on',
+        'count_experience_label': sanitize_text_input(form.get('count_experience_label', ''), max_length=200),
+        'feeder_counter_label': sanitize_text_input(form.get('feeder_counter_label', ''), max_length=200),
+        'notes_placeholder_example': sanitize_notes(form.get('notes_placeholder_example', '')),
+        'registration_opens_months': int(form.get('registration_opens_months') or 4),
+        'registration_closes_days': int(form.get('registration_closes_days') or 1),
+        'latitude': float(form['latitude']) if form.get('latitude') else None,
+        'longitude': float(form['longitude']) if form.get('longitude') else None,
+    }
+
+
+@admin_bp.route('/circles')
+@require_super_admin
+def list_circles():
+    """Super-admin console: list all count circles."""
+    circles = CircleModel(g.db).get_all()
+    return render_template('admin/circles.html', circles=circles, current_user=get_current_user())
+
+
+@admin_bp.route('/circles/new', methods=['GET', 'POST'])
+@require_super_admin
+def new_circle():
+    """Super-admin console: create a new count circle."""
+    if request.method == 'GET':
+        return render_template('admin/circle_form.html', circle=None, current_user=get_current_user())
+
+    slug = sanitize_text_input(request.form.get('slug', ''), max_length=50).lower()
+    if not _valid_circle_slug(slug):
+        flash(f'Invalid slug: {CIRCLE_SLUG_PATTERN_MESSAGE}', 'error')
+        return redirect(url_for('admin.new_circle'))
+
+    if CircleModel(g.db).get_by_slug(slug):
+        flash(f'A circle with slug "{slug}" already exists.', 'error')
+        return redirect(url_for('admin.new_circle'))
+
+    data = _circle_form_data(request.form)
+    data['slug'] = slug
+
+    count_date = request.form.get('count_date', '').strip()
+    data['yearly_count_dates'] = {str(datetime.now().year): count_date} if count_date else {}
+
+    CircleModel(g.db).create(data)
+    flash(f'Circle "{data["circle_name"]}" created.', 'success')
+    return redirect(url_for('admin.list_circles'))
+
+
+@admin_bp.route('/circles/<slug>/edit', methods=['GET', 'POST'])
+def edit_circle(slug):
+    """Edit a circle's config - super-admin (any circle) or that circle's own admin."""
+    denied = _require_circle_manage_access(slug)
+    if denied:
+        return denied
+
+    circle = CircleModel(g.db).get_by_slug(slug)
+    if not circle:
+        flash('Circle not found.', 'error')
+        return redirect(url_for('main.index'))
+
+    if request.method == 'GET':
+        return render_template('admin/circle_form.html', circle=circle, current_user=get_current_user())
+
+    data = _circle_form_data(request.form)
+
+    count_date = request.form.get('count_date', '').strip()
+    if count_date:
+        yearly_dates = dict(circle.get('yearly_count_dates') or {})
+        yearly_dates[str(datetime.now().year)] = count_date
+        data['yearly_count_dates'] = {str(k): v for k, v in yearly_dates.items()}
+
+    CircleModel(g.db).update(slug, data)
+    flash(f'Circle "{data["circle_name"]}" updated.', 'success')
+    return redirect(url_for('admin.edit_circle', slug=slug))
+
+
+@admin_bp.route('/circles/<slug>/admins', methods=['GET', 'POST'])
+@require_super_admin
+def circle_admins(slug):
+    """Super-admin console: manage which emails are circle-admins for a circle."""
+    circle = CircleModel(g.db).get_by_slug(slug)
+    if not circle:
+        flash('Circle not found.', 'error')
+        return redirect(url_for('admin.list_circles'))
+
+    model = CircleAdminModel(g.db)
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+        email = sanitize_email(request.form.get('email', ''))
+        if action == 'add' and email and validate_email_format(email):
+            model.add_admin(email, slug)
+            flash(f'{email} added as an admin for {circle["circle_name"]}.', 'success')
+        elif action == 'remove' and email:
+            model.remove_admin(email, slug)
+            flash(f'{email} removed as an admin for {circle["circle_name"]}.', 'success')
+        else:
+            flash('Invalid request.', 'error')
+        return redirect(url_for('admin.circle_admins', slug=slug))
+
+    admins = model.get_admins_for_circle(slug)
+    return render_template('admin/circle_admins.html', circle=circle, admins=admins, current_user=get_current_user())
+
+
+@admin_bp.route('/circles/<slug>/areas', methods=['GET', 'POST'])
+def circle_areas_manage(slug):
+    """Manage area labels for a circle - super-admin (any circle) or that circle's
+    own admin. Only label fields (name/description/difficulty/terrain) - boundary
+    (GeoJSON) editing is a separate, not-yet-built feature."""
+    denied = _require_circle_manage_access(slug)
+    if denied:
+        return denied
+
+    circle = CircleModel(g.db).get_by_slug(slug)
+    if not circle:
+        flash('Circle not found.', 'error')
+        return redirect(url_for('main.index'))
+
+    area_model = CircleAreaModel(g.db)
+
+    if request.method == 'POST':
+        code = sanitize_text_input(request.form.get('code', ''), max_length=10).upper()
+        name = sanitize_text_input(request.form.get('name', ''), max_length=200)
+        description = sanitize_notes(request.form.get('description', ''))
+        difficulty = sanitize_text_input(request.form.get('difficulty', ''), max_length=50)
+        terrain = sanitize_text_input(request.form.get('terrain', ''), max_length=200)
+
+        if not code or not name:
+            flash('Area code and name are required.', 'error')
+        elif area_model.get_area(slug, code):
+            area_model.update_area(slug, code, name=name, description=description, difficulty=difficulty, terrain=terrain)
+            flash(f'Area {code} updated.', 'success')
+        else:
+            area_model.add_area(slug, code, name, description=description, difficulty=difficulty, terrain=terrain)
+            flash(f'Area {code} added.', 'success')
+        return redirect(url_for('admin.circle_areas_manage', slug=slug))
+
+    areas = area_model.get_areas_for_circle(slug)
+    return render_template('admin/circle_areas.html', circle=circle, areas=areas, current_user=get_current_user())
 
 
 # Only register test routes when TEST_MODE is enabled

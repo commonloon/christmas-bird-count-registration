@@ -28,6 +28,9 @@
                 <a class="navbar-brand" href="{{ url_for('main.index') }}">{{ count_event_name }} Registration</a>
             {% endif %}
             <div class="navbar-nav ms-auto">
+                {% if session.get('user_role') == 'super_admin' %}
+                <a class="nav-link" href="{{ url_for('admin.list_circles') }}">Manage Circles</a>
+                {% endif %}
             </div>
         </div>
     </nav>

@@ -230,6 +230,18 @@ class CircleArea(Base, DictMixin):
     terrain = Column(String(200))
 
 
+class CircleAdmin(Base, DictMixin):
+    """Which emails have full admin access to one circle (scoped, unlike the
+    global super-admin whitelist in config/admins.py)."""
+    __tablename__ = 'circle_admins'
+    __table_args__ = (UniqueConstraint('email', 'circle_slug', name='uq_circle_admins_email_circle'),)
+
+    id = Column(Integer, primary_key=True)
+    email = Column(String(254), nullable=False, index=True)
+    circle_slug = Column(String(50), ForeignKey('circles.slug'), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+
+
 class MagicLinkToken(Base, DictMixin):
     __tablename__ = 'magic_link_tokens'
 

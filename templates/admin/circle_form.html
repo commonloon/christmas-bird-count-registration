@@ -1,0 +1,155 @@
+{# Updated by Claude AI on 2026-08-30 #}
+{% extends "base.html" %}
+
+{% block title %}{% if circle %}Edit {{ circle.circle_name|e }}{% else %}Add Circle{% endif %}{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">{% if circle %}Edit {{ circle.circle_name|e }}{% else %}Add a New Circle{% endif %}</h1>
+
+<form method="POST" class="card">
+    <div class="card-body">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+        {% if not circle %}
+        <div class="mb-3">
+            <label class="form-label">Slug (used in URLs, e.g. <code>nanaimo</code> for <code>nanaimo.cbc.birdcount.ca</code>)</label>
+            <input type="text" name="slug" class="form-control" pattern="[a-z0-9-]+" required
+                   title="Lowercase letters, numbers, and hyphens only">
+        </div>
+        {% else %}
+        <div class="mb-3">
+            <label class="form-label">Slug</label>
+            <input type="text" class="form-control" value="{{ circle.slug|e }}" disabled>
+        </div>
+        {% endif %}
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Circle name (e.g. "Vancouver")</label>
+                <input type="text" name="circle_name" class="form-control" required
+                       value="{{ circle.circle_name|e if circle else '' }}">
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Managing organization (e.g. "Nature Vancouver")</label>
+                <input type="text" name="name" class="form-control" required
+                       value="{{ circle.name|e if circle else '' }}">
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Organization website</label>
+                <input type="url" name="website" class="form-control" value="{{ circle.website|e if circle else '' }}">
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Organization contact email</label>
+                <input type="email" name="contact" class="form-control" value="{{ circle.contact|e if circle else '' }}">
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Count coordinator contact email</label>
+                <input type="email" name="count_contact" class="form-control" required
+                       value="{{ circle.count_contact|e if circle else '' }}">
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">From email (used to send registration emails)</label>
+                <input type="email" name="from_email" class="form-control" required
+                       value="{{ circle.from_email|e if circle else '' }}">
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Count event name (e.g. "Vancouver Christmas Bird Count")</label>
+            <input type="text" name="count_event_name" class="form-control" required
+                   value="{{ circle.count_event_name|e if circle else '' }}">
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Count info URL</label>
+            <input type="url" name="count_info_url" class="form-control" value="{{ circle.count_info_url|e if circle else '' }}">
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Test-mode recipient email</label>
+                <input type="email" name="test_recipient" class="form-control" value="{{ circle.test_recipient|e if circle else '' }}">
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Logo path (relative to site root)</label>
+                <input type="text" name="logo_path" class="form-control" value="{{ circle.logo_path|e if circle else '' }}">
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Display timezone</label>
+                <input type="text" name="display_timezone" class="form-control"
+                       value="{{ circle.display_timezone|e if circle else 'America/Vancouver' }}">
+            </div>
+            <div class="col-md-3 mb-3">
+                <label class="form-label">Registration opens (months before count)</label>
+                <input type="number" name="registration_opens_months" class="form-control" min="1"
+                       value="{{ circle.registration_opens_months if circle else 4 }}">
+            </div>
+            <div class="col-md-3 mb-3">
+                <label class="form-label">Registration closes (days before count)</label>
+                <input type="number" name="registration_closes_days" class="form-control" min="0"
+                       value="{{ circle.registration_closes_days if circle else 1 }}">
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">This year's count date</label>
+            <input type="date" name="count_date" class="form-control">
+            <div class="form-text">
+                {% if circle and circle.yearly_count_dates %}
+                Existing dates on file: {{ circle.yearly_count_dates }}
+                {% else %}
+                No dates on file yet.
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Map latitude</label>
+                <input type="number" step="any" name="latitude" class="form-control" value="{{ circle.latitude if circle else '' }}">
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label">Map longitude</label>
+                <input type="number" step="any" name="longitude" class="form-control" value="{{ circle.longitude if circle else '' }}">
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <label class="form-label">Experience field label</label>
+                <input type="text" name="count_experience_label" class="form-control"
+                       value="{{ circle.count_experience_label|e if circle else 'CBC Experience' }}">
+            </div>
+            <div class="col-md-8 mb-3">
+                <label class="form-label">Feeder counter option label</label>
+                <input type="text" name="feeder_counter_label" class="form-control"
+                       value="{{ circle.feeder_counter_label|e if circle else 'Count birds at my home feeder' }}">
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">Notes field placeholder example</label>
+            <input type="text" name="notes_placeholder_example" class="form-control"
+                   value="{{ circle.notes_placeholder_example|e if circle else '' }}">
+        </div>
+
+        <div class="form-check mb-3">
+            <input type="checkbox" name="is_cbc" id="is_cbc" class="form-check-input"
+                   {% if not circle or circle.is_cbc %}checked{% endif %}>
+            <label class="form-check-label" for="is_cbc">This is a Christmas Bird Count (uncheck for a Spring count, etc.)</label>
+        </div>
+
+        <button type="submit" class="btn btn-primary">{% if circle %}Save Changes{% else %}Create Circle{% endif %}</button>
+        <a href="{{ url_for('admin.list_circles') }}" class="btn btn-outline-secondary">Cancel</a>
+    </div>
+</form>
+{% endblock %}

@@ -1,0 +1,62 @@
+{# Updated by Claude AI on 2026-08-30 #}
+{% extends "base.html" %}
+
+{% block title %}Areas for {{ circle.circle_name|e }}{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Areas for {{ circle.circle_name|e }}</h1>
+<p class="text-muted">Area boundaries (the map shapes) aren't editable here yet - only the labels below.</p>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <table class="table">
+            <thead>
+                <tr><th>Code</th><th>Name</th><th>Description</th><th>Difficulty</th><th>Terrain</th></tr>
+            </thead>
+            <tbody>
+                {% for area in areas %}
+                <tr>
+                    <td><code>{{ area.code|e }}</code></td>
+                    <td>{{ area.name|e }}</td>
+                    <td>{{ area.description|e }}</td>
+                    <td>{{ area.difficulty|e }}</td>
+                    <td>{{ area.terrain|e }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="text-muted">No areas defined yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <h5 class="card-title">Add or update an area</h5>
+        <p class="text-muted small">Using an existing area's code updates its labels instead of creating a duplicate.</p>
+        <form method="POST" class="row g-2">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="col-md-2">
+                <input type="text" name="code" class="form-control" placeholder="Code (e.g. A)" required>
+            </div>
+            <div class="col-md-3">
+                <input type="text" name="name" class="form-control" placeholder="Name" required>
+            </div>
+            <div class="col-md-3">
+                <input type="text" name="description" class="form-control" placeholder="Description">
+            </div>
+            <div class="col-md-2">
+                <input type="text" name="difficulty" class="form-control" placeholder="Difficulty">
+            </div>
+            <div class="col-md-2">
+                <input type="text" name="terrain" class="form-control" placeholder="Terrain">
+            </div>
+            <div class="col-12">
+                <button type="submit" class="btn btn-primary">Save Area</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<a href="{{ url_for('admin.list_circles') }}" class="btn btn-outline-secondary mt-3">Back to Circles</a>
+{% endblock %}

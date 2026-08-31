@@ -1,4 +1,4 @@
-from flask import Blueprint, session, request, redirect, url_for, flash, render_template
+from flask import Blueprint, session, request, redirect, url_for, flash, render_template, g
 from functools import wraps
 from datetime import datetime, timedelta, timezone
 import hashlib
@@ -10,6 +10,7 @@ from config.admins import is_admin
 from config.database import get_db_session
 from models.db import MagicLinkToken
 from models.participant import ParticipantModel
+from models.circle import CircleAdminModel
 from services.limiter import limiter
 from config.rate_limits import RATE_LIMITS, get_rate_limit_message
 
@@ -22,18 +23,41 @@ logger = logging.getLogger(__name__)
 MAGIC_LINK_EXPIRY_MINUTES = 15
 
 
-def get_user_role(email, db_session, year=None):
-    """Determine user role based on email address."""
+def get_user_role(email, db_session, circle_slug, year=None):
+    """Determine user role based on email address, scoped to the current circle.
+
+    Roles, most to least privileged:
+    - 'super_admin': global whitelist (config/admins.py) - full access to every
+      circle, plus the /bigbird/circles super-admin console.
+    - 'admin': a circle-admin for THIS circle only (circle_admins table). Reuses
+      the same role value 'admin' has always had, so require_admin's existing
+      per-route gating on /bigbird/* needs no changes - ParticipantModel etc.
+      already auto-scope by g.circle_slug, so this "just works" for isolation.
+    - 'leader': an area leader for THIS circle only.
+    - 'public': none of the above, or no circle context (e.g. the landing host).
+    """
     if not email:
         return 'public'
 
-    # Check admin status first
+    # Check super-admin status first - global, not circle-scoped
     if is_admin(email):
-        return 'admin'
+        return 'super_admin'
+
+    if circle_slug is None:
+        # No circle context (e.g. the cbc.birdcount.ca landing host) - only
+        # super-admins have anything to do there.
+        return 'public'
+
+    # Check circle-admin status
+    try:
+        if CircleAdminModel(db_session).is_circle_admin(email, circle_slug):
+            return 'admin'
+    except Exception as e:
+        logger.warning(f"Could not check circle-admin status for {email}: {e}")
 
     # Check area leader status
     try:
-        participant_model = ParticipantModel(db_session, year)
+        participant_model = ParticipantModel(db_session, year, circle_slug)
         if participant_model.is_area_leader(email):
             return 'leader'
     except Exception as e:
@@ -56,7 +80,7 @@ def require_auth(f):
 
 
 def require_admin(f):
-    """Decorator to require admin privileges."""
+    """Decorator to require admin privileges (circle-admin or super-admin)."""
 
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -64,7 +88,7 @@ def require_admin(f):
             return redirect(url_for('auth.login', next=request.url))
 
         user_role = session.get('user_role')
-        if user_role == 'admin':
+        if user_role in ('admin', 'super_admin'):
             return f(*args, **kwargs)
 
         if user_role == 'leader':
@@ -79,6 +103,23 @@ def require_admin(f):
     return decorated_function
 
 
+def require_super_admin(f):
+    """Decorator to require super-admin privileges (global, cross-circle)."""
+
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_email' not in session:
+            return redirect(url_for('auth.login', next=request.url))
+
+        if session.get('user_role') == 'super_admin':
+            return f(*args, **kwargs)
+
+        flash('Super-admin access required.', 'error')
+        return redirect(url_for('main.index'))
+
+    return decorated_function
+
+
 def require_leader(f):
     """Decorator to require area leader privileges."""
 
@@ -88,7 +129,7 @@ def require_leader(f):
             return redirect(url_for('auth.login', next=request.url))
 
         user_role = session.get('user_role')
-        if user_role not in ['admin', 'leader']:
+        if user_role not in ('admin', 'super_admin', 'leader'):
             flash('Area leader access required.', 'error')
             return redirect(url_for('main.index'))
 
@@ -122,9 +163,9 @@ def request_magic_link():
     if email:
         try:
             db = get_db_session()
-            role = get_user_role(email, db)
+            role = get_user_role(email, db, g.circle_slug)
 
-            if role in ('admin', 'leader'):
+            if role in ('super_admin', 'admin', 'leader'):
                 raw_token = secrets.token_urlsafe(32)
                 token_record = MagicLinkToken(
                     email=email,
@@ -178,7 +219,7 @@ def verify(token):
         db.commit()
 
         email = record.email
-        user_role = get_user_role(email, db)
+        user_role = get_user_role(email, db, g.circle_slug)
 
         session['user_email'] = email
         session['user_name'] = email
@@ -186,7 +227,13 @@ def verify(token):
 
         logger.info(f"User {email} logged in with role: {user_role}")
 
-        if user_role == 'admin':
+        if user_role == 'super_admin' and g.circle_slug is None and next_url == '/':
+            # Logged in from the landing host, where there's no circle context -
+            # the per-circle dashboard would silently default to Vancouver, which
+            # would be a confusing landing spot after logging in from cbc.birdcount.ca.
+            return redirect(url_for('admin.list_circles'))
+
+        if user_role in ('admin', 'super_admin'):
             return redirect(next_url if next_url != '/' else url_for('admin.dashboard'))
         elif user_role == 'leader':
             return redirect(next_url if next_url != '/' else url_for('leader.dashboard'))
@@ -236,6 +283,7 @@ def get_current_user():
         'name': session.get('user_name'),
         'role': session.get('user_role', 'public'),
         'is_authenticated': 'user_email' in session,
-        'is_admin': session.get('user_role') == 'admin',
-        'is_leader': session.get('user_role') in ['admin', 'leader']
+        'is_admin': session.get('user_role') in ('admin', 'super_admin'),
+        'is_super_admin': session.get('user_role') == 'super_admin',
+        'is_leader': session.get('user_role') in ['admin', 'super_admin', 'leader']
     }
