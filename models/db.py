@@ -190,7 +190,8 @@ class Circle(Base, DictMixin):
     __tablename__ = 'circles'
 
     slug = Column(String(50), primary_key=True)
-    name = Column(String(200), nullable=False)
+    name = Column(String(200), nullable=False)  # managing organization, e.g. "Nature Vancouver"
+    circle_name = Column(String(200), nullable=False)  # the count circle itself, e.g. "Vancouver"
     website = Column(String(500))
     contact = Column(String(254))
     count_contact = Column(String(254))

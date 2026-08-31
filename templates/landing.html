@@ -6,7 +6,6 @@
 {% block content %}
 <div class="row">
     <div class="col-12 mb-4">
-        <h1 class="mb-2" style="font-size: 1.75rem;">Christmas Bird Count Circles</h1>
         <p class="lead mb-0" style="font-size: 1.1rem;">Find a count circle near you and register to take part in this year's count.</p>
     </div>
 </div>
@@ -17,15 +16,29 @@
     </div>
 
     <div class="col-lg-5">
-        <h3>Count Circles</h3>
         {% if circles %}
-        <ul class="list-group">
-            {% for circle in circles|sort(attribute='name') %}
-            <li class="list-group-item">
-                <a href="https://{{ circle.slug|e }}.cbc.birdcount.ca/">{{ circle.name|e }}</a>
-            </li>
-            {% endfor %}
-        </ul>
+        <table class="table table-striped align-middle">
+            <thead>
+                <tr>
+                    <th scope="col">Circle</th>
+                    <th scope="col">Managing Organization</th>
+                    <th scope="col">Contact</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for circle in circles|sort(attribute='circle_name') %}
+                <tr>
+                    <td><a href="https://{{ circle.slug|e }}.cbc.birdcount.ca/">{{ circle.circle_name|e }}</a></td>
+                    <td>{{ circle.organization_name|e }}</td>
+                    <td>
+                        <button type="button" class="btn btn-sm btn-outline-secondary show-contact-btn" data-slug="{{ circle.slug|e }}">
+                            Show contact
+                        </button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
         {% else %}
         <p class="text-muted">No count circles are set up yet.</p>
         {% endif %}
@@ -39,6 +52,7 @@
 document.addEventListener('DOMContentLoaded', function() {
     const circles = {{ circles|tojson }};
     initializeLandingMap(circles);
+    initializeContactButtons();
 });
 </script>
 {% endblock %}

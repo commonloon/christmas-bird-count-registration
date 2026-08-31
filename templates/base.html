@@ -18,7 +18,9 @@
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary" aria-label="Main navigation">
         <div class="container">
-            {% if request.endpoint and request.endpoint.startswith('admin.') %}
+            {% if g.get('is_landing_host') %}
+                <a class="navbar-brand" href="{{ url_for('main.index') }}">Christmas Bird Count Circles</a>
+            {% elif request.endpoint and request.endpoint.startswith('admin.') %}
                 <a class="navbar-brand" href="{{ url_for('admin.dashboard', year=selected_year) }}">{{ count_event_name }} Admin</a>
             {% elif request.endpoint and request.endpoint.startswith('leader.') %}
                 <a class="navbar-brand" href="{{ url_for('leader.dashboard') }}">{{ count_event_name }} Area Leader</a>

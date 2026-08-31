@@ -2,6 +2,7 @@
 from flask import Blueprint, jsonify, request, current_app, g
 from config.database import get_db_session
 from config.circles import get_area_boundaries_filename, get_default_circle_slug
+from models.circle import CircleModel
 from models.participant import ParticipantModel
 from models.area_signup_type import AreaSignupTypeModel
 from services.limiter import limiter
@@ -10,6 +11,23 @@ import json
 import os
 
 api_bp = Blueprint('api', __name__)
+
+
+@api_bp.route('/circles/<slug>/contact')
+@limiter.limit(RATE_LIMITS['api_general'])
+def get_circle_contact(slug):
+    """Get a circle's contact email on demand.
+
+    Deliberately not included in the landing page's initial HTML/JSON payload -
+    bots scraping a plaintext contact address from a public page caused a real
+    spam problem previously, so the landing page's "show contact" button fetches
+    it here instead, one circle at a time, rather than shipping every circle's
+    email to every visitor up front.
+    """
+    circle = CircleModel(get_db_session()).get_by_slug(slug)
+    if not circle:
+        return jsonify({'error': 'Circle not found'}), 404
+    return jsonify({'contact': circle['count_contact']})
 
 
 @api_bp.route('/areas')

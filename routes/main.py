@@ -35,8 +35,18 @@ def index():
     if getattr(g, 'is_landing_host', False):
         from models.circle import CircleModel
         all_circles = CircleModel(g.db).get_all() if g.db else []
+        # Deliberately excludes contact email - it's fetched on demand via
+        # /api/circles/<slug>/contact instead, so it never sits in this page's
+        # initial HTML/JSON where a scraper could harvest it for free (bots
+        # scraping this contact address caused a real spam problem previously).
         circles = [
-            {'slug': c['slug'], 'name': c['name'], 'latitude': c['latitude'], 'longitude': c['longitude']}
+            {
+                'slug': c['slug'],
+                'circle_name': c['circle_name'],
+                'organization_name': c['name'],
+                'latitude': c['latitude'],
+                'longitude': c['longitude'],
+            }
             for c in all_circles
         ]
         return render_template('landing.html', circles=circles)
