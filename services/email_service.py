@@ -1,4 +1,5 @@
 # Updated by Claude AI on 2026-01-12
+import html
 import os
 import smtplib
 from email.mime.text import MIMEText
@@ -346,6 +347,42 @@ If you didn't request this, you can safely ignore this email.
         <p>Click the link below to log in to the {org_vars['count_event_name']} registration system:</p>
         <p><a href="{verify_url}">{verify_url}</a></p>
         <p>This link expires in 15 minutes and can only be used once.</p>
+        <p>If you didn't request this, you can safely ignore this email.</p>
+        """
+
+        return self.send_email([email], subject, body, html_body)
+
+    def send_multi_circle_magic_link(self, email: str, circle_links: list) -> bool:
+        """Send a login email listing one link per circle this email administers.
+
+        Used when a magic link is requested from the cross-circle landing host,
+        where there's no single circle to log into - sessions are isolated per
+        subdomain, so a multi-circle admin needs a separate link (and separate
+        login) for each one. circle_links: list of {'circle_name': ..., 'verify_url': ...}.
+        """
+        subject = "Christmas Bird Count - Login Links"
+
+        link_lines = "\n".join(
+            f"{c['circle_name']}: {c['verify_url']}" for c in circle_links
+        )
+        body = f"""
+You administer the following count circles. Click the link for the one you want to log in to:
+
+{link_lines}
+
+Each link expires in 15 minutes and can only be used once.
+
+If you didn't request this, you can safely ignore this email.
+        """
+
+        link_items = "".join(
+            f"<li>{html.escape(c['circle_name'])}: <a href=\"{html.escape(c['verify_url'])}\">{html.escape(c['verify_url'])}</a></li>"
+            for c in circle_links
+        )
+        html_body = f"""
+        <p>You administer the following count circles. Click the link for the one you want to log in to:</p>
+        <ul>{link_items}</ul>
+        <p>Each link expires in 15 minutes and can only be used once.</p>
         <p>If you didn't request this, you can safely ignore this email.</p>
         """
 

@@ -10,12 +10,12 @@ from config.admins import is_admin
 from config.database import get_db_session
 from models.db import MagicLinkToken
 from models.participant import ParticipantModel
-from models.circle import CircleAdminModel
+from models.circle import CircleAdminModel, CircleModel
 from services.limiter import limiter
 from config.rate_limits import RATE_LIMITS, get_rate_limit_message
 
 # Import CSRF protection instance
-from app import csrf
+from app import csrf, LANDING_HOST
 
 auth_bp = Blueprint('auth', __name__)
 logger = logging.getLogger(__name__)
@@ -114,7 +114,14 @@ def require_super_admin(f):
         if session.get('user_role') == 'super_admin':
             return f(*args, **kwargs)
 
-        flash('Super-admin access required.', 'error')
+        if session.get('user_role') == 'admin':
+            # A legitimate circle-admin, just not a super-admin - likely landed
+            # here from the wrong host rather than actually trying anything.
+            flash('This page is only for super-admins. If you administer a specific '
+                  'count circle, log in at that circle\'s own address instead '
+                  '(e.g. yourcircle.cbc.birdcount.ca).', 'error')
+        else:
+            flash('Super-admin access required.', 'error')
         return redirect(url_for('main.index'))
 
     return decorated_function
@@ -165,7 +172,40 @@ def request_magic_link():
             db = get_db_session()
             role = get_user_role(email, db, g.circle_slug)
 
-            if role in ('super_admin', 'admin', 'leader'):
+            from services.email_service import email_service
+
+            if role == 'public' and g.circle_slug is None:
+                # Landing host, not a super-admin - sessions are isolated per
+                # subdomain, so there's no single circle to log into here. If
+                # this email administers one or more circles, send a link for
+                # each, built explicitly for that circle's own subdomain
+                # (verify_url can't use _external=True here, since that would
+                # just rebuild the landing host's own URL).
+                circle_slugs = CircleAdminModel(db).get_circles_for_email(email)
+                if circle_slugs:
+                    circle_links = []
+                    for slug in circle_slugs:
+                        circle = CircleModel(db).get_by_slug(slug)
+                        if not circle:
+                            continue
+                        raw_token = secrets.token_urlsafe(32)
+                        db.add(MagicLinkToken(
+                            email=email,
+                            token_hash=_hash_token(raw_token),
+                            expires_at=datetime.now(timezone.utc) + timedelta(minutes=MAGIC_LINK_EXPIRY_MINUTES),
+                            created_at=datetime.now(timezone.utc),
+                        ))
+                        verify_path = url_for('auth.verify', token=raw_token, next='/')
+                        circle_links.append({
+                            'circle_name': circle['circle_name'],
+                            'verify_url': f"https://{slug}.{LANDING_HOST}{verify_path}",
+                        })
+                    db.commit()
+                    email_service.send_multi_circle_magic_link(email, circle_links)
+                    logger.info(f"Multi-circle magic link requested for {email} ({len(circle_links)} circles)")
+                else:
+                    logger.info(f"Magic link requested from landing host for {email} - no circles administered, not sent")
+            elif role in ('super_admin', 'admin', 'leader'):
                 raw_token = secrets.token_urlsafe(32)
                 token_record = MagicLinkToken(
                     email=email,
@@ -178,7 +218,6 @@ def request_magic_link():
 
                 verify_url = url_for('auth.verify', token=raw_token, next=next_url, _external=True)
 
-                from services.email_service import email_service
                 email_service.send_magic_link(email, verify_url)
 
                 logger.info(f"Magic link requested for {email} (role: {role})")

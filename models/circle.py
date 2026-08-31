@@ -133,6 +133,17 @@ class CircleAdminModel:
         rows = self.db.query(CircleAdmin).filter_by(circle_slug=circle_slug).order_by(CircleAdmin.email).all()
         return [row.to_dict() for row in rows]
 
+    def get_circles_for_email(self, email):
+        """Get every circle_slug this email is a circle-admin for (reverse of
+        get_admins_for_circle) - used to send a per-circle login link to a
+        multi-circle admin who requests a magic link from the landing host,
+        where there's no single circle to check against."""
+        if not email:
+            return []
+        email = email.lower().strip()
+        rows = self.db.query(CircleAdmin).filter_by(email=email).order_by(CircleAdmin.circle_slug).all()
+        return [row.circle_slug for row in rows]
+
     def add_admin(self, email, circle_slug):
         """Grant an email circle-admin access to a circle. Returns the row dict."""
         email = email.lower().strip()
