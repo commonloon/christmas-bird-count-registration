@@ -247,13 +247,14 @@ document.addEventListener('DOMContentLoaded', function() {
         const formData = new FormData(form);
         const queryParams = new URLSearchParams();
         
-        // Add all form data to query parameters
+        // Add all form data to query parameters (excluding csrf_token - it's a
+        // hidden form field too, but must never end up in a URL/browser history)
         for (const [key, value] of formData.entries()) {
-            if (value) {
+            if (value && key !== 'csrf_token') {
                 queryParams.append(key, value);
             }
         }
-        
+
         // Navigate to area leader info page with form data
         window.location.href = '{{ url_for("main.area_leader_info") }}?' + queryParams.toString();
     });
@@ -267,13 +268,14 @@ document.addEventListener('DOMContentLoaded', function() {
         const formData = new FormData(form);
         const queryParams = new URLSearchParams();
         
-        // Add all form data to query parameters
+        // Add all form data to query parameters (excluding csrf_token - it's a
+        // hidden form field too, but must never end up in a URL/browser history)
         for (const [key, value] of formData.entries()) {
-            if (value) {
+            if (value && key !== 'csrf_token') {
                 queryParams.append(key, value);
             }
         }
-        
+
         // Navigate to scribe info page with form data
         window.location.href = '{{ url_for("main.scribe_info") }}?' + queryParams.toString();
     });

@@ -351,8 +351,11 @@ def registration_success():
 @main_bp.route('/area-leader-info')
 def area_leader_info():
     """Information about area leader responsibilities."""
-    # Pass all query parameters to template for form restoration links
-    form_data = dict(request.args)
+    # Pass all query parameters to template for form restoration links, except
+    # csrf_token - it must never end up in a URL/browser history/referrer, and
+    # a client-side bug previously leaked it in here (fixed, but this is a
+    # server-side backstop in case any other path ever reintroduces it).
+    form_data = {k: v for k, v in request.args.items() if k != 'csrf_token'}
     org_vars = get_organization_variables()
     return render_template('area_leader_info.html', form_data=form_data, **org_vars)
 
@@ -360,8 +363,9 @@ def area_leader_info():
 @main_bp.route('/scribe-info')
 def scribe_info():
     """Information about scribe responsibilities."""
-    # Pass all query parameters to template for form restoration links
-    form_data = dict(request.args)
+    # Pass all query parameters to template for form restoration links, except
+    # csrf_token - see area_leader_info's comment above for why.
+    form_data = {k: v for k, v in request.args.items() if k != 'csrf_token'}
     org_vars = get_organization_variables()
     return render_template('scribe_info.html', form_data=form_data, **org_vars)
 
