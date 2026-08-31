@@ -1426,6 +1426,18 @@ def _valid_circle_slug(slug):
     return bool(_re.match(r'^[a-z0-9-]+$', slug or ''))
 
 
+def _from_email_domain_allowed(email):
+    """Check a proposed from_email's domain against the code-level allowlist
+    (config/email_settings.py's ALLOWED_FROM_EMAIL_DOMAINS) - deliberately not
+    admin-editable through any form, since it controls what this site's
+    outgoing mail can claim to be sent from."""
+    from config.email_settings import ALLOWED_FROM_EMAIL_DOMAINS
+    if not email or '@' not in email:
+        return False
+    domain = email.rsplit('@', 1)[1].lower()
+    return domain in ALLOWED_FROM_EMAIL_DOMAINS
+
+
 def _can_manage_circle(slug):
     """True if the current session may edit this circle's own config/areas -
     either a super-admin (any circle) or a circle-admin for THIS circle only."""
@@ -1456,7 +1468,10 @@ def _circle_form_data(form):
         'count_event_name': sanitize_text_input(form.get('count_event_name', ''), max_length=200),
         'count_info_url': sanitize_text_input(form.get('count_info_url', ''), max_length=500),
         'from_email': sanitize_email(form.get('from_email', '')),
-        'logo_path': sanitize_text_input(form.get('logo_path', ''), max_length=500),
+        # logo_path deliberately not settable here - a free-text server path
+        # isn't sound UX or particularly safe; a real upload feature (storing
+        # image bytes in the DB, not the app server's filesystem - see this
+        # session's reasoning for area boundaries) is a scoped follow-up.
         'test_recipient': sanitize_email(form.get('test_recipient', '')),
         'display_timezone': sanitize_text_input(form.get('display_timezone', 'America/Vancouver'), max_length=100),
         'is_cbc': form.get('is_cbc') == 'on',
@@ -1483,7 +1498,9 @@ def list_circles():
 def new_circle():
     """Super-admin console: create a new count circle."""
     if request.method == 'GET':
-        return render_template('admin/circle_form.html', circle=None, current_user=get_current_user())
+        import pytz
+        return render_template('admin/circle_form.html', circle=None, current_user=get_current_user(),
+                                timezones=pytz.all_timezones)
 
     slug = sanitize_text_input(request.form.get('slug', ''), max_length=50).lower()
     if not _valid_circle_slug(slug):
@@ -1496,6 +1513,11 @@ def new_circle():
 
     data = _circle_form_data(request.form)
     data['slug'] = slug
+
+    if not _from_email_domain_allowed(data['from_email']):
+        from config.email_settings import ALLOWED_FROM_EMAIL_DOMAINS
+        flash(f'From email must be on one of these domains: {", ".join(ALLOWED_FROM_EMAIL_DOMAINS)}', 'error')
+        return redirect(url_for('admin.new_circle'))
 
     count_date = request.form.get('count_date', '').strip()
     data['yearly_count_dates'] = {str(datetime.now().year): count_date} if count_date else {}
@@ -1518,9 +1540,16 @@ def edit_circle(slug):
         return redirect(url_for('main.index'))
 
     if request.method == 'GET':
-        return render_template('admin/circle_form.html', circle=circle, current_user=get_current_user())
+        import pytz
+        return render_template('admin/circle_form.html', circle=circle, current_user=get_current_user(),
+                                timezones=pytz.all_timezones)
 
     data = _circle_form_data(request.form)
+
+    if not _from_email_domain_allowed(data['from_email']):
+        from config.email_settings import ALLOWED_FROM_EMAIL_DOMAINS
+        flash(f'From email must be on one of these domains: {", ".join(ALLOWED_FROM_EMAIL_DOMAINS)}', 'error')
+        return redirect(url_for('admin.edit_circle', slug=slug))
 
     count_date = request.form.get('count_date', '').strip()
     if count_date:

@@ -6,6 +6,18 @@ from typing import Dict, Any, Optional
 from config.organization import ORGANIZATION_NAME
 
 
+# Domains a circle's "from" email is allowed to use. Deliberately a code-level
+# constant, not admin-editable through any web form - SMTP2GO (and most
+# transactional email providers) verify sending authorization at the domain
+# level (SPF/DKIM), so any address under an allowed domain will actually
+# deliver, but allowing an admin to self-service add a new domain here would
+# let a site admin make outgoing mail impersonate anyone at that domain.
+# Adding a genuinely new organization's own verified domain means a code
+# change + deploy, which is the right amount of friction for that trust
+# decision.
+ALLOWED_FROM_EMAIL_DOMAINS = ['naturevancouver.ca']
+
+
 # Email provider configurations - provider-agnostic design
 EMAIL_PROVIDERS = {
     'smtp2go': {

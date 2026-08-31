@@ -48,23 +48,31 @@ class EmailService:
         return self.config is not None
 
     def send_email(self, to_addresses: List[str], subject: str, body: str,
-                   html_body: str = None) -> bool:
-        """Send email with test mode support."""
+                   html_body: str = None, from_email: str = None) -> bool:
+        """Send email with test mode support.
+
+        from_email: per-circle sender address (config/organization.py's
+        get_organization_variables()['from_email']), already validated against
+        config/email_settings.py's ALLOWED_FROM_EMAIL_DOMAINS when it was set
+        via the circle admin form. Falls back to this service's own
+        environment-configured default when not given (e.g. cross-circle
+        emails sent from the landing host, where there's no single circle).
+        """
         if not self.is_configured():
             logger.error("Cannot send email - service not configured")
             return False
 
         try:
             if self.test_mode:
-                return self._send_test_email(to_addresses, subject, body, html_body)
+                return self._send_test_email(to_addresses, subject, body, html_body, from_email)
             else:
-                return self._send_production_email(to_addresses, subject, body, html_body)
+                return self._send_production_email(to_addresses, subject, body, html_body, from_email)
         except Exception as e:
             logger.error(f"Failed to send email: {e}")
             return False
 
     def _send_test_email(self, original_recipients: List[str], subject: str,
-                         body: str, html_body: str = None) -> bool:
+                         body: str, html_body: str = None, from_email: str = None) -> bool:
         """Send email in test mode - redirect to test recipient with modified content."""
         test_subject = f"[TEST - Would send to: {', '.join(original_recipients)}] {subject}"
 
@@ -97,10 +105,10 @@ ORIGINAL MESSAGE:
             """
 
         return self._send_production_email([self.test_recipient], test_subject,
-                                           test_body, test_html_body)
+                                           test_body, test_html_body, from_email)
 
     def _send_production_email(self, to_addresses: List[str], subject: str,
-                               body: str, html_body: str = None) -> bool:
+                               body: str, html_body: str = None, from_email: str = None) -> bool:
         """Send email in production mode."""
         if not self.smtp_username or not self.smtp_password:
             logger.error("Email credentials not configured")
@@ -108,7 +116,7 @@ ORIGINAL MESSAGE:
 
         try:
             msg = MIMEMultipart('alternative')
-            msg['From'] = self.from_email
+            msg['From'] = from_email or self.from_email
             msg['To'] = ', '.join(to_addresses)
             msg['Subject'] = subject
 
@@ -172,7 +180,7 @@ Please log into the admin interface to assign these participants to areas:
 This is an automated daily digest. You will receive this email each day until all participants are assigned.
         """
 
-        return self.send_email(admin_emails, subject, body)
+        return self.send_email(admin_emails, subject, body, from_email=org_vars['from_email'])
 
     def send_area_leader_update(self, leader_emails: List[str], area_code: str,
                                 added_participants: List[Dict],
@@ -218,7 +226,7 @@ For the complete current team roster, visit: {org_vars['leader_url']}
 This is an automated notification from the CBC registration system.
         """
 
-        return self.send_email(leader_emails, subject, body)
+        return self.send_email(leader_emails, subject, body, from_email=org_vars['from_email'])
 
     def send_registration_confirmation(self, participant_data: dict, assigned_area: str) -> bool:
         """Send HTML registration confirmation email to participant."""
@@ -293,7 +301,7 @@ This is an automated notification from the CBC registration system.
         subject = f"{current_year} {org_vars['count_event_name']} Registration Confirmation"
         participant_email = participant_data.get('email')
 
-        return self.send_email([participant_email], subject, '', html_content)
+        return self.send_email([participant_email], subject, '', html_content, from_email=org_vars['from_email'])
 
     def send_withdrawal_confirmation(self, participant_email: str, first_name: str,
                                     last_name: str, withdrawal_reason: str) -> bool:
@@ -320,7 +328,7 @@ Best regards,
 {org_vars['organization_name']} - {org_vars['count_event_name']} Registration System
         """
 
-        return self.send_email([participant_email], subject, body)
+        return self.send_email([participant_email], subject, body, from_email=org_vars['from_email'])
 
     def _get_db_session(self):
         """Get the request-scoped database session."""
@@ -350,7 +358,7 @@ If you didn't request this, you can safely ignore this email.
         <p>If you didn't request this, you can safely ignore this email.</p>
         """
 
-        return self.send_email([email], subject, body, html_body)
+        return self.send_email([email], subject, body, html_body, from_email=org_vars['from_email'])
 
     def send_multi_circle_magic_link(self, email: str, circle_links: list) -> bool:
         """Send a login email listing one link per circle this email administers.

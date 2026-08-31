@@ -76,17 +76,19 @@
                 <label class="form-label">Test-mode recipient email</label>
                 <input type="email" name="test_recipient" class="form-control" value="{{ circle.test_recipient|e if circle else '' }}">
             </div>
-            <div class="col-md-6 mb-3">
-                <label class="form-label">Logo path (relative to site root)</label>
-                <input type="text" name="logo_path" class="form-control" value="{{ circle.logo_path|e if circle else '' }}">
-            </div>
         </div>
 
         <div class="row">
             <div class="col-md-6 mb-3">
                 <label class="form-label">Display timezone</label>
-                <input type="text" name="display_timezone" class="form-control"
-                       value="{{ circle.display_timezone|e if circle else 'America/Vancouver' }}">
+                <input type="text" name="display_timezone" class="form-control" list="timezone-options"
+                       value="{{ circle.display_timezone|e if circle else 'America/Vancouver' }}"
+                       placeholder="Start typing a city or region...">
+                <datalist id="timezone-options">
+                    {% for tz in timezones %}
+                    <option value="{{ tz|e }}">
+                    {% endfor %}
+                </datalist>
             </div>
             <div class="col-md-3 mb-3">
                 <label class="form-label">Registration opens (months before count)</label>
@@ -102,7 +104,8 @@
 
         <div class="mb-3">
             <label class="form-label">This year's count date</label>
-            <input type="date" name="count_date" class="form-control">
+            <input type="date" name="count_date" class="form-control"
+                   value="{{ circle.yearly_count_dates.get(current_year, '') if circle and circle.yearly_count_dates else '' }}">
             <div class="form-text">
                 {% if circle and circle.yearly_count_dates %}
                 Existing dates on file: {{ circle.yearly_count_dates }}
