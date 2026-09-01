@@ -1,14 +1,12 @@
-# Updated by Claude AI on 2026-08-29
-from flask import Blueprint, jsonify, request, current_app, g
+# Updated by Claude AI on 2026-08-31
+from flask import Blueprint, jsonify, request, g
 from config.database import get_db_session
-from config.circles import get_area_boundaries_filename, get_default_circle_slug
-from models.circle import CircleModel
+from config.circles import get_default_circle_slug
+from models.circle import CircleModel, CircleAreaModel
 from models.participant import ParticipantModel
 from models.area_signup_type import AreaSignupTypeModel
 from services.limiter import limiter
 from config.rate_limits import RATE_LIMITS
-import json
-import os
 
 api_bp = Blueprint('api', __name__)
 
@@ -37,20 +35,11 @@ def get_areas():
     try:
         # Load area boundaries and map configuration
         circle_slug = getattr(g, 'circle_slug', None) or get_default_circle_slug()
-        path = os.path.join(current_app.root_path, 'static', 'data', get_area_boundaries_filename(circle_slug))
-        with open(path, 'r') as f:
-            data = json.load(f)
-
-        # Handle both old format (array) and new format (object with map_config)
-        if isinstance(data, dict) and 'areas' in data:
-            areas = data['areas']
-            map_config = data.get('map_config', {})
-        else:
-            # Old format - just array of areas
-            areas = data
-            map_config = {}
-
         db = get_db_session()
+        boundary_data = CircleAreaModel(db).get_boundary_data(circle_slug)
+        areas = boundary_data['areas']
+        map_config = boundary_data['map_config']
+
         participant_model = ParticipantModel(db)
         signup_type_model = AreaSignupTypeModel(db)
 
@@ -90,20 +79,8 @@ def get_areas():
             else:
                 area['availability'] = 'low'
 
-        # Return areas with map configuration and count circle
-        response = {
-            'areas': areas,
-            'map_config': map_config
-        }
+        return jsonify({'areas': areas, 'map_config': map_config})
 
-        # Include count circle if present in data
-        if 'count_circle' in data:
-            response['count_circle'] = data['count_circle']
-
-        return jsonify(response)
-
-    except FileNotFoundError:
-        return jsonify({'error': 'Area boundaries not found'}), 500
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -127,18 +104,9 @@ def get_areas_needing_leaders():
     try:
         # Load area boundaries and map configuration
         circle_slug = getattr(g, 'circle_slug', None) or get_default_circle_slug()
-        path = os.path.join(current_app.root_path, 'static', 'data', get_area_boundaries_filename(circle_slug))
-        with open(path, 'r') as f:
-            data = json.load(f)
-
-        # Handle both old format (array) and new format (object with map_config)
-        if isinstance(data, dict) and 'areas' in data:
-            areas = data['areas']
-            map_config = data.get('map_config', {})
-        else:
-            # Old format - just array of areas
-            areas = data
-            map_config = {}
+        boundary_data = CircleAreaModel(get_db_session()).get_boundary_data(circle_slug)
+        areas = boundary_data['areas']
+        map_config = boundary_data['map_config']
 
         # Get areas without leaders from current year
         from datetime import datetime
@@ -151,19 +119,11 @@ def get_areas_needing_leaders():
             print(f"Warning: Could not get areas without leaders: {e}")
             areas_without_leaders = []
 
-        response = {
+        return jsonify({
             'areas': areas,
             'areas_without_leaders': areas_without_leaders,
-            'map_config': map_config
-        }
+            'map_config': map_config,
+        })
 
-        # Include count circle if present in data
-        if 'count_circle' in data:
-            response['count_circle'] = data['count_circle']
-
-        return jsonify(response)
-
-    except FileNotFoundError:
-        return jsonify({'error': 'Area boundaries not found'}), 500
     except Exception as e:
         return jsonify({'error': str(e)}), 500

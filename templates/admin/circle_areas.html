@@ -1,17 +1,17 @@
-{# Updated by Claude AI on 2026-08-30 #}
+{# Updated by Claude AI on 2026-08-31 #}
 {% extends "base.html" %}
 
 {% block title %}Areas for {{ circle.circle_name|e }}{% endblock %}
 
 {% block content %}
 <h1 class="mb-4">Areas for {{ circle.circle_name|e }}</h1>
-<p class="text-muted">Area boundaries (the map shapes) aren't editable here yet - only the labels below.</p>
+<p class="text-muted">Boundary (the map shape) comes from the KML import below; the other fields can be edited by hand.</p>
 
 <div class="card mb-4">
     <div class="card-body">
         <table class="table">
             <thead>
-                <tr><th>Code</th><th>Name</th><th>Description</th><th>Difficulty</th><th>Terrain</th></tr>
+                <tr><th>Code</th><th>Name</th><th>Description</th><th>Difficulty</th><th>Terrain</th><th>Boundary</th></tr>
             </thead>
             <tbody>
                 {% for area in areas %}
@@ -21,19 +21,49 @@
                     <td>{{ area.description|e }}</td>
                     <td>{{ area.difficulty|e }}</td>
                     <td>{{ area.terrain|e }}</td>
+                    <td>
+                        {% if area.boundary_geojson %}
+                        <span class="badge bg-success">Imported</span>
+                        {% else %}
+                        <span class="badge bg-secondary">None</span>
+                        {% endif %}
+                    </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="5" class="text-muted">No areas defined yet.</td></tr>
+                <tr><td colspan="6" class="text-muted">No areas defined yet.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 </div>
 
+<div class="card mb-4">
+    <div class="card-body">
+        <h5 class="card-title">Import boundaries from KML</h5>
+        <p class="text-muted small">
+            Upload a KML export from Google My Maps. Each placemark whose name contains an area
+            code (e.g. "Area A", "1 - Name") is matched to that area's code, and its name,
+            description, and boundary shape are updated - existing difficulty/terrain labels are
+            left alone. Areas not mentioned in the file are untouched. The circle's map center is
+            also refreshed from the imported shapes.
+        </p>
+        <form method="POST" action="{{ url_for('admin.circle_areas_import_kml', slug=circle.slug) }}"
+              enctype="multipart/form-data" class="row g-2 align-items-center">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="col-auto">
+                <input type="file" name="kml_file" class="form-control" accept=".kml" required>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary">Import KML</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <div class="card">
     <div class="card-body">
-        <h5 class="card-title">Add or update an area</h5>
-        <p class="text-muted small">Using an existing area's code updates its labels instead of creating a duplicate.</p>
+        <h5 class="card-title">Add or update an area's labels</h5>
+        <p class="text-muted small">Using an existing area's code updates its labels instead of creating a duplicate. Does not touch the boundary shape.</p>
         <form method="POST" class="row g-2">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="col-md-2">

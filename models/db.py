@@ -228,6 +228,11 @@ class CircleArea(Base, DictMixin):
     description = Column(Text)
     difficulty = Column(String(50))
     terrain = Column(String(200))
+    # GeoJSON Polygon geometry ({'type': 'Polygon', 'coordinates': [[[lng, lat], ...]]}),
+    # imported via the /bigbird/circles/<slug>/areas KML-upload route. Null until an
+    # admin imports boundaries for this area - label-only areas (added via the manual
+    # form) have no shape to draw on the map yet.
+    boundary_geojson = Column(JSON)
 
 
 class CircleAdmin(Base, DictMixin):

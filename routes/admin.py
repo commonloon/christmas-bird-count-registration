@@ -16,6 +16,7 @@ from config.fields import (
 from config.admins import get_admin_emails
 from routes.auth import require_admin, require_super_admin, get_current_user
 from models.circle import CircleModel, CircleAreaModel, CircleAdminModel
+from services.kml_import import parse_kml_string, filter_main_areas, calculate_map_center_and_bounds, KmlParseError
 from services.email_service import email_service
 from services.ip_blocker import IPBlockerService
 from test.email_generator import (
@@ -1592,9 +1593,10 @@ def circle_admins(slug):
 
 @admin_bp.route('/circles/<slug>/areas', methods=['GET', 'POST'])
 def circle_areas_manage(slug):
-    """Manage area labels for a circle - super-admin (any circle) or that circle's
-    own admin. Only label fields (name/description/difficulty/terrain) - boundary
-    (GeoJSON) editing is a separate, not-yet-built feature."""
+    """Manage areas for a circle - super-admin (any circle) or that circle's own
+    admin. Labels (name/description/difficulty/terrain) can be added/edited by
+    hand below; boundaries (the map shape) are imported in bulk from a KML file
+    via circle_areas_import_kml."""
     denied = _require_circle_manage_access(slug)
     if denied:
         return denied
@@ -1625,6 +1627,87 @@ def circle_areas_manage(slug):
 
     areas = area_model.get_areas_for_circle(slug)
     return render_template('admin/circle_areas.html', circle=circle, areas=areas, current_user=get_current_user())
+
+
+MAX_KML_UPLOAD_BYTES = 5 * 1024 * 1024  # generous - real CBC-circle KML exports run well under 1MB
+
+
+@admin_bp.route('/circles/<slug>/areas/import-kml', methods=['POST'])
+def circle_areas_import_kml(slug):
+    """Bulk-import area boundaries (+ name/description) from an uploaded KML file,
+    exported from Google My Maps. Overwrites name/description/boundary_geojson for
+    any area code the KML defines, leaving difficulty/terrain (and any area not
+    mentioned in the KML) untouched. Also refreshes the circle's own lat/lng from
+    the imported areas' calculated center, since KML import supersedes manual
+    lat/lng entry (see the circle-config form)."""
+    denied = _require_circle_manage_access(slug)
+    if denied:
+        return denied
+
+    circle = CircleModel(g.db).get_by_slug(slug)
+    if not circle:
+        flash('Circle not found.', 'error')
+        return redirect(url_for('main.index'))
+
+    upload = request.files.get('kml_file')
+    if not upload or not upload.filename:
+        flash('Choose a KML file to import.', 'error')
+        return redirect(url_for('admin.circle_areas_manage', slug=slug))
+
+    if not upload.filename.lower().endswith('.kml'):
+        flash('That file does not look like a .kml file.', 'error')
+        return redirect(url_for('admin.circle_areas_manage', slug=slug))
+
+    raw = upload.read(MAX_KML_UPLOAD_BYTES + 1)
+    if len(raw) > MAX_KML_UPLOAD_BYTES:
+        flash(f'That file is larger than the {MAX_KML_UPLOAD_BYTES // (1024 * 1024)}MB limit.', 'error')
+        return redirect(url_for('admin.circle_areas_manage', slug=slug))
+
+    try:
+        kml_content = raw.decode('utf-8')
+    except UnicodeDecodeError:
+        flash('Could not read that file as UTF-8 text - is it really a KML file?', 'error')
+        return redirect(url_for('admin.circle_areas_manage', slug=slug))
+
+    try:
+        all_areas = parse_kml_string(kml_content)
+    except KmlParseError as e:
+        flash(f'Could not import KML: {e}', 'error')
+        return redirect(url_for('admin.circle_areas_manage', slug=slug))
+
+    areas = filter_main_areas(all_areas)
+    if not areas:
+        flash('No main areas (non-sub-area placemarks) were found in that file.', 'error')
+        return redirect(url_for('admin.circle_areas_manage', slug=slug))
+
+    area_model = CircleAreaModel(g.db)
+    try:
+        for area in areas:
+            area_model.upsert_from_kml(
+                slug, area['letter_code'], area['name'], area['description'], area['geometry'],
+                commit=False,
+            )
+
+        map_config = calculate_map_center_and_bounds(areas)
+        if map_config:
+            CircleModel(g.db).update(slug, {
+                'latitude': map_config['center'][0],
+                'longitude': map_config['center'][1],
+            })
+        else:
+            g.db.commit()
+    except Exception:
+        g.db.rollback()
+        logging.exception(f'KML import failed for circle {slug}')
+        flash('Something went wrong while importing that file - no changes were saved.', 'error')
+        return redirect(url_for('admin.circle_areas_manage', slug=slug))
+
+    skipped = len(all_areas) - len(areas)
+    message = f'Imported {len(areas)} area boundaries for {circle["circle_name"]}.'
+    if skipped:
+        message += f' Skipped {skipped} sub-area placemark(s).'
+    flash(message, 'success')
+    return redirect(url_for('admin.circle_areas_manage', slug=slug))
 
 
 # Only register test routes when TEST_MODE is enabled

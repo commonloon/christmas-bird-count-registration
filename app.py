@@ -6,12 +6,11 @@ from config.database import get_db_session, teardown_db_session
 from config.organization import get_organization_variables
 from services.limiter import limiter
 from services.ip_blocker import IPBlockerService, get_client_ip
-from models.circle import CircleModel
+from models.circle import CircleModel, CircleAreaModel
 from models.db import DEFAULT_CIRCLE_SLUG
 import os
 import re
 from datetime import datetime
-import json
 import logging
 
 CIRCLE_SUBDOMAIN_PATTERN = re.compile(r'^([a-z0-9-]+)\.cbc\.birdcount\.ca$', re.IGNORECASE)
@@ -101,16 +100,14 @@ def set_security_headers(response):
 
 # Load area boundaries data
 def load_area_boundaries():
-    """Load area boundary data from JSON file."""
+    """Load a circle's area boundary + map config data from the DB (circle_areas.boundary_geojson)."""
+    from config.circles import get_default_circle_slug
+    circle_slug = getattr(g, 'circle_slug', None) or get_default_circle_slug()
     try:
-        from config.circles import get_area_boundaries_filename, get_default_circle_slug
-        circle_slug = getattr(g, 'circle_slug', None) or get_default_circle_slug()
-        path = os.path.join(app.root_path, 'static', 'data', get_area_boundaries_filename(circle_slug))
-        with open(path, 'r') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        print("Warning: Area boundaries file not found")
-        return []
+        return CircleAreaModel(get_db_session()).get_boundary_data(circle_slug)
+    except Exception as e:
+        print(f"Warning: Could not load area boundaries: {e}")
+        return {'areas': [], 'map_config': {}}
 
 # Make area boundaries and common data available to templates
 @app.context_processor

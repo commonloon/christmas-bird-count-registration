@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 from models.db import Circle, CircleArea, CircleAdmin
 from models.area_signup_type import natural_sort_key
+from services.kml_import import calculate_map_center_and_bounds
 
 
 class CircleModel:
@@ -113,6 +114,66 @@ class CircleAreaModel:
             row.terrain = terrain
         self.db.commit()
         return row.to_dict()
+
+    def upsert_from_kml(self, circle_slug, code, name, description, boundary_geojson, commit=True):
+        """Create or update one area's name/description/boundary from a KML import.
+        Deliberately leaves difficulty/terrain untouched on an existing row - a KML
+        placemark carries neither, and shouldn't clobber labels an admin already set
+        by hand via the manual add/update form.
+
+        commit=False lets a bulk-import caller (importing many areas from one file)
+        flush all its changes and commit once at the end, instead of committing - and
+        thus persisting - each area one at a time, which would leave a half-imported
+        circle if a later area in the same file failed."""
+        code = code.upper()
+        row = self.db.query(CircleArea).filter_by(circle_slug=circle_slug, code=code).first()
+        if row:
+            row.name = name
+            row.description = description
+            row.boundary_geojson = boundary_geojson
+        else:
+            row = CircleArea(
+                circle_slug=circle_slug, code=code, name=name, description=description,
+                boundary_geojson=boundary_geojson,
+            )
+            self.db.add(row)
+        if commit:
+            self.db.commit()
+        else:
+            self.db.flush()
+        return row.to_dict()
+
+    def get_boundary_data(self, circle_slug, circle=None):
+        """Area boundaries + map configuration for a circle, in the shape the
+        frontend map JS / /api/areas expect - replaces the old static
+        static/data/area_boundaries_<slug>.json file. Areas with no imported
+        boundary yet (label-only) are omitted from the map, not drawn as empty
+        shapes. `circle` may be passed in (a dict from CircleModel.get_by_slug)
+        to avoid a second query when the caller already has it."""
+        rows = self.db.query(CircleArea).filter_by(circle_slug=circle_slug).all()
+        areas = [
+            {
+                'letter_code': row.code,
+                'name': row.name,
+                'description': row.description or '',
+                'geometry': row.boundary_geojson,
+            }
+            for row in sorted(rows, key=lambda r: natural_sort_key(r.code))
+            if row.boundary_geojson
+        ]
+
+        map_config = calculate_map_center_and_bounds(areas)
+        if map_config is None:
+            if circle is None:
+                circle_row = self.db.query(Circle).filter_by(slug=circle_slug).first()
+                circle = circle_row.to_dict() if circle_row else None
+            if circle and circle.get('latitude') is not None and circle.get('longitude') is not None:
+                map_config = {'center': [circle['latitude'], circle['longitude']], 'bounds': None, 'zoom': 10}
+            else:
+                # Last-resort fallback (new circle, no areas imported yet, no lat/lng set).
+                map_config = {'center': [49.2827, -123.1207], 'bounds': None, 'zoom': 4}
+
+        return {'areas': areas, 'map_config': map_config}
 
 
 class CircleAdminModel:
