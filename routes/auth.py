@@ -308,7 +308,11 @@ def init_auth(app):
 
     # Session cookie security attributes (CRITICAL for XSS/CSRF protection)
     app.config['SESSION_COOKIE_HTTPONLY'] = True      # Prevent JavaScript access to session cookie
-    app.config['SESSION_COOKIE_SECURE'] = True        # Only send cookie over HTTPS
+    # Only send cookie over HTTPS - defaults on (safe for FullHost/prod). Local dev over
+    # plain http://localhost needs this off, or the cookie never round-trips and every
+    # form submission fails CSRF ("the session token is missing") since Flask-WTF stores
+    # its token in the same session. Opt out explicitly via .env, never flip the default.
+    app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'true').lower() != 'false'
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'     # Prevent CSRF while allowing magic-link redirects
 
     # Session timeout (security best practice for admin sessions)
