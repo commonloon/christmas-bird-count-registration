@@ -1,7 +1,17 @@
 // Map functionality for Areas Needing Leaders display
-/* Updated by Claude AI on 2025-10-16 */
+/* Updated by Claude AI on 2026-08-31 */
 let leadersMap;
 let leadersAreaLayers = {};
+
+// area.name/area.letter_code come from the DB (admin-entered, or KML-imported) and
+// aren't guaranteed free of HTML - Leaflet's bindTooltip and plain .innerHTML both
+// render string content as raw markup, so anything interpolated into them must be
+// escaped first (see landing-map.js's comment for the same issue on that page).
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text == null ? '' : String(text);
+    return div.innerHTML;
+}
 
 // Initialize map when page loads
 document.addEventListener('DOMContentLoaded', function() {
@@ -79,7 +89,7 @@ function displayAreasNeedingLeaders(allAreas, areasWithoutLeaders) {
         const style = getLeadershipStyle(needsLeader);
 
         // Create tooltip text
-        let tooltipText = `Area ${areaCode}: ${area.name}<br>`;
+        let tooltipText = `Area ${escapeHtml(areaCode)}: ${escapeHtml(area.name)}<br>`;
         if (needsLeader) {
             tooltipText += '⚠️ Needs Leader';
         } else {
@@ -88,9 +98,9 @@ function displayAreasNeedingLeaders(allAreas, areasWithoutLeaders) {
             if (window.leaderData && window.leaderData[areaCode] && window.leaderData[areaCode].length > 0) {
                 const leaders = window.leaderData[areaCode];
                 if (leaders.length === 1) {
-                    tooltipText += `<br>Leader: ${leaders[0]}`;
+                    tooltipText += `<br>Leader: ${escapeHtml(leaders[0])}`;
                 } else {
-                    tooltipText += `<br>Leaders: ${leaders.join(', ')}`;
+                    tooltipText += `<br>Leaders: ${leaders.map(escapeHtml).join(', ')}`;
                 }
             }
         }
@@ -219,7 +229,7 @@ function showAreaInfo(areaCode, areaName) {
     }
     
     infoDiv.innerHTML = `
-        <strong>Area ${areaCode} - ${areaName}</strong><br>
+        <strong>Area ${escapeHtml(areaCode)} - ${escapeHtml(areaName)}</strong><br>
         <small>⚠️ This area currently needs a leader. Consider recruiting someone for this area!</small>
     `;
     

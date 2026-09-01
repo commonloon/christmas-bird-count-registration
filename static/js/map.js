@@ -1,9 +1,19 @@
 // Map functionality for CBC Registration
-/* Updated by Claude AI on 2025-11-30 */
+/* Updated by Claude AI on 2026-08-31 */
 let map;
 let areaLayers = {};
 let selectedArea = null;
 let isUpdatingProgrammatically = false;
+
+// area.name/area.letter_code come from the DB (admin-entered, or KML-imported) and
+// aren't guaranteed free of HTML - Leaflet's bindTooltip and plain .innerHTML both
+// render string content as raw markup, so anything interpolated into them must be
+// escaped first (see landing-map.js's comment for the same issue on that page).
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text == null ? '' : String(text);
+    return div.innerHTML;
+}
 
 // Initialize map when page loads
 document.addEventListener('DOMContentLoaded', function() {
@@ -76,7 +86,7 @@ function displayAreas(areas) {
         // Create polygon
         const polygon = L.polygon(leafletCoords, style)
             .addTo(map)
-            .bindTooltip(`Area ${areaCode}: ${area.name}<br>Current volunteers: ${area.current_count}`, {
+            .bindTooltip(`Area ${escapeHtml(areaCode)}: ${escapeHtml(area.name)}<br>Current volunteers: ${area.current_count}`, {
                 permanent: false,
                 direction: 'center'
             });
@@ -222,7 +232,7 @@ function updateSelectionFeedback(areaCode, areaName) {
         feedbackDiv.innerHTML = '🎯 Wherever I\'m needed most selected';
         feedbackDiv.className = 'selection-feedback';
     } else if (areaCode) {
-        feedbackDiv.innerHTML = `✓ Selected: Area ${areaCode} - ${areaName}`;
+        feedbackDiv.innerHTML = `✓ Selected: Area ${escapeHtml(areaCode)} - ${escapeHtml(areaName)}`;
         feedbackDiv.className = 'selection-feedback area-selected';
     } else {
         feedbackDiv.innerHTML = 'No area selected yet';
@@ -248,7 +258,7 @@ function showAdminOnlyMessage(areaCode, areaName) {
     const alertDiv = document.createElement('div');
     alertDiv.className = 'alert alert-warning alert-dismissible fade show';
     alertDiv.innerHTML = `
-        <strong>Area ${areaCode} - ${areaName}</strong><br>
+        <strong>Area ${escapeHtml(areaCode)} - ${escapeHtml(areaName)}</strong><br>
         Only organizers can assign volunteers to this area.<br>
         To request assignment, choose <strong>"Wherever I'm needed most"</strong> and put your request in the
         <strong>Notes to Organizers</strong> field.
