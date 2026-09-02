@@ -5,6 +5,9 @@ client_secret.json
 .env.*
 !.env.example
 utils/*.csv
+# Real participant PII (names/emails/phones/notes) exported for the historical
+# import - never belongs in version control, see utils/import_historical_participants.py
+utils/participant-csv-dumps/
 foo
 nul
 debug/
