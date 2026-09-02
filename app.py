@@ -13,8 +13,23 @@ import re
 from datetime import datetime
 import logging
 
-CIRCLE_SUBDOMAIN_PATTERN = re.compile(r'^([a-z0-9-]+)\.cbc\.birdcount\.ca$', re.IGNORECASE)
+# CBC counts live at <slug>.cbc.birdcount.ca; non-CBC counts (KBA surveys, spring
+# counts, etc.) live one level up at <slug>.birdcount.ca directly - both resolve the
+# same way in resolve_circle() below, distinguished only by which pattern matches.
+CIRCLE_SUBDOMAIN_PATTERNS = (
+    re.compile(r'^([a-z0-9-]+)\.cbc\.birdcount\.ca$', re.IGNORECASE),
+    re.compile(r'^([a-z0-9-]+)\.birdcount\.ca$', re.IGNORECASE),
+)
 LANDING_HOST = 'cbc.birdcount.ca'
+APEX_LANDING_HOST = 'birdcount.ca'
+
+
+def circle_host(slug, is_cbc):
+    """The subdomain a given circle is actually reachable at - mirrors
+    CIRCLE_SUBDOMAIN_PATTERNS above. Used wherever a circle's own login/registration
+    URL is built explicitly (e.g. the landing host's multi-circle magic-link email),
+    rather than derived from the current request's Host header."""
+    return f"{slug}.cbc.birdcount.ca" if is_cbc else f"{slug}.birdcount.ca"
 
 # Initialize coverage if enabled (test server only)
 coverage_instance = None
@@ -141,29 +156,39 @@ def inject_common_data():
 def resolve_circle():
     """Resolve which count circle this request is for, from the Host header.
 
-    e.g. vancouver.cbc.birdcount.ca -> the 'vancouver' circle. Hosts that aren't a
-    *.cbc.birdcount.ca subdomain (localhost, FullHost's default *.oncoregrid.ca
-    hostname, etc.) fall back to DEFAULT_CIRCLE_SLUG so local dev and the platform's
-    default hostname keep working unchanged.
+    e.g. vancouver.cbc.birdcount.ca -> the 'vancouver' circle (CBC counts), or
+    fraser-estuary-kba.birdcount.ca -> the 'fraser-estuary-kba' circle (non-CBC
+    counts, one subdomain level up - see CIRCLE_SUBDOMAIN_PATTERNS). Hosts that match
+    neither pattern (localhost, FullHost's default *.oncoregrid.ca hostname, etc.)
+    fall back to DEFAULT_CIRCLE_SLUG so local dev and the platform's default hostname
+    keep working unchanged.
     """
     if request.endpoint == 'static':
         return None
 
-    host = request.host.split(':', 1)[0]
+    host = request.host.split(':', 1)[0].lower()
 
-    if host.lower() == LANDING_HOST:
-        # The bare apex-of-subdomains host: a cross-circle landing page, not any
-        # one circle's registration site. Not an unmatched circle subdomain, so
-        # no 404 - g.circle stays None and callers already fall back gracefully
-        # (see config/organization.py's _circle_value) to Vancouver's static
-        # module constants for anything that isn't landing-page-aware yet.
+    if host in (LANDING_HOST, APEX_LANDING_HOST):
+        # Two landing hosts, not any one circle's registration site: cbc.birdcount.ca
+        # lists CBC circles, birdcount.ca (the bare apex, one level up) lists non-CBC
+        # circles and links across to the CBC listing - see routes/main.py's index().
+        # Not an unmatched circle subdomain, so no 404 - g.circle stays None and
+        # callers already fall back gracefully (see config/organization.py's
+        # _circle_value) to Vancouver's static module constants for anything that
+        # isn't landing-page-aware yet.
         g.circle = None
         g.circle_slug = None
         g.is_landing_host = True
+        g.is_apex_landing_host = (host == APEX_LANDING_HOST)
         return None
 
     g.is_landing_host = False
-    match = CIRCLE_SUBDOMAIN_PATTERN.match(host)
+    g.is_apex_landing_host = False
+    match = None
+    for pattern in CIRCLE_SUBDOMAIN_PATTERNS:
+        match = pattern.match(host)
+        if match:
+            break
     slug = match.group(1).lower() if match else os.environ.get('DEFAULT_CIRCLE_SLUG', DEFAULT_CIRCLE_SLUG)
 
     circle = CircleModel(get_db_session()).get_by_slug(slug)

@@ -15,7 +15,7 @@ from services.limiter import limiter
 from config.rate_limits import RATE_LIMITS, get_rate_limit_message
 
 # Import CSRF protection instance
-from app import csrf, LANDING_HOST
+from app import csrf, circle_host
 
 auth_bp = Blueprint('auth', __name__)
 logger = logging.getLogger(__name__)
@@ -198,7 +198,7 @@ def request_magic_link():
                         verify_path = url_for('auth.verify', token=raw_token, next='/')
                         circle_links.append({
                             'circle_name': circle['circle_name'],
-                            'verify_url': f"https://{slug}.{LANDING_HOST}{verify_path}",
+                            'verify_url': f"https://{circle_host(slug, circle['is_cbc'])}{verify_path}",
                         })
                     db.commit()
                     email_service.send_multi_circle_magic_link(email, circle_links)

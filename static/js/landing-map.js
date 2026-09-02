@@ -22,7 +22,7 @@ function initializeLandingMap(circles) {
         // Built via DOM APIs (not an HTML string) so a circle name can never be
         // interpreted as markup - bindPopup renders whatever it's given as raw HTML.
         const link = document.createElement('a');
-        link.href = `https://${circle.slug}.cbc.birdcount.ca/`;
+        link.href = circle.url;
         link.textContent = circle.circle_name;
 
         const circleShape = L.circle([circle.latitude, circle.longitude], {

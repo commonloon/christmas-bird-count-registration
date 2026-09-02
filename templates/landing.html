@@ -1,12 +1,20 @@
 {# Updated by Claude AI on 2026-08-30 #}
 {% extends "base.html" %}
 
-{% block title %}Christmas Bird Count Circles{% endblock %}
+{% block title %}{% if is_apex %}Bird Counts{% else %}Christmas Bird Count Circles{% endif %}{% endblock %}
 
 {% block content %}
 <div class="row">
     <div class="col-12 mb-4">
-        <p class="lead mb-0" style="font-size: 1.1rem;">Find a count circle near you and register to take part in this year's count.</p>
+        {% if is_apex %}
+        <p class="lead mb-0" style="font-size: 1.1rem;">Find a bird count near you and register to take part.
+            Looking for a <strong>Christmas Bird Count</strong> specifically?
+            <a href="{{ other_listing_url }}">See the full list here</a>.</p>
+        {% else %}
+        <p class="lead mb-0" style="font-size: 1.1rem;">Find a count circle near you and register to take part in this year's count.
+            Looking for a count that <strong>isn't</strong> a Christmas Bird Count?
+            <a href="{{ other_listing_url }}">See the full list here</a>.</p>
+        {% endif %}
     </div>
 </div>
 
@@ -28,7 +36,7 @@
             <tbody>
                 {% for circle in circles|sort(attribute='circle_name') %}
                 <tr>
-                    <td><a href="https://{{ circle.slug|e }}.cbc.birdcount.ca/">{{ circle.circle_name|e }}</a></td>
+                    <td><a href="{{ circle.url|e }}">{{ circle.circle_name|e }}</a></td>
                     <td>{{ circle.organization_name|e }}</td>
                     <td>
                         <button type="button" class="btn btn-sm btn-outline-secondary show-contact-btn" data-slug="{{ circle.slug|e }}">
@@ -40,7 +48,10 @@
             </tbody>
         </table>
         {% else %}
-        <p class="text-muted">No count circles are set up yet.</p>
+        <p class="text-muted">
+            {% if is_apex %}No non-Christmas Bird Counts are set up yet.
+            {% else %}No Christmas Bird Count circles are set up yet.{% endif %}
+        </p>
         {% endif %}
     </div>
 </div>

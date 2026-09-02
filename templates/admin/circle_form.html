@@ -12,7 +12,8 @@
 
         {% if not circle %}
         <div class="mb-3">
-            <label class="form-label">Slug (used in URLs, e.g. <code>nanaimo</code> for <code>nanaimo.cbc.birdcount.ca</code>)</label>
+            <label class="form-label">Slug (used in URLs, e.g. <code>nanaimo</code> for <code>nanaimo.cbc.birdcount.ca</code> if
+                this is a Christmas Bird Count, or <code>nanaimo.birdcount.ca</code> otherwise - see the checkbox below)</label>
             <input type="text" name="slug" class="form-control" pattern="[a-z0-9-]+" required
                    title="Lowercase letters, numbers, and hyphens only">
         </div>

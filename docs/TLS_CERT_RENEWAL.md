@@ -1,9 +1,9 @@
-# TLS Certificate Renewal (FullHost, wildcard `*.cbc.birdcount.ca`)
-{# Updated by Claude AI on 2026-08-30 #}
+# TLS Certificate Renewal (FullHost, wildcards `*.cbc.birdcount.ca` + `*.birdcount.ca`)
+{# Updated by Claude AI on 2026-09-02 #}
 
 ## Background
 
-The app is reachable at `<circle>.cbc.birdcount.ca` (e.g. `vancouver.cbc.birdcount.ca`), resolved via a wildcard DNS record (`*.cbc.birdcount.ca`) pointing at a **public IP address attached directly to the app node** (`11294` on environment `env-5397859`). This bypasses FullHost's shared load balancer, which doesn't support wildcard custom-domain registration — see `REMINDER.md`/`hosting-migration` memory for the full reasoning.
+CBC (Christmas Bird Count) circles are reachable at `<circle>.cbc.birdcount.ca` (e.g. `vancouver.cbc.birdcount.ca`). Non-CBC counts (KBA surveys, spring counts, etc.) live one subdomain level up, directly at `<circle>.birdcount.ca` (e.g. `comox-spring.birdcount.ca`) — see `app.py`'s `CIRCLE_SUBDOMAIN_PATTERNS`. Both are resolved via wildcard DNS records (`*.cbc.birdcount.ca` and `*.birdcount.ca`) pointing at a **public IP address attached directly to the app node** (`11294` on environment `env-5397859`). This bypasses FullHost's shared load balancer, which doesn't support wildcard custom-domain registration — see `REMINDER.md`/`hosting-migration` memory for the full reasoning.
 
 Let's Encrypt only issues wildcard certificates via the **DNS-01 challenge** (HTTP-01 doesn't support wildcards at all — this is an ACID protocol restriction, not a FullHost or certbot limitation). Our DNS registrar (Squarespace, though the zone is actually served by Google Cloud DNS nameservers under the hood) has no API, so this **cannot be automated** — it's a manual process, needed roughly every 90 days.
 
@@ -24,14 +24,21 @@ wsl
   --manual --preferred-challenges dns \
   --key-type rsa \
   -d "*.cbc.birdcount.ca" \
-  -d "cbc.birdcount.ca" \
+  -d "*.birdcount.ca" \
   --config-dir ~/letsencrypt-birdcount/config \
   --work-dir ~/letsencrypt-birdcount/work \
   --logs-dir ~/letsencrypt-birdcount/logs \
   --force-renewal
 ```
 
-Both `-d` flags are needed — a wildcard SAN (`*.cbc.birdcount.ca`) does **not** cover the bare parent domain, and `cbc.birdcount.ca` itself serves the cross-circle landing page (and eventually the super-admin console), so it needs its own SAN on the same cert.
+Both wildcard `-d` flags are needed and that's **all** that's needed — do not also add `-d "cbc.birdcount.ca"` (the bare landing-page host). That was necessary back when the cert only covered `*.cbc.birdcount.ca` (a wildcard doesn't cover its own bare parent domain), but `*.birdcount.ca` is a *broader* wildcard that already matches `cbc` as one of its single-label subdomains, making an explicit `cbc.birdcount.ca` SAN redundant. Let's Encrypt rejects the request outright if you include it anyway:
+
+```
+Error creating new order :: Domain name "cbc.birdcount.ca" is redundant with a
+wildcard domain in the same request. Remove one or the other from the certificate request.
+```
+
+Note the asymmetry: `*.birdcount.ca` covers `cbc.birdcount.ca` (one label) but does **not** cover `vancouver.cbc.birdcount.ca` (two labels) — that's still `*.cbc.birdcount.ca`'s job, hence still needing both wildcards. Neither wildcard covers the bare `birdcount.ca` apex itself, but nothing is served there yet, so it's deliberately left off.
 
 (If `~/certbot-venv` doesn't exist yet: `python3 -m venv ~/certbot-venv && ~/certbot-venv/bin/pip install certbot` first.)
 
@@ -39,23 +46,16 @@ Both `-d` flags are needed — a wildcard SAN (`*.cbc.birdcount.ca`) does **not*
 
 **`--force-renewal` is required** once a non-expired cert for this exact name already exists, otherwise certbot refuses to reissue.
 
-### 2. Add the DNS TXT record
+### 2. Add the DNS TXT records
 
-Certbot will pause and print a value for `_acme-challenge.cbc.birdcount.ca`. In Squarespace's DNS panel, add:
+Two wildcards means two separate DNS-01 challenges — certbot will pause twice (or print both values together, depending on version), once per domain:
 
-| Field | Value |
-|---|---|
-| Type | `TXT` |
-| Host | `_acme-challenge.cbc` (relative — **not** the full `_acme-challenge.cbc.birdcount.ca`, which would double up the domain suffix) |
-| Data | the value certbot printed (no extra quotes) |
+| Challenge for | Host (relative, in Squarespace's DNS panel) | Verify with |
+|---|---|---|
+| `*.cbc.birdcount.ca` | `_acme-challenge.cbc` | `nslookup -type=TXT _acme-challenge.cbc.birdcount.ca` |
+| `*.birdcount.ca` | `_acme-challenge` | `nslookup -type=TXT _acme-challenge.birdcount.ca` |
 
-Before telling certbot to continue, confirm propagation from a separate terminal:
-
-```bash
-nslookup -type=TXT _acme-challenge.cbc.birdcount.ca
-```
-
-Only proceed once this returns the expected value — continuing too early wastes an attempt against Let's Encrypt's rate limits.
+Add both TXT records (Data = the value certbot printed for that domain, no extra quotes — **not** the full dotted host, which would double up the domain suffix). Confirm both propagate via `nslookup` from a separate terminal before telling certbot to continue — continuing too early wastes an attempt against Let's Encrypt's rate limits.
 
 ### 3. Retrieve the three files certbot needs to hand to FullHost
 
@@ -67,6 +67,8 @@ cp -L ~/letsencrypt-birdcount/config/live/cbc.birdcount.ca/privkey.pem /mnt/c/Us
 cp -L ~/letsencrypt-birdcount/config/live/cbc.birdcount.ca/cert.pem /mnt/c/Users/harve/certs/
 cp -L ~/letsencrypt-birdcount/config/live/cbc.birdcount.ca/chain.pem /mnt/c/Users/harve/certs/
 ```
+
+The lineage folder name (`cbc.birdcount.ca`) is derived from the first `-d` passed (`*.cbc.birdcount.ca`, star stripped) and should stay the same across renewals as long as that first `-d` doesn't change. If certbot ever prints a different `live/...` path in its own output (e.g. a `-0001` suffix, which happens if it decides the domain list is different enough to warrant a new lineage), trust what it printed over this doc.
 
 ### 4. Upload to FullHost
 
@@ -86,9 +88,10 @@ Click Save.
 
 ```bash
 curl -Iv https://vancouver.cbc.birdcount.ca/ 2>&1 | grep -i "expire\|subject\|issuer"
+curl -Iv https://comox-spring.birdcount.ca/ 2>&1 | grep -i "expire\|subject\|issuer"
 ```
 
-or check the padlock/certificate details in a browser at any `*.cbc.birdcount.ca` address. Confirm the new expiry date is ~90 days out.
+Check one host from each wildcard level, not just one — the cert now has two SANs covering different subdomain depths, so a working `*.cbc.birdcount.ca` host doesn't confirm `*.birdcount.ca` is also good (or vice versa). Confirm the new expiry date is ~90 days out on both.
 
 ## Renewal cadence
 
