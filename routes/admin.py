@@ -1553,10 +1553,15 @@ def edit_circle(slug):
         return redirect(url_for('admin.edit_circle', slug=slug))
 
     count_date = request.form.get('count_date', '').strip()
+    yearly_dates = dict(circle.get('yearly_count_dates') or {})
+    current_year_key = str(datetime.now().year)
     if count_date:
-        yearly_dates = dict(circle.get('yearly_count_dates') or {})
-        yearly_dates[str(datetime.now().year)] = count_date
-        data['yearly_count_dates'] = {str(k): v for k, v in yearly_dates.items()}
+        yearly_dates[current_year_key] = count_date
+    else:
+        # Field submitted blank - clear this year's date (revert to "TBD") rather
+        # than silently leaving a previously-set date in place.
+        yearly_dates.pop(current_year_key, None)
+    data['yearly_count_dates'] = {str(k): v for k, v in yearly_dates.items()}
 
     CircleModel(g.db).update(slug, data)
     flash(f'Circle "{data["circle_name"]}" updated.', 'success')

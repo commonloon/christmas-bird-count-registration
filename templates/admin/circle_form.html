@@ -108,10 +108,12 @@
             <input type="date" name="count_date" class="form-control"
                    value="{{ circle.yearly_count_dates.get(current_year, '') if circle and circle.yearly_count_dates else '' }}">
             <div class="form-text">
+                Leave blank if the date isn't confirmed yet - the public site will show "TBD" and
+                registration will stay closed for this circle until a date is set here.
                 {% if circle and circle.yearly_count_dates %}
-                Existing dates on file: {{ circle.yearly_count_dates }}
+                <br>Existing dates on file: {{ circle.yearly_count_dates }}
                 {% else %}
-                No dates on file yet.
+                <br>No dates on file yet.
                 {% endif %}
             </div>
         </div>
