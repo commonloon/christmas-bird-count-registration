@@ -19,7 +19,13 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary" aria-label="Main navigation">
         <div class="container">
             {% if g.get('is_landing_host') %}
-                <a class="navbar-brand" href="{{ url_for('main.index') }}">Christmas Bird Count Circles</a>
+                <a class="navbar-brand" href="{{ url_for('main.index') }}">
+                    {% if g.get('is_apex_landing_host') %}Bird Counts{% else %}Christmas Bird Count Circles{% endif %}
+                </a>
+            {% elif request.endpoint in ('admin.list_circles', 'admin.new_circle', 'admin.edit_circle',
+                                          'admin.circle_admins', 'admin.circle_areas_manage',
+                                          'admin.circle_areas_import_kml') %}
+                <a class="navbar-brand" href="{{ url_for('admin.list_circles') }}">Count Super-Admin</a>
             {% elif request.endpoint and request.endpoint.startswith('admin.') %}
                 <a class="navbar-brand" href="{{ url_for('admin.dashboard', year=selected_year) }}">{{ count_event_name }} Admin</a>
             {% elif request.endpoint and request.endpoint.startswith('leader.') %}
