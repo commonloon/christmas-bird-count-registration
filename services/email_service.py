@@ -18,6 +18,10 @@ class EmailService:
 
     def __init__(self):
         self.config = get_email_config()
+        # Fallback only - this is Vancouver's constant, evaluated once at process
+        # startup with no request/circle context. Real calls should pass their own
+        # circle's test_recipient explicitly (see send_email's test_recipient param);
+        # this only applies when a caller doesn't have one (e.g. no circle context).
         self.test_recipient = TEST_RECIPIENT
 
         if self.config is None:
@@ -48,7 +52,7 @@ class EmailService:
         return self.config is not None
 
     def send_email(self, to_addresses: List[str], subject: str, body: str,
-                   html_body: str = None, from_email: str = None) -> bool:
+                   html_body: str = None, from_email: str = None, test_recipient: str = None) -> bool:
         """Send email with test mode support.
 
         from_email: per-circle sender address (config/organization.py's
@@ -57,6 +61,11 @@ class EmailService:
         via the circle admin form. Falls back to this service's own
         environment-configured default when not given (e.g. cross-circle
         emails sent from the landing host, where there's no single circle).
+
+        test_recipient: per-circle test-mode redirect address (get_organization_variables()
+        ['test_recipient']). Falls back to self.test_recipient (Vancouver's, frozen at
+        process startup) when not given - callers with a real circle context should
+        always pass this explicitly, same as from_email.
         """
         if not self.is_configured():
             logger.error("Cannot send email - service not configured")
@@ -64,7 +73,7 @@ class EmailService:
 
         try:
             if self.test_mode:
-                return self._send_test_email(to_addresses, subject, body, html_body, from_email)
+                return self._send_test_email(to_addresses, subject, body, html_body, from_email, test_recipient)
             else:
                 return self._send_production_email(to_addresses, subject, body, html_body, from_email)
         except Exception as e:
@@ -72,7 +81,8 @@ class EmailService:
             return False
 
     def _send_test_email(self, original_recipients: List[str], subject: str,
-                         body: str, html_body: str = None, from_email: str = None) -> bool:
+                         body: str, html_body: str = None, from_email: str = None,
+                         test_recipient: str = None) -> bool:
         """Send email in test mode - redirect to test recipient with modified content."""
         test_subject = f"[TEST - Would send to: {', '.join(original_recipients)}] {subject}"
 
@@ -104,7 +114,7 @@ ORIGINAL MESSAGE:
             </div>
             """
 
-        return self._send_production_email([self.test_recipient], test_subject,
+        return self._send_production_email([test_recipient or self.test_recipient], test_subject,
                                            test_body, test_html_body, from_email)
 
     def _send_production_email(self, to_addresses: List[str], subject: str,
@@ -180,7 +190,8 @@ Please log into the admin interface to assign these participants to areas:
 This is an automated daily digest. You will receive this email each day until all participants are assigned.
         """
 
-        return self.send_email(admin_emails, subject, body, from_email=org_vars['from_email'])
+        return self.send_email(admin_emails, subject, body, from_email=org_vars['from_email'],
+                                test_recipient=org_vars['test_recipient'])
 
     def send_area_leader_update(self, leader_emails: List[str], area_code: str,
                                 added_participants: List[Dict],
@@ -226,7 +237,8 @@ For the complete current team roster, visit: {org_vars['leader_url']}
 This is an automated notification from the CBC registration system.
         """
 
-        return self.send_email(leader_emails, subject, body, from_email=org_vars['from_email'])
+        return self.send_email(leader_emails, subject, body, from_email=org_vars['from_email'],
+                                test_recipient=org_vars['test_recipient'])
 
     def send_registration_confirmation(self, participant_data: dict, assigned_area: str) -> bool:
         """Send HTML registration confirmation email to participant."""
@@ -301,7 +313,8 @@ This is an automated notification from the CBC registration system.
         subject = f"{current_year} {org_vars['count_event_name']} Registration Confirmation"
         participant_email = participant_data.get('email')
 
-        return self.send_email([participant_email], subject, '', html_content, from_email=org_vars['from_email'])
+        return self.send_email([participant_email], subject, '', html_content, from_email=org_vars['from_email'],
+                                test_recipient=org_vars['test_recipient'])
 
     def send_withdrawal_confirmation(self, participant_email: str, first_name: str,
                                     last_name: str, withdrawal_reason: str) -> bool:
@@ -328,7 +341,8 @@ Best regards,
 {org_vars['organization_name']} - {org_vars['count_event_name']} Registration System
         """
 
-        return self.send_email([participant_email], subject, body, from_email=org_vars['from_email'])
+        return self.send_email([participant_email], subject, body, from_email=org_vars['from_email'],
+                                test_recipient=org_vars['test_recipient'])
 
     def _get_db_session(self):
         """Get the request-scoped database session."""
@@ -358,7 +372,8 @@ If you didn't request this, you can safely ignore this email.
         <p>If you didn't request this, you can safely ignore this email.</p>
         """
 
-        return self.send_email([email], subject, body, html_body, from_email=org_vars['from_email'])
+        return self.send_email([email], subject, body, html_body, from_email=org_vars['from_email'],
+                                test_recipient=org_vars['test_recipient'])
 
     def send_multi_circle_magic_link(self, email: str, circle_links: list) -> bool:
         """Send a login email listing one link per circle this email administers.

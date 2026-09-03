@@ -4,7 +4,7 @@ from config.database import get_db_session
 from models.participant import ParticipantModel
 from models.area_signup_type import AreaSignupTypeModel
 from config.areas import get_area_info, get_all_areas
-from config.organization import LOGO_PATH, get_count_date, get_registration_status, get_organization_variables
+from config.organization import get_count_date, get_registration_status, get_organization_variables
 from services.email_service import email_service
 from services.security import (
     sanitize_name, sanitize_email, sanitize_phone, sanitize_notes,
@@ -116,7 +116,6 @@ def index():
                          area_leaders=area_leaders,
                          count_date=count_date,
                          registration_status=reg_status,
-                         logo_path=LOGO_PATH,
                          **org_vars)
 
 
@@ -284,7 +283,6 @@ def register():
                              all_areas=all_areas,
                              area_leaders=area_leaders,
                              count_date=count_date,
-                             logo_path=LOGO_PATH,
                              **org_vars)
 
 

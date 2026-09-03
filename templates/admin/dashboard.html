@@ -278,7 +278,7 @@
         <h5 class="mb-0"><i class="bi bi-envelope-paper"></i> Email Testing (Test Server Only)</h5>
     </div>
     <div class="card-body">
-        <p class="text-muted mb-3">Trigger email generation on demand for testing purposes. All emails will be sent to birdcount@naturevancouver.ca on the test server.</p>
+        <p class="text-muted mb-3">Trigger email generation on demand for testing purposes. All emails will be sent to {{ test_recipient|e }} on the test server.</p>
         
         <div class="d-flex flex-wrap gap-2">
             <button type="button" class="btn btn-outline-primary" onclick="triggerTestEmail('team-updates')">

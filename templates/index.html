@@ -5,9 +5,16 @@
 <div class="row">
     <div class="col-lg-6">
         <div class="d-flex align-items-center mb-3">
-            <img src="{{ logo_path }}"
+            {% if logo_url %}
+            <img src="{{ logo_url }}"
                  alt="{{ count_event_name }} Logo"
                  class="registration-logo me-3">
+            {% else %}
+            <div class="registration-logo me-3 d-flex align-items-center justify-content-center text-muted border rounded"
+                 style="aspect-ratio: 1;">
+                <small>No logo</small>
+            </div>
+            {% endif %}
             <div>
                 <h1 class="mb-2" style="font-size: 1.75rem;">Register for the {{ count_event_name }}</h1>
                 <p class="lead mb-0" style="font-size: 1.1rem;">Join {{ organization_name }}'s annual {{ count_event_name }} and help us track bird populations in the area.</p>

@@ -13,7 +13,6 @@ To adapt this system for another club:
 3. Test email delivery with your contact addresses
 """
 
-from config.cloud import TEST_BASE_URL, PRODUCTION_BASE_URL
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 import pytz
@@ -71,7 +70,10 @@ DISPLAY_TIMEZONE = "America/Vancouver"  # Used for email timestamps and schedule
 # Test Mode Configuration
 TEST_RECIPIENT = "birdcount@naturevancouver.ca"  # All test server emails redirect here
 
-# Logo Configuration
+# Logo Configuration - Vancouver's own logo, set on its circle row (circles.logo_path),
+# not used as a fallback for other circles (see get_logo_url(), which returns None when
+# a circle hasn't set its own). Kept as a module constant only for tests/installation/
+# test_deployment.py's import; not otherwise referenced by the live app.
 LOGO_PATH = "/static/icons/NV_logo.png"  # Path relative to base URL
 
 
@@ -101,14 +103,27 @@ def _circle_value(key, default):
     return default
 
 
-# URL Functions (environment-aware)
+# URL Functions (circle/environment-aware)
 def get_base_url():
-    """Get environment-appropriate base URL."""
-    from config.email_settings import is_test_server
-    if is_test_server():
-        return TEST_BASE_URL
-    else:
-        return PRODUCTION_BASE_URL
+    """The current circle's externally-visible base URL (scheme+host, no
+    trailing slash).
+
+    Prefers the actual request's own Host header when in a request context -
+    this is always correct regardless of CBC vs non-CBC subdomain level, test
+    vs prod, or which circle, since it's just echoing back whatever domain
+    was actually used to reach this request (see app.py's resolve_circle).
+    Outside a request (no known circle at all - a standalone script/test),
+    falls back to the landing page's own domain rather than guessing any one
+    circle's URL.
+    """
+    from flask import request, has_request_context
+    if has_request_context():
+        try:
+            return request.host_url.rstrip('/')
+        except RuntimeError:
+            pass
+    from app import LANDING_HOST
+    return f'https://{LANDING_HOST}'
 
 def get_registration_url():
     """Get environment-appropriate registration URL (base URL)."""
@@ -128,8 +143,16 @@ def get_leader_url():
     return f"{get_base_url()}/leader"
 
 def get_logo_url():
-    """Get environment-appropriate logo URL."""
-    return f"{get_base_url()}{_circle_value('logo_path', LOGO_PATH)}"
+    """This circle's logo URL, or None if it hasn't set one.
+
+    No fallback to another circle's logo (e.g. Vancouver's) - callers must
+    handle None explicitly (show a placeholder, omit an <img> tag, etc.)
+    rather than silently displaying the wrong organization's branding.
+    """
+    logo_path = _circle_value('logo_path', None)
+    if not logo_path:
+        return None
+    return f"{get_base_url()}{logo_path}"
 
 def get_count_date(year=None):
     """Get formatted count date with day of week for the given year.

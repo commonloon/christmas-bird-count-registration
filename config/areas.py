@@ -157,8 +157,11 @@ AREA_CONFIG = {
 
 def _get_circle_areas():
     """Areas for the currently-resolved circle (see app.py's resolve_circle hook), as a
-    dict keyed by code, or None outside a request context / before resolution has run
-    (scripts, tests) - callers fall back to the static AREA_CONFIG (Vancouver only) then.
+    dict keyed by code - empty if the circle has none configured yet. Returns None only
+    when there's no resolved circle at all (outside a request context, or before
+    resolution has run - scripts, tests), in which case callers fall back to the static
+    AREA_CONFIG (Vancouver only). A circle with zero areas is deliberately NOT treated
+    the same as "no circle" - it should show as empty, not silently borrow Vancouver's.
     """
     try:
         from flask import g, has_request_context
@@ -170,8 +173,6 @@ def _get_circle_areas():
     from config.database import get_db_session
     from models.circle import CircleAreaModel
     areas = CircleAreaModel(get_db_session()).get_areas_for_circle(g.circle_slug)
-    if not areas:
-        return None
     return {area['code']: area for area in areas}
 
 def get_area_info(letter_code):

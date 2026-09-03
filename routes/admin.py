@@ -7,7 +7,7 @@ from models.removal_log import RemovalLogModel
 from models.withdrawal_log import WithdrawalLogModel
 from models.area_signup_type import AreaSignupTypeModel
 from config.areas import get_area_info, get_all_areas
-from config.organization import get_registration_status
+from config.organization import get_registration_status, get_organization_variables
 from models.reassignment_log import ReassignmentLogModel
 from config.fields import (
     normalize_participant_record, get_participant_csv_fields,
@@ -112,7 +112,8 @@ def dashboard():
                            total_assigned=total_assigned,
                            is_test_server=is_test_server(),
                            current_user=get_current_user(),
-                           registration_status=reg_status)
+                           registration_status=reg_status,
+                           test_recipient=get_organization_variables()['test_recipient'])
 
 
 @admin_bp.route('/recent-registrations')
