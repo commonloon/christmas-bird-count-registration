@@ -106,11 +106,24 @@ def parse_kml_string(kml_content):
         description = desc_elem.text if desc_elem is not None and desc_elem.text else ''
         description = re.sub(r'<[^>]*>', '', description).strip()
 
-        coords_elem = placemark.find('.//kml:coordinates', KML_NS)
-        if coords_elem is None or not coords_elem.text:
+        # Normally one <Polygon> per placemark, but a placemark can hold a
+        # <MultiGeometry> with several <Polygon> fragments whose rings are meant
+        # to be joined end-to-end into one boundary (each fragment's last point
+        # matches the next fragment's first point) - an artifact of how some KML
+        # exports split a single hand-drawn boundary into pieces. Concatenating
+        # every fragment's coordinates in document order reconstructs the
+        # original ring; grabbing only the first (the old behavior) silently
+        # produced a tiny, wrong stub for any area exported this way.
+        polygons = placemark.findall('.//kml:Polygon', KML_NS)
+        coord_texts = []
+        for polygon in polygons:
+            coords_elem = polygon.find('.//kml:coordinates', KML_NS)
+            if coords_elem is not None and coords_elem.text:
+                coord_texts.append(coords_elem.text.strip())
+        if not coord_texts:
             continue
 
-        coordinates = parse_coordinates_to_geojson(coords_elem.text.strip())
+        coordinates = parse_coordinates_to_geojson(' '.join(coord_texts))
         if len(coordinates) < 3:
             continue
 
