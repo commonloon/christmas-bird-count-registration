@@ -46,7 +46,7 @@ admin_bp = Blueprint('admin', __name__)
 # the landing host (see app.py's LANDING_HOST branch).
 _CIRCLE_CONSOLE_ENDPOINTS = {
     'admin.list_circles', 'admin.new_circle', 'admin.edit_circle',
-    'admin.circle_admins', 'admin.circle_areas_manage',
+    'admin.circle_admins', 'admin.circle_areas_manage', 'admin.circle_areas_import_kml',
 }
 
 
