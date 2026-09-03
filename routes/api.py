@@ -1,8 +1,9 @@
 # Updated by Claude AI on 2026-08-31
-from flask import Blueprint, jsonify, request, g
+from flask import Blueprint, jsonify, request, g, Response
 from config.database import get_db_session
 from config.circles import get_default_circle_slug
 from models.circle import CircleModel, CircleAreaModel
+from models.db import Circle
 from models.participant import ParticipantModel
 from models.area_signup_type import AreaSignupTypeModel
 from services.limiter import limiter
@@ -26,6 +27,41 @@ def get_circle_contact(slug):
     if not circle:
         return jsonify({'error': 'Circle not found'}), 404
     return jsonify({'contact': circle['count_contact']})
+
+
+@api_bp.route('/circles/<slug>/logo')
+@limiter.limit(RATE_LIMITS['api_general'])
+def get_circle_logo(slug):
+    """Serve a circle's uploaded logo image, or 404 if it hasn't set one - public,
+    no auth, since logos are embedded in public registration pages and in emails
+    opened by anyone.
+
+    Circle.logo_data is a deferred column (see models/db.py) - queried directly
+    here rather than through CircleModel.get_by_slug()'s dict path, which
+    deliberately excludes it to keep it out of every ordinary request's default
+    SELECT. Supports conditional GETs (If-Modified-Since, keyed off the circle's
+    updated_at) so an unchanged logo costs one indexed row lookup on repeat
+    views, not a full blob re-transfer.
+    """
+    db = get_db_session()
+    row = (
+        db.query(Circle.logo_data, Circle.logo_content_type, Circle.updated_at)
+        .filter_by(slug=slug)
+        .first()
+    )
+    if not row or not row.logo_data:
+        return jsonify({'error': 'No logo set for this circle'}), 404
+
+    logo_data, content_type, updated_at = row
+    last_modified = updated_at.replace(microsecond=0)  # HTTP dates have second precision
+
+    response = Response(status=304) if (
+        request.if_modified_since and last_modified <= request.if_modified_since
+    ) else Response(logo_data, mimetype=content_type)
+    response.last_modified = last_modified
+    response.cache_control.max_age = 86400  # 1 day - logos change rarely; re-uploading
+    # bumps updated_at, which invalidates stale client caches via revalidation above
+    return response
 
 
 @api_bp.route('/areas')

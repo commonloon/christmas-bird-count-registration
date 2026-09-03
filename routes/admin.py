@@ -47,6 +47,7 @@ admin_bp = Blueprint('admin', __name__)
 _CIRCLE_CONSOLE_ENDPOINTS = {
     'admin.list_circles', 'admin.new_circle', 'admin.edit_circle',
     'admin.circle_admins', 'admin.circle_areas_manage', 'admin.circle_areas_import_kml',
+    'admin.circle_logo_upload', 'admin.circle_logo_delete',
 }
 
 
@@ -1714,6 +1715,78 @@ def circle_areas_import_kml(slug):
         message += f' Skipped {skipped} sub-area placemark(s).'
     flash(message, 'success')
     return redirect(url_for('admin.circle_areas_manage', slug=slug))
+
+
+MAX_LOGO_UPLOAD_BYTES = 2 * 1024 * 1024  # generous for a logo image
+
+# Signature bytes -> MIME type. Checked against the file's actual content, never the
+# client-supplied Content-Type or filename extension (both spoofable) - deliberately
+# PNG/JPEG only, no SVG (same XML-based attack surface the KML importer guards against
+# with its DOCTYPE rejection; browsers don't execute <script> in <img>-loaded SVG, but
+# there's no reason to accept that risk for zero benefit).
+_IMAGE_SIGNATURES = {
+    b'\x89PNG\r\n\x1a\n': 'image/png',
+    b'\xff\xd8\xff': 'image/jpeg',
+}
+
+
+def _sniff_image_type(data):
+    """Return the sniffed MIME type ('image/png' or 'image/jpeg') if data's magic
+    bytes match a supported image format, else None."""
+    for signature, mime_type in _IMAGE_SIGNATURES.items():
+        if data.startswith(signature):
+            return mime_type
+    return None
+
+
+@admin_bp.route('/circles/<slug>/logo', methods=['POST'])
+def circle_logo_upload(slug):
+    """Upload a circle's logo, stored in the DB (not the filesystem - same reasoning
+    as KML-imported area boundaries) and served via /api/circles/<slug>/logo."""
+    denied = _require_circle_manage_access(slug)
+    if denied:
+        return denied
+
+    circle = CircleModel(g.db).get_by_slug(slug)
+    if not circle:
+        flash('Circle not found.', 'error')
+        return redirect(url_for('main.index'))
+
+    upload = request.files.get('logo_file')
+    if not upload or not upload.filename:
+        flash('Choose an image file to upload.', 'error')
+        return redirect(url_for('admin.edit_circle', slug=slug))
+
+    raw = upload.read(MAX_LOGO_UPLOAD_BYTES + 1)
+    if len(raw) > MAX_LOGO_UPLOAD_BYTES:
+        flash(f'That file is larger than the {MAX_LOGO_UPLOAD_BYTES // (1024 * 1024)}MB limit.', 'error')
+        return redirect(url_for('admin.edit_circle', slug=slug))
+
+    content_type = _sniff_image_type(raw)
+    if not content_type:
+        flash('That file does not look like a PNG or JPEG image.', 'error')
+        return redirect(url_for('admin.edit_circle', slug=slug))
+
+    CircleModel(g.db).update(slug, {'logo_data': raw, 'logo_content_type': content_type})
+    flash(f'Logo updated for {circle["circle_name"]}.', 'success')
+    return redirect(url_for('admin.edit_circle', slug=slug))
+
+
+@admin_bp.route('/circles/<slug>/logo/delete', methods=['POST'])
+def circle_logo_delete(slug):
+    """Remove a circle's logo, reverting its pages/emails to the "No logo" placeholder."""
+    denied = _require_circle_manage_access(slug)
+    if denied:
+        return denied
+
+    circle = CircleModel(g.db).get_by_slug(slug)
+    if not circle:
+        flash('Circle not found.', 'error')
+        return redirect(url_for('main.index'))
+
+    CircleModel(g.db).update(slug, {'logo_data': None, 'logo_content_type': None})
+    flash(f'Logo removed for {circle["circle_name"]}.', 'success')
+    return redirect(url_for('admin.edit_circle', slug=slug))
 
 
 # Only register test routes when TEST_MODE is enabled

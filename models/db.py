@@ -1,10 +1,10 @@
 import os
 
 from sqlalchemy import (
-    Boolean, Column, DateTime, Float, ForeignKey, Integer, JSON, String, Text,
+    Boolean, Column, DateTime, Float, ForeignKey, Integer, JSON, LargeBinary, String, Text,
     UniqueConstraint, create_engine, inspect
 )
-from sqlalchemy.orm import declarative_base, scoped_session, sessionmaker
+from sqlalchemy.orm import declarative_base, deferred, scoped_session, sessionmaker
 
 Base = declarative_base()
 
@@ -198,7 +198,14 @@ class Circle(Base, DictMixin):
     count_event_name = Column(String(200))
     count_info_url = Column(String(500))
     from_email = Column(String(254))
-    logo_path = Column(String(500))
+    # logo_data is deferred - excluded from the default SELECT that get_by_slug()/get_all()
+    # issue, since resolve_circle() runs one of those on every single request. See to_dict()
+    # override below: deferred() alone isn't enough, since DictMixin's generic getattr() loop
+    # would otherwise still trigger a lazy fetch the moment to_dict() runs. logo_content_type
+    # stays eager (negligible size) and doubles as the "does this circle have a logo" signal -
+    # callers should check that, not logo_data, to decide whether to emit a logo URL.
+    logo_data = deferred(Column(LargeBinary))
+    logo_content_type = Column(String(100))
     test_recipient = Column(String(254))
     display_timezone = Column(String(100), nullable=False, default='America/Vancouver')
     is_cbc = Column(Boolean, nullable=False, default=True)
@@ -212,6 +219,18 @@ class Circle(Base, DictMixin):
     longitude = Column(Float)
     created_at = Column(DateTime(timezone=True), nullable=False)
     updated_at = Column(DateTime(timezone=True), nullable=False)
+
+    def to_dict(self):
+        """Like DictMixin.to_dict(), but never touches logo_data - accessing a deferred
+        column (even via this generic getattr loop) triggers a lazy SELECT, which would
+        defeat the whole point of deferring it. Routes that actually need the logo bytes
+        (the upload/delete/serving routes) query Circle.logo_data directly instead of
+        going through this dict path."""
+        return {
+            column.key: getattr(self, column.key)
+            for column in inspect(self).mapper.column_attrs
+            if column.key != 'logo_data'
+        }
 
 
 class CircleArea(Base, DictMixin):

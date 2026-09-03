@@ -165,4 +165,33 @@
         <a href="{{ url_for('admin.list_circles') }}" class="btn btn-outline-secondary">Cancel</a>
     </div>
 </form>
+
+{% if circle %}
+<div class="card mt-4">
+    <div class="card-body">
+        <h5 class="card-title">Logo</h5>
+        {% if circle.logo_content_type %}
+        <p><img src="{{ url_for('api.get_circle_logo', slug=circle.slug) }}" alt="{{ circle.circle_name|e }} logo"
+                style="max-height: 100px;" class="mb-2 border rounded p-1"></p>
+        <form method="POST" action="{{ url_for('admin.circle_logo_delete', slug=circle.slug) }}" class="mb-3">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-outline-danger btn-sm">Remove current logo</button>
+        </form>
+        {% else %}
+        <p class="text-muted small">No logo set yet.</p>
+        {% endif %}
+        <form method="POST" action="{{ url_for('admin.circle_logo_upload', slug=circle.slug) }}"
+              enctype="multipart/form-data" class="row g-2 align-items-center">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="col-auto">
+                <input type="file" name="logo_file" class="form-control" accept=".png,.jpg,.jpeg" required>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary">{% if circle.logo_content_type %}Replace{% else %}Upload{% endif %} logo</button>
+            </div>
+        </form>
+        <p class="text-muted small mt-2 mb-0">PNG or JPEG, up to 2MB.</p>
+    </div>
+</div>
+{% endif %}
 {% endblock %}

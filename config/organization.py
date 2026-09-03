@@ -143,16 +143,20 @@ def get_leader_url():
     return f"{get_base_url()}/leader"
 
 def get_logo_url():
-    """This circle's logo URL, or None if it hasn't set one.
+    """This circle's logo URL, or None if it hasn't uploaded one.
 
     No fallback to another circle's logo (e.g. Vancouver's) - callers must
     handle None explicitly (show a placeholder, omit an <img> tag, etc.)
     rather than silently displaying the wrong organization's branding.
+
+    Checks logo_content_type, not the logo bytes themselves (Circle.logo_data
+    is a deferred column - see models/db.py - fetching it here would trigger
+    an unnecessary lazy SELECT just to decide whether a logo exists).
     """
-    logo_path = _circle_value('logo_path', None)
-    if not logo_path:
+    circle = _active_circle()
+    if not circle or not circle.get('logo_content_type'):
         return None
-    return f"{get_base_url()}{logo_path}"
+    return f"{get_base_url()}/api/circles/{circle['slug']}/logo"
 
 def get_count_date(year=None):
     """Get formatted count date with day of week for the given year.
