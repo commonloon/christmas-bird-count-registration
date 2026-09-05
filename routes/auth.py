@@ -260,6 +260,7 @@ def verify(token):
         email = record.email
         user_role = get_user_role(email, db, g.circle_slug)
 
+        session.permanent = True
         session['user_email'] = email
         session['user_name'] = email
         session['user_role'] = user_role
@@ -305,6 +306,12 @@ def init_auth(app):
     app.config['SESSION_PERMANENT'] = False
     app.config['SESSION_USE_SIGNER'] = True
     app.config['SESSION_KEY_PREFIX'] = 'cbc:'
+    # SESSION_TYPE/SESSION_USE_SIGNER/SESSION_KEY_PREFIX above only take effect with
+    # Flask-Session installed and initialized (it isn't - not in requirements.txt,
+    # no Session(app) call anywhere). Flask's actual default is in force: session
+    # data lives entirely in a signed cookie, no server-side store. Left as-is
+    # rather than removed, since installing Flask-Session properly is a separate
+    # decision (would also give real cross-request revocation for free).
 
     # Session cookie security attributes (CRITICAL for XSS/CSRF protection)
     app.config['SESSION_COOKIE_HTTPONLY'] = True      # Prevent JavaScript access to session cookie
@@ -315,8 +322,12 @@ def init_auth(app):
     app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'true').lower() != 'false'
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'     # Prevent CSRF while allowing magic-link redirects
 
-    # Session timeout (security best practice for admin sessions)
-    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
+    # Session lifetime. Only takes effect on sessions marked permanent (see
+    # session.permanent = True in verify() below) - previously set here but dead,
+    # since nothing set that flag and SESSION_PERMANENT defaults False, so every
+    # session was actually a non-persistent browser-session cookie regardless of
+    # this value.
+    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 
 
 def get_current_user():

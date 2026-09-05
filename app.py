@@ -64,7 +64,7 @@ from routes.main import main_bp
 from routes.admin import admin_bp
 from routes.leader import leader_bp
 from routes.api import api_bp
-from routes.auth import auth_bp, init_auth
+from routes.auth import auth_bp, init_auth, get_user_role
 from routes.scheduler import scheduler_bp
 
 # Initialize authentication
@@ -204,11 +204,21 @@ def resolve_circle():
 # Before request handler for authentication context
 @app.before_request
 def load_user():
-    """Load user information into g context for templates."""
+    """Load user information into g context for templates.
+
+    Re-derives user_role from the database on every request rather than trusting
+    the value cached in the session cookie at login time - sessions now live up to
+    PERMANENT_SESSION_LIFETIME (see routes/auth.py), so without this a circle-admin
+    or leader removed from the database would keep their old privileges for the
+    rest of that window. Written back into the session so require_admin/
+    require_leader/require_super_admin (which read session['user_role'] directly)
+    see the current value too.
+    """
     if 'user_email' in session:
         g.user_email = session['user_email']
         g.user_name = session.get('user_name', '')
-        g.user_role = session.get('user_role', 'public')
+        g.user_role = get_user_role(g.user_email, get_db_session(), g.circle_slug)
+        session['user_role'] = g.user_role
     else:
         g.user_email = None
         g.user_name = None
