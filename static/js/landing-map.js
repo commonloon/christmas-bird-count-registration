@@ -5,7 +5,11 @@
 const CIRCLE_RADIUS_METERS = 12000;
 
 function initializeLandingMap(circles) {
-    // Default view covers the Lower Mainland; not tied to any one circle's boundary
+    // Fallback view if no circle has usable coordinates - covers the Lower
+    // Mainland, arbitrarily. Normally overridden below by fitBounds() once real
+    // circles are drawn, since circles are no longer all clustered near Vancouver
+    // (e.g. Comox Valley, well up Vancouver Island, would render off-screen under
+    // a fixed Lower-Mainland viewport).
     const map = L.map('circles-map').setView([49.15, -122.75], 9);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -14,6 +18,7 @@ function initializeLandingMap(circles) {
         minZoom: 7
     }).addTo(map);
 
+    const shapes = [];
     circles.forEach(function(circle) {
         if (circle.latitude == null || circle.longitude == null) {
             return;
@@ -32,7 +37,12 @@ function initializeLandingMap(circles) {
             fillOpacity: 0.15
         }).addTo(map);
         circleShape.bindPopup(link);
+        shapes.push(circleShape);
     });
+
+    if (shapes.length > 0) {
+        map.fitBounds(L.featureGroup(shapes).getBounds(), { padding: [30, 30] });
+    }
 }
 
 function initializeContactButtons() {
