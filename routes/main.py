@@ -1,7 +1,7 @@
 # Updated by Claude AI on 2026-01-12
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g, send_from_directory, abort
 from config.database import get_db_session
-from models.participant import ParticipantModel
+from models.participant import ParticipantModel, DuplicateParticipantError
 from models.area_signup_type import AreaSignupTypeModel
 from config.areas import get_area_info, get_all_areas
 from config.organization import get_count_date, get_registration_status, get_organization_variables
@@ -325,6 +325,12 @@ def register():
                                 area=preferred_area,
                                 participant_id=participant_id))
 
+    except DuplicateParticipantError:
+        # The email_name_exists() check above normally catches this before we get
+        # here - reaching this instead means two submissions with the same
+        # identity landed in a near-simultaneous race and both passed that check.
+        flash('This name and email combination is already registered for this year', 'error')
+        return redirect(url_for('main.index'))
     except Exception as e:
         print(f"Registration error: {e}")
         flash('Registration failed. Please try again.', 'error')

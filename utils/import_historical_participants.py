@@ -155,10 +155,21 @@ def import_data(session, circle_slug, source_label, records, dry_run):
     skipped_duplicate = 0
     skipped_invalid = 0
     unknown_areas = set()
+    # Tracks identities already staged in this run (not yet committed, so a DB
+    # query wouldn't see them) - a source export can itself contain an exact
+    # duplicate row (confirmed: the 2024 Vancouver CSV has one), which would
+    # otherwise pass the "already in DB" check twice and hit the DB's real
+    # uq_participants_identity constraint at commit time, aborting this whole
+    # batch instead of just skipping the one repeated row.
+    staged_identities = set()
 
     for source, data in records:
-        if not data['first_name'] or not data['last_name'] or not data['email']:
-            print(f"  SKIP (missing identity field) in {source}: "
+        # last_name is allowed to be blank - some historical records only ever
+        # captured a first name (see the "Imported from 2024 volunteer CSV" rows),
+        # and (first_name, '', email) is still a valid, almost-certainly-unique
+        # identity tuple. first_name and email are the fields we can't do without.
+        if not data['first_name'] or not data['email']:
+            print(f"  SKIP (missing first name or email) in {source}: "
                   f"{data['first_name']!r} {data['last_name']!r} {data['email']!r}")
             skipped_invalid += 1
             continue
@@ -168,6 +179,14 @@ def import_data(session, circle_slug, source_label, records, dry_run):
             if area and area != 'UNASSIGNED' and area not in known_areas:
                 unknown_areas.add(area)
 
+        identity = (circle_slug, data['year'], data['first_name'], data['last_name'], data['email'])
+
+        if identity in staged_identities:
+            print(f"  SKIP (duplicate within this import) in {source}: "
+                  f"{data['first_name']!r} {data['last_name']!r} {data['email']!r} ({data['year']})")
+            skipped_duplicate += 1
+            continue
+
         existing = session.query(Participant).filter_by(
             circle_slug=circle_slug, year=data['year'],
             first_name=data['first_name'], last_name=data['last_name'], email=data['email'],
@@ -176,6 +195,7 @@ def import_data(session, circle_slug, source_label, records, dry_run):
             skipped_duplicate += 1
             continue
 
+        staged_identities.add(identity)
         now = datetime.now(timezone.utc)
         participant = Participant(
             circle_slug=circle_slug,

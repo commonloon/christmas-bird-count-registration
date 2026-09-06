@@ -42,6 +42,18 @@ class DictMixin:
 
 class Participant(Base, DictMixin):
     __tablename__ = 'participants'
+    # Enforces the identity rule CLAUDE.md has always documented as mandatory
+    # (first_name, last_name, email) - scoped per circle/year, since the same
+    # person registers fresh each year and circles don't share participants.
+    # Firestore never enforced this at the datastore level (document IDs were
+    # random, not derived from identity) - callers only ever did an application-
+    # level check-then-write, which is still in place (see
+    # ParticipantModel.email_name_exists) as the normal-path guard; this
+    # constraint is the backstop for the race that check can't close on its own.
+    __table_args__ = (
+        UniqueConstraint('circle_slug', 'year', 'first_name', 'last_name', 'email',
+                          name='uq_participants_identity'),
+    )
 
     id = Column(Integer, primary_key=True)
     circle_slug = Column(String(50), nullable=False, default=DEFAULT_CIRCLE_SLUG, index=True)

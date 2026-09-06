@@ -2,7 +2,18 @@ from datetime import datetime, timezone
 from typing import List, Dict, Optional
 import logging
 
+from sqlalchemy.exc import IntegrityError
+
 from models.db import Participant, resolve_default_circle_slug
+
+
+class DuplicateParticipantError(Exception):
+    """Raised when a (circle_slug, year, first_name, last_name, email) identity
+    already exists - normally caught earlier by the callers' own
+    email_name_exists()/get_participant_by_email_and_names() pre-check, so
+    reaching this is the rare race between two near-simultaneous submissions
+    with the same identity, not the expected path."""
+    pass
 
 
 class ParticipantModel:
@@ -50,7 +61,17 @@ class ParticipantModel:
             updated_at=now,
         )
         self.db.add(participant)
-        self.db.commit()
+        try:
+            self.db.commit()
+        except IntegrityError as e:
+            self.db.rollback()
+            if 'uq_participants_identity' in str(e.orig):
+                raise DuplicateParticipantError(
+                    f"A participant with identity ({participant.first_name}, "
+                    f"{participant.last_name}, {participant.email}) already exists "
+                    f"for {self.circle_slug} {self.year}."
+                ) from e
+            raise
         self.logger.info(f"Added participant to year {self.year}: {participant.email}")
         return str(participant.id)
 
