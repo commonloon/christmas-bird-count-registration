@@ -149,6 +149,28 @@ def inject_common_data():
         'display_timezone': org_vars['display_timezone']
     }
 
+# Must run before every other before_request hook - redirects before any DB/circle
+# work happens on a request that's about to be thrown away anyway.
+@app.before_request
+def enforce_https():
+    """Redirect a plain-HTTP request to the same URL over HTTPS.
+
+    Confirmed this was reachable in production: nothing at the Apache/FullHost layer
+    upgrades http:// to https:// for this app (verified directly with curl against
+    multiple circles' hosts, not just one), so a request can genuinely arrive here
+    over plain HTTP - typically because the browser has no HSTS record yet for this
+    exact hostname (e.g. a brand new circle subdomain nobody has visited before) and
+    something (a typed URL, an old bookmark) specified http:// explicitly. Session
+    and CSRF cookies are marked Secure whenever SESSION_COOKIE_SECURE is on (see
+    routes/auth.py's init_auth), and browsers silently refuse to store a Secure
+    cookie set over a plain HTTP response - so without this redirect, the login page
+    renders with no session cookie taking hold at all, and the next form submit fails
+    with a baffling "CSRF session token is missing" error. Skipped when
+    SESSION_COOKIE_SECURE is off (local http://localhost dev has no TLS to redirect to).
+    """
+    if app.config.get('SESSION_COOKIE_SECURE') and not request.is_secure:
+        return redirect(request.url.replace('http://', 'https://', 1), code=301)
+
 # Before request handler for multi-circle resolution (must run before anything that
 # reads g.circle/g.circle_slug, including model construction in later before_request
 # hooks and in route handlers)
