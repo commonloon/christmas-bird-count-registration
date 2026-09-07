@@ -405,7 +405,9 @@ class ParticipantModel:
 
     @classmethod
     def get_available_years(cls, db_session, circle_slug: str = None) -> List[int]:
-        """Get list of years that have participant data for a circle.
+        """Get the years selectable in the admin/leader year picker for a circle:
+        every year with participant data, plus the current year even if it has none
+        yet.
 
         circle_slug defaults via resolve_default_circle_slug() (the current request's
         circle, in a request context) - the participants table is shared across every
@@ -413,12 +415,23 @@ class ParticipantModel:
         they were this one's (confirmed: Comox Spring showed tabs back to 2023 despite
         having zero participants, because those years only ever existed for Vancouver/
         Ladner).
+
+        Always including the current year matters because every caller (dashboard,
+        participants list, leaders, area detail, recent registrations, leader
+        dashboard) only shows its year selector when this returns more than one
+        year - a circle whose only data is a single historical year (e.g. Nanaimo,
+        freshly imported with only 2025 data and no 2026 registrations yet) would
+        otherwise get back a length-1 list, hiding the selector entirely and
+        stranding the admin on an empty current-year view with no way to reach the
+        year that actually has data.
         """
         circle_slug = circle_slug or resolve_default_circle_slug()
+        current_year = datetime.now().year
         try:
-            years = [row[0] for row in db_session.query(Participant.year)
-                     .filter_by(circle_slug=circle_slug).distinct().all()]
-            return sorted(years, reverse=True) or [datetime.now().year]
+            years = {row[0] for row in db_session.query(Participant.year)
+                     .filter_by(circle_slug=circle_slug).distinct().all()}
+            years.add(current_year)
+            return sorted(years, reverse=True)
         except Exception as e:
             logging.getLogger(__name__).error(f"Failed to get available years: {e}")
-            return [datetime.now().year]
+            return [current_year]
