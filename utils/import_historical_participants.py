@@ -152,15 +152,22 @@ def import_data(session, circle_slug, source_label, records, dry_run):
     known_areas = {a['code'] for a in CircleAreaModel(session).get_areas_for_circle(circle_slug)}
 
     inserted = 0
-    skipped_duplicate = 0
+    renamed = 0
     skipped_invalid = 0
     unknown_areas = set()
     # Tracks identities already staged in this run (not yet committed, so a DB
-    # query wouldn't see them) - a source export can itself contain an exact
-    # duplicate row (confirmed: the 2024 Vancouver CSV has one), which would
-    # otherwise pass the "already in DB" check twice and hit the DB's real
-    # uq_participants_identity constraint at commit time, aborting this whole
-    # batch instead of just skipping the one repeated row.
+    # query wouldn't see them). A source export can contain two rows that
+    # collide on (first_name, last_name, email, year) - either a literal repeat
+    # of the same row, or (confirmed in Ladner's 2023/2024 data) two genuinely
+    # different historical records for the same person/year, e.g. a bare-bones
+    # stub entry an organizer typed in by hand alongside a fuller record with
+    # real skill/leadership data. Rather than guess which one is "right" and
+    # drop the other, every colliding row is kept: first_name gets 'A' appended
+    # (repeatedly, if needed) until the tuple is unique, then it's inserted
+    # under that adjusted name. This is a one-off import script, so re-running
+    # it against a circle it already populated will re-insert everything under
+    # further-renamed identities rather than skipping - only run it once per
+    # circle/source for real (dry-run first, as always).
     staged_identities = set()
 
     for source, data in records:
@@ -179,21 +186,26 @@ def import_data(session, circle_slug, source_label, records, dry_run):
             if area and area != 'UNASSIGNED' and area not in known_areas:
                 unknown_areas.add(area)
 
+        original_first_name = data['first_name']
         identity = (circle_slug, data['year'], data['first_name'], data['last_name'], data['email'])
 
-        if identity in staged_identities:
-            print(f"  SKIP (duplicate within this import) in {source}: "
-                  f"{data['first_name']!r} {data['last_name']!r} {data['email']!r} ({data['year']})")
-            skipped_duplicate += 1
-            continue
+        def _identity_taken(identity):
+            if identity in staged_identities:
+                return True
+            return session.query(Participant).filter_by(
+                circle_slug=circle_slug, year=identity[1],
+                first_name=identity[2], last_name=identity[3], email=identity[4],
+            ).first() is not None
 
-        existing = session.query(Participant).filter_by(
-            circle_slug=circle_slug, year=data['year'],
-            first_name=data['first_name'], last_name=data['last_name'], email=data['email'],
-        ).first()
-        if existing:
-            skipped_duplicate += 1
-            continue
+        while _identity_taken(identity):
+            data['first_name'] += 'A'
+            identity = (circle_slug, data['year'], data['first_name'], data['last_name'], data['email'])
+
+        if data['first_name'] != original_first_name:
+            print(f"  RENAMED duplicate identity in {source}: "
+                  f"{original_first_name!r} {data['last_name']!r} {data['email']!r} ({data['year']}) "
+                  f"-> first_name {data['first_name']!r} to satisfy uniqueness constraint")
+            renamed += 1
 
         staged_identities.add(identity)
         now = datetime.now(timezone.utc)
@@ -206,8 +218,8 @@ def import_data(session, circle_slug, source_label, records, dry_run):
         session.add(participant)
         inserted += 1
 
-    print(f"\n{source_label}: {inserted} to insert, {skipped_duplicate} already present "
-          f"(identity match), {skipped_invalid} skipped (missing name/email).")
+    print(f"\n{source_label}: {inserted} to insert ({renamed} renamed to satisfy the identity "
+          f"constraint), {skipped_invalid} skipped (missing name/email).")
     if unknown_areas:
         print(f"  WARNING: area codes not found in circle_areas for '{circle_slug}': "
               f"{sorted(unknown_areas)} (import proceeds - these rows just won't resolve "
