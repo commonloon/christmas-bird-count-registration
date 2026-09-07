@@ -161,10 +161,16 @@ class RemovalLogModel:
         return by_area
 
     @classmethod
-    def get_available_years(cls, db_session) -> List[int]:
-        """Get list of years that have removal log data."""
+    def get_available_years(cls, db_session, circle_slug: str = None) -> List[int]:
+        """Get list of years that have removal log data for a circle.
+
+        See ParticipantModel.get_available_years - same shared-table scoping issue
+        applies here (removal_logs also spans every circle in one table).
+        """
+        circle_slug = circle_slug or resolve_default_circle_slug()
         try:
-            years = [row[0] for row in db_session.query(RemovalLog.year).distinct().all()]
+            years = [row[0] for row in db_session.query(RemovalLog.year)
+                     .filter_by(circle_slug=circle_slug).distinct().all()]
             return sorted(years, reverse=True) or [datetime.now().year]
         except Exception as e:
             logging.getLogger(__name__).error(f"Failed to get available years for removal logs: {e}")

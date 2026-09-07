@@ -404,10 +404,20 @@ class ParticipantModel:
         return [r.to_dict() for r in rows]
 
     @classmethod
-    def get_available_years(cls, db_session) -> List[int]:
-        """Get list of years that have participant data."""
+    def get_available_years(cls, db_session, circle_slug: str = None) -> List[int]:
+        """Get list of years that have participant data for a circle.
+
+        circle_slug defaults via resolve_default_circle_slug() (the current request's
+        circle, in a request context) - the participants table is shared across every
+        circle, so an unfiltered query here would surface other circles' years as if
+        they were this one's (confirmed: Comox Spring showed tabs back to 2023 despite
+        having zero participants, because those years only ever existed for Vancouver/
+        Ladner).
+        """
+        circle_slug = circle_slug or resolve_default_circle_slug()
         try:
-            years = [row[0] for row in db_session.query(Participant.year).distinct().all()]
+            years = [row[0] for row in db_session.query(Participant.year)
+                     .filter_by(circle_slug=circle_slug).distinct().all()]
             return sorted(years, reverse=True) or [datetime.now().year]
         except Exception as e:
             logging.getLogger(__name__).error(f"Failed to get available years: {e}")
