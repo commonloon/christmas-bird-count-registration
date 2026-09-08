@@ -80,7 +80,6 @@ class Participant(Base, DictMixin):
 
     has_binoculars = Column(Boolean, default=False)
     spotting_scope = Column(Boolean, default=False)
-    interested_in_scribe = Column(Boolean, default=False)
     interested_in_leadership = Column(Boolean, default=False)
     notes_to_organizers = Column(Text, default='')
 

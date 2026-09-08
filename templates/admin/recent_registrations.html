@@ -98,7 +98,6 @@
                         <th>Equipment</th>
                         <th>Notes</th>
                         <th>Leader</th>
-                        <th>Scribe</th>
                         <th>Date</th>
                     </tr>
                 </thead>
@@ -152,13 +151,6 @@
                         <td>
                             {% if participant.interested_in_leadership %}
                                 <span class="badge bg-warning">Interested</span>
-                            {% else %}
-                                <span class="text-muted">No</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if participant.get('interested_in_scribe') %}
-                                <span class="badge bg-info">Interested</span>
                             {% else %}
                                 <span class="text-muted">No</span>
                             {% endif %}

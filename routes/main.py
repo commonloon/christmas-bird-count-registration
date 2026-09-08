@@ -151,8 +151,7 @@ def register():
     signup_type_model = AreaSignupTypeModel(g.db)
     public_areas = signup_type_model.get_public_areas()
     interested_in_leadership = request.form.get('interested_in_leadership') == 'on'
-    interested_in_scribe = request.form.get('interested_in_scribe') == 'on'
-    
+
     # Get and sanitize new fields
     participation_type = request.form.get('participation_type', '').strip()
     has_binoculars = request.form.get('has_binoculars') == 'on'
@@ -297,7 +296,6 @@ def register():
         'experience': experience,
         'preferred_area': preferred_area,
         'interested_in_leadership': interested_in_leadership,
-        'interested_in_scribe': interested_in_scribe,
         'is_leader': False,  # Only admins can assign leadership
         'assigned_area_leader': None,
         'participation_type': participation_type,
@@ -371,16 +369,6 @@ def area_leader_info():
     form_data = {k: v for k, v in request.args.items() if k != 'csrf_token'}
     org_vars = get_organization_variables()
     return render_template('area_leader_info.html', form_data=form_data, **org_vars)
-
-
-@main_bp.route('/scribe-info')
-def scribe_info():
-    """Information about scribe responsibilities."""
-    # Pass all query parameters to template for form restoration links, except
-    # csrf_token - see area_leader_info's comment above for why.
-    form_data = {k: v for k, v in request.args.items() if k != 'csrf_token'}
-    org_vars = get_organization_variables()
-    return render_template('scribe_info.html', form_data=form_data, **org_vars)
 
 
 @main_bp.route('/robots.txt')

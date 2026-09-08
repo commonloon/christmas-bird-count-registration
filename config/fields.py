@@ -28,7 +28,6 @@ PARTICIPANT_FIELDS = OrderedDict([
     ('has_binoculars', {'default': False, 'display_name': 'Has Binoculars', 'csv_order': 10}),
     ('spotting_scope', {'default': False, 'display_name': 'Can Bring Spotting Scope', 'csv_order': 11}),
     ('interested_in_leadership', {'default': False, 'display_name': 'Leadership Interest', 'csv_order': 12}),
-    ('interested_in_scribe', {'default': False, 'display_name': 'Scribe Interest', 'csv_order': 13}),
 
     # Notes
     ('notes_to_organizers', {'default': '', 'display_name': 'Notes to Organizers', 'csv_order': 14}),

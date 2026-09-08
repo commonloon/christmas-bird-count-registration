@@ -54,7 +54,6 @@ class ParticipantModel:
             leadership_removed_at=participant_data.get('leadership_removed_at'),
             has_binoculars=participant_data.get('has_binoculars', False),
             spotting_scope=participant_data.get('spotting_scope', False),
-            interested_in_scribe=participant_data.get('interested_in_scribe', False),
             interested_in_leadership=participant_data.get('interested_in_leadership', False),
             notes_to_organizers=participant_data.get('notes_to_organizers', ''),
             created_at=now,
@@ -342,7 +341,6 @@ class ParticipantModel:
             'participation_type': 'regular',
             'has_binoculars': leader_data.get('has_binoculars', False),
             'spotting_scope': leader_data.get('spotting_scope', False),
-            'interested_in_scribe': leader_data.get('interested_in_scribe', False),
             'interested_in_leadership': True,
             'notes_to_organizers': leader_data.get('notes', ''),
         }

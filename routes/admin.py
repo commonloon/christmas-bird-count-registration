@@ -258,7 +258,6 @@ def participants():
                 'has_binoculars': False,
                 'spotting_scope': False,
                 'interested_in_leadership': True,  # Assumed for leaders
-                'interested_in_scribe': False,
                 'notes_to_organizers': leader.get('notes', ''),
                 'is_leader': True,
                 'assigned_area_leader': None,
@@ -287,7 +286,7 @@ def participants():
     # Define which fields to display in the table (subset of all fields for readability)
     display_fields = ['first_name', 'last_name', 'email', 'phone', 'phone2', 'skill_level',
                      'experience', 'participation_type', 'has_binoculars', 'spotting_scope',
-                     'interested_in_leadership', 'interested_in_scribe', 'notes_to_organizers', 'created_at']
+                     'interested_in_leadership', 'notes_to_organizers', 'created_at']
 
     return render_template('admin/participants.html',
                            participants=combined_participants,
@@ -539,7 +538,6 @@ def add_leader():
     experience = request.form.get('experience', '3+ counts').strip()
     has_binoculars = request.form.get('has_binoculars') == 'on'
     spotting_scope = request.form.get('spotting_scope') == 'on'
-    interested_in_scribe = request.form.get('interested_in_scribe') == 'on'
 
     # Validate skill level
     valid_skill_levels = ['Newbie', 'Beginner', 'Intermediate', 'Expert']
@@ -577,7 +575,6 @@ def add_leader():
             'experience': experience,
             'has_binoculars': has_binoculars,
             'spotting_scope': spotting_scope,
-            'interested_in_scribe': interested_in_scribe,
             'assigned_by': user['email'],
             'assigned_at': datetime.now(),
             'active': True,
@@ -1078,7 +1075,6 @@ def edit_participant():
         has_binoculars = bool(data.get('has_binoculars', False))
         spotting_scope = bool(data.get('spotting_scope', False))
         interested_in_leadership = bool(data.get('interested_in_leadership', False))
-        interested_in_scribe = bool(data.get('interested_in_scribe', False))
         preferred_area = data.get('preferred_area', '').strip().upper() if data.get('preferred_area') else None
         selected_year = int(data.get('year', datetime.now().year))
 
@@ -1157,8 +1153,6 @@ def edit_participant():
             updates['spotting_scope'] = spotting_scope
         if 'interested_in_leadership' in data:
             updates['interested_in_leadership'] = interested_in_leadership
-        if 'interested_in_scribe' in data:
-            updates['interested_in_scribe'] = interested_in_scribe
         # Track if area changed for reassignment logging
         area_changed = False
         old_area = None

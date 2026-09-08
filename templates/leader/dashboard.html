@@ -103,7 +103,6 @@
                         <th>Equipment</th>
                         <th>Notes</th>
                         <th>Leader</th>
-                        <th>Scribe</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -147,13 +146,6 @@
                                 <span class="text-muted">No</span>
                             {% endif %}
                         </td>
-                        <td>
-                            {% if participant.get('interested_in_scribe') %}
-                                <span class="badge bg-info">Interested</span>
-                            {% else %}
-                                <span class="text-muted">No</span>
-                            {% endif %}
-                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -182,7 +174,6 @@
                         <th>Equipment</th>
                         <th>Notes</th>
                         <th>Leader</th>
-                        <th>Scribe</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -224,13 +215,6 @@
                                 <span class="text-muted">No</span>
                             {% endif %}
                         </td>
-                        <td>
-                            {% if participant.get('interested_in_scribe') %}
-                                <span class="badge bg-info">Interested</span>
-                            {% else %}
-                                <span class="text-muted">No</span>
-                            {% endif %}
-                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -259,7 +243,6 @@
                         <th>Equipment</th>
                         <th>Notes</th>
                         <th>Leader</th>
-                        <th>Scribe</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -304,13 +287,6 @@
                                 <span class="text-muted">No</span>
                             {% endif %}
                         </td>
-                        <td>
-                            {% if participant.get('interested_in_scribe') %}
-                                <span class="badge bg-info">Interested</span>
-                            {% else %}
-                                <span class="text-muted">No</span>
-                            {% endif %}
-                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -335,7 +311,7 @@ function exportTeamCsv() {
         'first_name', 'last_name', 'email', 'phone', 'phone2', 'skill_level',
         'experience', 'preferred_area', 'participation_type', 'has_binoculars',
         'spotting_scope', 'notes_to_organizers', 'interested_in_leadership',
-        'interested_in_scribe', 'is_leader', 'assigned_area_leader'
+        'is_leader', 'assigned_area_leader'
     ];
 
     // Build participant data array (regular first, then FEEDER)
@@ -357,7 +333,6 @@ function exportTeamCsv() {
         spotting_scope: {{ p.spotting_scope|tojson }},
         notes_to_organizers: {{ p.get('notes_to_organizers', '')|tojson }},
         interested_in_leadership: {{ p.interested_in_leadership|tojson }},
-        interested_in_scribe: {{ p.get('interested_in_scribe', false)|tojson }},
         is_leader: {{ p.is_leader|tojson }},
         assigned_area_leader: {{ p.get('assigned_area_leader', '')|tojson }}
     });
@@ -380,7 +355,6 @@ function exportTeamCsv() {
         spotting_scope: {{ p.spotting_scope|tojson }},
         notes_to_organizers: {{ p.get('notes_to_organizers', '')|tojson }},
         interested_in_leadership: {{ p.interested_in_leadership|tojson }},
-        interested_in_scribe: {{ p.get('interested_in_scribe', false)|tojson }},
         is_leader: {{ p.is_leader|tojson }},
         assigned_area_leader: {{ p.get('assigned_area_leader', '')|tojson }}
     });

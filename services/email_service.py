@@ -289,7 +289,6 @@ This is an automated notification from the CBC registration system.
             'has_binoculars': participant_data.get('has_binoculars', False),
             'spotting_scope': participant_data.get('spotting_scope', False),
             'interested_in_leadership': participant_data.get('interested_in_leadership', False),
-            'interested_in_scribe': participant_data.get('interested_in_scribe', False),
             'notes_to_organizers': participant_data.get('notes_to_organizers'),
             'organization_name': org_vars['organization_name'],
             'count_contact': org_vars['count_contact'],

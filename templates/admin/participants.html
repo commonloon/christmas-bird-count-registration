@@ -126,7 +126,6 @@
                             <th>Equipment</th>
                             <th>Notes</th>
                             <th>Leader</th>
-                            <th>Scribe</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -251,21 +250,6 @@
                                 <div class="leadership-edit" style="display: none;">
                                     <div class="form-check form-check-sm">
                                         <input class="form-check-input leadership-input" type="checkbox" {% if participant.interested_in_leadership %}checked{% endif %}>
-                                        <label class="form-check-label small">Interested</label>
-                                    </div>
-                                </div>
-                            </td>
-                            <td>
-                                <div class="scribe-display">
-                                    {% if participant.get('interested_in_scribe') %}
-                                        <span class="badge bg-info">Interested</span>
-                                    {% else %}
-                                        <span class="text-muted">No</span>
-                                    {% endif %}
-                                </div>
-                                <div class="scribe-edit" style="display: none;">
-                                    <div class="form-check form-check-sm">
-                                        <input class="form-check-input scribe-input" type="checkbox" {% if participant.get('interested_in_scribe') %}checked{% endif %}>
                                         <label class="form-check-label small">Interested</label>
                                     </div>
                                 </div>
@@ -517,10 +501,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function enableEditMode(row) {
         // Hide display elements and show edit elements
-        row.querySelectorAll('.name-display, .email-display, .phone-display, .skill-display, .experience-display, .equipment-display, .notes-display, .leadership-display, .scribe-display').forEach(el => {
+        row.querySelectorAll('.name-display, .email-display, .phone-display, .skill-display, .experience-display, .equipment-display, .notes-display, .leadership-display').forEach(el => {
             el.style.display = 'none';
         });
-        row.querySelectorAll('.name-edit, .email-edit, .phone-edit, .skill-edit, .experience-edit, .equipment-edit, .notes-edit, .leadership-edit, .scribe-edit').forEach(el => {
+        row.querySelectorAll('.name-edit, .email-edit, .phone-edit, .skill-edit, .experience-edit, .equipment-edit, .notes-edit, .leadership-edit').forEach(el => {
             el.style.display = 'block';
         });
 
@@ -531,10 +515,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function disableEditMode(row) {
         // Show display elements and hide edit elements
-        row.querySelectorAll('.name-display, .email-display, .phone-display, .skill-display, .experience-display, .equipment-display, .notes-display, .leadership-display, .scribe-display').forEach(el => {
+        row.querySelectorAll('.name-display, .email-display, .phone-display, .skill-display, .experience-display, .equipment-display, .notes-display, .leadership-display').forEach(el => {
             el.style.display = 'block';
         });
-        row.querySelectorAll('.name-edit, .email-edit, .phone-edit, .skill-edit, .experience-edit, .equipment-edit, .notes-edit, .leadership-edit, .scribe-edit').forEach(el => {
+        row.querySelectorAll('.name-edit, .email-edit, .phone-edit, .skill-edit, .experience-edit, .equipment-edit, .notes-edit, .leadership-edit').forEach(el => {
             el.style.display = 'none';
         });
 
@@ -558,7 +542,6 @@ document.addEventListener('DOMContentLoaded', function() {
             has_binoculars: row.querySelector('.has-binoculars-input').checked,
             spotting_scope: row.querySelector('.spotting-scope-input').checked,
             interested_in_leadership: row.querySelector('.leadership-input').checked,
-            interested_in_scribe: row.querySelector('.scribe-input').checked,
             year: {{ selected_year }},
             csrf_token: '{{ csrf_token() }}'
         };
@@ -646,14 +629,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     leadershipDisplay.innerHTML = '<span class="badge bg-warning">Interested</span>';
                 } else {
                     leadershipDisplay.innerHTML = '<span class="text-muted">No</span>';
-                }
-
-                // Update scribe display
-                const scribeDisplay = row.querySelector('.scribe-display');
-                if (formData.interested_in_scribe) {
-                    scribeDisplay.innerHTML = '<span class="badge bg-info">Interested</span>';
-                } else {
-                    scribeDisplay.innerHTML = '<span class="text-muted">No</span>';
                 }
 
                 // Exit edit mode
