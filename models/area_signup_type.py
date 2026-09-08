@@ -13,7 +13,7 @@ def natural_sort_key(area_code):
     Sorts numerically for numeric codes: 1, 2, 4A, 4B, 9A, 9B, 10, 11, etc.
     """
     parts = re.findall(r'(\d+|[A-Za-z]+)', str(area_code))
-    return tuple(int(p) if p.isdigit() else p for p in parts)
+    return tuple(int(p) if p.isdigit() else p.lower() for p in parts)
 
 
 class AreaSignupTypeModel:
