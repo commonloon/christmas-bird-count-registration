@@ -23,8 +23,12 @@ RATE_LIMITS = {
     'admin_general': '30 per minute',     # Dashboard, participant lists, browsing
     'admin_modify': '30 per minute',      # Adding/editing leaders, assigning participants (fast admin work)
     
-    # Authentication endpoints
-    'auth': '5 per minute',               # Login attempts, OAuth callbacks
+    # Authentication endpoints - higher in test mode: an automated browser suite can
+    # legitimately trigger more than 5 login-related requests/minute (e.g. any
+    # unauthenticated request to an admin/leader route redirects to /auth/login,
+    # which Selenium follows as a real GET), and test mode is far less likely to be
+    # running on a publicly reachable server than this was originally written for.
+    'auth': '100 per minute' if is_test_mode() else '5 per minute',  # Login attempts, OAuth callbacks
 }
 
 # Storage backend configuration for Flask-Limiter

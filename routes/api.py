@@ -1,7 +1,6 @@
 # Updated by Claude AI on 2026-08-31
 from flask import Blueprint, jsonify, request, g, Response
 from config.database import get_db_session
-from config.circles import get_default_circle_slug
 from models.circle import CircleModel, CircleAreaModel
 from models.db import Circle
 from models.participant import ParticipantModel
@@ -70,7 +69,9 @@ def get_areas():
     """Get all areas with current registration counts and signup type info for map display."""
     try:
         # Load area boundaries and map configuration
-        circle_slug = getattr(g, 'circle_slug', None) or get_default_circle_slug()
+        circle_slug = getattr(g, 'circle_slug', None)
+        if not circle_slug:
+            return jsonify({'areas': [], 'map_config': {}})
         db = get_db_session()
         boundary_data = CircleAreaModel(db).get_boundary_data(circle_slug)
         areas = boundary_data['areas']
@@ -139,7 +140,9 @@ def get_areas_needing_leaders():
     """Get all areas with leadership status for map display."""
     try:
         # Load area boundaries and map configuration
-        circle_slug = getattr(g, 'circle_slug', None) or get_default_circle_slug()
+        circle_slug = getattr(g, 'circle_slug', None)
+        if not circle_slug:
+            return jsonify({'areas': [], 'map_config': {}})
         boundary_data = CircleAreaModel(get_db_session()).get_boundary_data(circle_slug)
         areas = boundary_data['areas']
         map_config = boundary_data['map_config']

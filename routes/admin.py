@@ -43,8 +43,11 @@ admin_bp = Blueprint('admin', __name__)
 # Endpoints that make sense with no circle context (they take an explicit
 # slug, or manage the cross-circle circle list itself) - everything else in
 # this blueprint implicitly acts on g.circle_slug, which is meaningless on
-# the landing host (see app.py's LANDING_HOST branch).
-_CIRCLE_CONSOLE_ENDPOINTS = {
+# the landing host (see app.py's LANDING_HOST branch). Also imported directly by
+# app.py's resolve_circle() so these same routes work from ANY unresolvable host
+# (a raw IP, localhost, a typo) too, not just the landing host - they don't need
+# a resolved circle at all, just the explicit slug in their own URL.
+CIRCLE_CONSOLE_ENDPOINTS = {
     'admin.list_circles', 'admin.new_circle', 'admin.edit_circle',
     'admin.circle_admins', 'admin.circle_areas_manage', 'admin.circle_areas_import_kml',
     'admin.circle_logo_upload', 'admin.circle_logo_delete',
@@ -56,12 +59,13 @@ def load_db():
     """Load database session and check admin access."""
     g.db = get_db_session()
 
-    if getattr(g, 'is_landing_host', False) and request.endpoint not in _CIRCLE_CONSOLE_ENDPOINTS:
-        # No circle context here - every other /bigbird/* route would otherwise
-        # silently act on Vancouver's data via the DEFAULT_CIRCLE_SLUG fallback,
-        # which is correct for local dev but wrong here. The circles console's
-        # own require_super_admin/require_admin decorators still gate access
-        # after this redirect - this only redirects, it doesn't authorize.
+    if getattr(g, 'is_landing_host', False) and request.endpoint not in CIRCLE_CONSOLE_ENDPOINTS:
+        # No circle context here (g.circle_slug is None on the landing host) - every
+        # other /bigbird/* route implicitly acts on g.circle_slug, which would now
+        # raise (see models/db.py's resolve_default_circle_slug()) rather than the
+        # old silent Vancouver fallback. The circles console's own
+        # require_super_admin/require_admin decorators still gate access after this
+        # redirect - this only redirects, it doesn't authorize.
         return redirect(url_for('admin.list_circles'))
 
 

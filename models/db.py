@@ -8,17 +8,20 @@ from sqlalchemy.orm import declarative_base, deferred, scoped_session, sessionma
 
 Base = declarative_base()
 
-DEFAULT_CIRCLE_SLUG = 'vancouver'
-
-
 def resolve_default_circle_slug():
     """Resolve the circle_slug a model should use when the caller didn't pass one explicitly.
 
-    Prefers the circle resolved from the current request's Host header (see app.py's
-    before_request hook, which sets flask.g.circle_slug) so existing call sites that don't
-    yet pass circle_slug explicitly still get correct per-circle isolation automatically.
-    Falls back to DEFAULT_CIRCLE_SLUG outside a request context (scripts, tests, scheduler
-    jobs invoked without a resolved circle).
+    Only source of truth: the circle resolved from the current request's Host header
+    (see app.py's before_request hook, which sets flask.g.circle_slug) - so existing
+    call sites that don't yet pass circle_slug explicitly still get correct per-circle
+    isolation automatically for real requests.
+
+    There is deliberately no other fallback (no env var, no hardcoded circle). This is
+    a multi-circle platform; silently defaulting to any one circle (Vancouver,
+    historically) would let a caller that forgot to resolve/pass a real circle_slug
+    silently read or write that circle's data instead of failing loudly, which defeats
+    the point of per-circle isolation. Scripts/tests/scheduler jobs run outside a
+    request context and must pass circle_slug explicitly.
     """
     try:
         from flask import g, has_request_context
@@ -26,7 +29,12 @@ def resolve_default_circle_slug():
             return g.circle_slug
     except RuntimeError:
         pass
-    return DEFAULT_CIRCLE_SLUG
+
+    raise RuntimeError(
+        "No circle_slug specified and none could be resolved: not in a request "
+        "context (or the request's circle could not be determined). Pass "
+        "circle_slug explicitly - there is no default circle."
+    )
 
 
 class DictMixin:
@@ -56,7 +64,7 @@ class Participant(Base, DictMixin):
     )
 
     id = Column(Integer, primary_key=True)
-    circle_slug = Column(String(50), nullable=False, default=DEFAULT_CIRCLE_SLUG, index=True)
+    circle_slug = Column(String(50), nullable=False, index=True)
     year = Column(Integer, nullable=False, index=True)
 
     first_name = Column(String(100), nullable=False)
@@ -94,7 +102,7 @@ class RemovalLog(Base, DictMixin):
     __tablename__ = 'removal_log'
 
     id = Column(Integer, primary_key=True)
-    circle_slug = Column(String(50), nullable=False, default=DEFAULT_CIRCLE_SLUG, index=True)
+    circle_slug = Column(String(50), nullable=False, index=True)
     year = Column(Integer, nullable=False, index=True)
 
     participant_name = Column(String(200))
@@ -111,7 +119,7 @@ class ReassignmentLog(Base, DictMixin):
     __tablename__ = 'reassignment_log'
 
     id = Column(Integer, primary_key=True)
-    circle_slug = Column(String(50), nullable=False, default=DEFAULT_CIRCLE_SLUG, index=True)
+    circle_slug = Column(String(50), nullable=False, index=True)
     year = Column(Integer, nullable=False, index=True)
 
     participant_id = Column(Integer, ForeignKey('participants.id', ondelete='SET NULL'))
@@ -128,7 +136,7 @@ class WithdrawalLog(Base, DictMixin):
     __tablename__ = 'withdrawal_log'
 
     id = Column(Integer, primary_key=True)
-    circle_slug = Column(String(50), nullable=False, default=DEFAULT_CIRCLE_SLUG, index=True)
+    circle_slug = Column(String(50), nullable=False, index=True)
     year = Column(Integer, nullable=False, index=True)
 
     participant_id = Column(Integer, ForeignKey('participants.id', ondelete='SET NULL'))
@@ -147,7 +155,7 @@ class AreaSignupType(Base, DictMixin):
     __table_args__ = (UniqueConstraint('circle_slug', 'area_code', name='uq_area_signup_type_circle_area'),)
 
     id = Column(Integer, primary_key=True)
-    circle_slug = Column(String(50), nullable=False, default=DEFAULT_CIRCLE_SLUG, index=True)
+    circle_slug = Column(String(50), nullable=False, index=True)
     area_code = Column(String(10), nullable=False, index=True)
     admin_assignment_only = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True))
@@ -188,7 +196,7 @@ class EmailTimestamp(Base, DictMixin):
     )
 
     id = Column(Integer, primary_key=True)
-    circle_slug = Column(String(50), nullable=False, default=DEFAULT_CIRCLE_SLUG, index=True)
+    circle_slug = Column(String(50), nullable=False, index=True)
     year = Column(Integer, nullable=False, index=True)
     area_code = Column(String(10), nullable=False)
     email_type = Column(String(50), nullable=False)

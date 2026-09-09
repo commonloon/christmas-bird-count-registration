@@ -7,7 +7,6 @@ from config.organization import get_organization_variables
 from services.limiter import limiter
 from services.ip_blocker import IPBlockerService, get_client_ip
 from models.circle import CircleModel, CircleAreaModel
-from models.db import DEFAULT_CIRCLE_SLUG
 import os
 import re
 from datetime import datetime
@@ -16,9 +15,19 @@ import logging
 # CBC counts live at <slug>.cbc.birdcount.ca; non-CBC counts (KBA surveys, spring
 # counts, etc.) live one level up at <slug>.birdcount.ca directly - both resolve the
 # same way in resolve_circle() below, distinguished only by which pattern matches.
+#
+# The .test patterns mirror these one-for-one under the IANA-reserved .test TLD
+# (RFC 6761) - permanently reserved for local/private use, guaranteed never to
+# resolve on the real internet (unlike a real-looking domain, which might actually
+# be owned by someone else and could receive leaked test traffic if a resolver ever
+# bypasses a local hosts-file override). This lets local dev/testing resolve a real
+# circle (e.g. the 'test' circle) via genuine Host-header subdomain matching - the
+# same mechanism production uses - instead of a hardcoded default circle.
 CIRCLE_SUBDOMAIN_PATTERNS = (
     re.compile(r'^([a-z0-9-]+)\.cbc\.birdcount\.ca$', re.IGNORECASE),
     re.compile(r'^([a-z0-9-]+)\.birdcount\.ca$', re.IGNORECASE),
+    re.compile(r'^([a-z0-9-]+)\.cbc\.test$', re.IGNORECASE),
+    re.compile(r'^([a-z0-9-]+)\.test$', re.IGNORECASE),
 )
 LANDING_HOST = 'cbc.birdcount.ca'
 APEX_LANDING_HOST = 'birdcount.ca'
@@ -61,7 +70,7 @@ app.teardown_appcontext(teardown_db_session)
 
 # Import route modules
 from routes.main import main_bp
-from routes.admin import admin_bp
+from routes.admin import admin_bp, CIRCLE_CONSOLE_ENDPOINTS
 from routes.leader import leader_bp
 from routes.api import api_bp
 from routes.auth import auth_bp, init_auth, get_user_role
@@ -115,9 +124,13 @@ def set_security_headers(response):
 
 # Load area boundaries data
 def load_area_boundaries():
-    """Load a circle's area boundary + map config data from the DB (circle_areas.boundary_geojson)."""
-    from config.circles import get_default_circle_slug
-    circle_slug = getattr(g, 'circle_slug', None) or get_default_circle_slug()
+    """Load a circle's area boundary + map config data from the DB (circle_areas.boundary_geojson).
+
+    No areas on the landing host (g.circle_slug is None there - no single circle's
+    areas make sense on a page that lists every circle)."""
+    circle_slug = getattr(g, 'circle_slug', None)
+    if not circle_slug:
+        return {'areas': [], 'map_config': {}}
     try:
         return CircleAreaModel(get_db_session()).get_boundary_data(circle_slug)
     except Exception as e:
@@ -180,10 +193,13 @@ def resolve_circle():
 
     e.g. vancouver.cbc.birdcount.ca -> the 'vancouver' circle (CBC counts), or
     fraser-estuary-kba.birdcount.ca -> the 'fraser-estuary-kba' circle (non-CBC
-    counts, one subdomain level up - see CIRCLE_SUBDOMAIN_PATTERNS). Hosts that match
-    neither pattern (localhost, FullHost's default *.oncoregrid.ca hostname, etc.)
-    fall back to DEFAULT_CIRCLE_SLUG so local dev and the platform's default hostname
-    keep working unchanged.
+    counts, one subdomain level up - see CIRCLE_SUBDOMAIN_PATTERNS). Local dev/testing
+    uses the same mechanism via a dedicated *.test hostname (see CIRCLE_SUBDOMAIN_PATTERNS
+    and docs/ for the hosts-file setup) rather than a separate fallback path. A host that
+    matches no pattern (a raw IP, FullHost's bare default hostname, a typo) gets
+    abort(400) - this is a multi-circle platform, so a request whose circle can't be
+    determined must fail loudly rather than silently falling back to any one circle's
+    data. There is deliberately no environment-variable escape hatch for this.
     """
     if request.endpoint == 'static':
         return None
@@ -211,11 +227,27 @@ def resolve_circle():
         match = pattern.match(host)
         if match:
             break
-    slug = match.group(1).lower() if match else os.environ.get('DEFAULT_CIRCLE_SLUG', DEFAULT_CIRCLE_SLUG)
 
+    if not match:
+        if request.endpoint in CIRCLE_CONSOLE_ENDPOINTS:
+            # These routes take their circle as an explicit URL slug and don't
+            # touch g.circle_slug at all (see routes/admin.py) - e.g. managing a
+            # circle's areas/KML import works from any host, not just that
+            # circle's own subdomain.
+            g.circle = None
+            g.circle_slug = None
+            return None
+
+        # No subdomain match at all - refuse to guess (e.g. a raw IP, FullHost's bare
+        # default hostname, or a typo silently reading/writing another circle's data
+        # instead of failing loudly). Local dev/testing should use a real *.test
+        # hostname (see CIRCLE_SUBDOMAIN_PATTERNS) instead of hitting this branch.
+        abort(400, description="Could not determine which count circle this request is for.")
+
+    slug = match.group(1).lower()
     circle = CircleModel(get_db_session()).get_by_slug(slug)
 
-    if circle is None and match:
+    if circle is None:
         # A real circle subdomain that doesn't correspond to any known circle.
         abort(404)
 
@@ -235,7 +267,15 @@ def load_user():
     rest of that window. Written back into the session so require_admin/
     require_leader/require_super_admin (which read session['user_role'] directly)
     see the current value too.
+
+    Skipped for static-file requests, same as resolve_circle() - g.circle_slug is
+    never set for those (resolve_circle() returns early), so reading it here would
+    raise AttributeError for any authenticated session's CSS/JS/image requests.
+    Role information is irrelevant to serving a static file anyway.
     """
+    if request.endpoint == 'static':
+        return None
+
     if 'user_email' in session:
         g.user_email = session['user_email']
         g.user_name = session.get('user_name', '')
