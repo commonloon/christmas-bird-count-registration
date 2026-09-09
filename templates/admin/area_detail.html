@@ -166,7 +166,7 @@
                         <td>{{ participant.phone or 'N/A' }}</td>
                         <td>
                             <span class="badge bg-{% if participant.skill_level == 'Expert' %}success{% elif participant.skill_level == 'Intermediate' %}primary{% elif participant.skill_level == 'Beginner' %}info{% else %}secondary{% endif %}">
-                                {{ participant.skill_level }}
+                                {{ participant.skill_level|skill_label }}
                             </span>
                         </td>
                         <td>{{ participant.experience }}</td>
@@ -203,7 +203,7 @@
                                 {% if skill_counts.update({p.skill_level: skill_counts.get(p.skill_level, 0) + 1}) %}{% endif %}
                             {% endfor %}
                             {% for skill, count in skill_counts.items() %}
-                            <li>{{ skill }}: {{ count }}</li>
+                            <li>{{ skill|skill_label }}: {{ count }}</li>
                             {% endfor %}
                         </ul>
                     </div>
@@ -283,7 +283,7 @@
                                 N/A
                             {% endif %}
                         </td>
-                        <td>{{ participant.most_recent_skill_level or 'N/A' }}</td>
+                        <td>{{ (participant.most_recent_skill_level|skill_label) if participant.most_recent_skill_level else 'N/A' }}</td>
                         <td>
                             {% if participant.was_leader %}
                                 <span class="badge bg-success">Former Leader</span>

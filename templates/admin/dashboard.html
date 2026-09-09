@@ -183,7 +183,7 @@
                         </td>
                         <td>
                             <span class="badge bg-{% if participant.skill_level == 'Expert' %}success{% elif participant.skill_level == 'Intermediate' %}primary{% elif participant.skill_level == 'Beginner' %}info{% else %}secondary{% endif %}">
-                                {{ participant.skill_level }}
+                                {{ participant.skill_level|skill_label }}
                             </span>
                         </td>
                         <td>{{ participant.experience }}</td>
@@ -232,7 +232,7 @@
         <div class="row">
             {% for participant in unassigned_participants[:6] %}
             <div class="col-md-4 mb-2">
-                <small>{{ participant.first_name|e }} {{ participant.last_name|e }} ({{ participant.skill_level|e }})</small>
+                <small>{{ participant.first_name|e }} {{ participant.last_name|e }} ({{ participant.skill_level|skill_label|e }})</small>
             </div>
             {% endfor %}
             {% if unassigned_participants|length > 6 %}

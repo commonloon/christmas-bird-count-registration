@@ -238,7 +238,7 @@
             {% for participant in new_participants %}
                 <li><strong>{{ participant.first_name|e }} {{ participant.last_name|e }}</strong> ({{ participant.email|e }})
                     {% if participant.participation_type == 'FEEDER' %} - <span class="badge badge-info">FEEDER</span>{% endif %}
-                    - {{ participant.skill_level|e if participant.skill_level else 'Skill level not specified' }}
+                    - {{ (participant.skill_level|skill_label|e) if participant.skill_level else 'Skill level not specified' }}
                 </li>
             {% endfor %}
             </ul>
@@ -364,7 +364,7 @@
                         <br><small>{{ participant.phone2|e }}</small>
                         {% endif %}
                     </td>
-                    <td>{{ participant.skill_level|e if participant.skill_level else 'Not specified' }}</td>
+                    <td>{{ (participant.skill_level|skill_label|e) if participant.skill_level else 'Not specified' }}</td>
                     <td>{{ participant.experience|e if participant.experience else 'Not specified' }}</td>
                     <td>
                         {% if participant.has_binoculars %}Binoculars{% endif %}

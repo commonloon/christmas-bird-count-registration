@@ -123,7 +123,7 @@
                         </td>
                         <td>
                             <span class="badge bg-{% if participant.skill_level == 'Expert' %}success{% elif participant.skill_level == 'Intermediate' %}primary{% elif participant.skill_level == 'Beginner' %}info{% else %}secondary{% endif %}">
-                                {{ participant.skill_level }}
+                                {{ participant.skill_level|skill_label }}
                             </span>
                         </td>
                         <td>{{ participant.experience }}</td>
@@ -192,7 +192,7 @@
                         </td>
                         <td>
                             <span class="badge bg-{% if participant.skill_level == 'Expert' %}success{% elif participant.skill_level == 'Intermediate' %}primary{% elif participant.skill_level == 'Beginner' %}info{% else %}secondary{% endif %}">
-                                {{ participant.skill_level }}
+                                {{ participant.skill_level|skill_label }}
                             </span>
                         </td>
                         <td>{{ participant.experience }}</td>
@@ -264,7 +264,7 @@
                         </td>
                         <td>
                             <span class="badge bg-{% if participant.skill_level == 'Expert' %}success{% elif participant.skill_level == 'Intermediate' %}primary{% elif participant.skill_level == 'Beginner' %}info{% else %}secondary{% endif %}">
-                                {{ participant.skill_level }}
+                                {{ participant.skill_level|skill_label }}
                             </span>
                         </td>
                         <td>{{ participant.experience }}</td>

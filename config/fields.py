@@ -77,6 +77,26 @@ def get_participant_display_name(field_name):
     return PARTICIPANT_FIELDS.get(field_name, {}).get('display_name', field_name.replace('_', ' ').title())
 
 
+# Stored skill_level values are unchanged ('Newbie'/'Beginner'/'Intermediate'/'Expert' - see
+# services/security.py's validate_skill_level()); only the human-facing label for 'Newbie' has
+# been renamed to 'Novice' (Vancouver organizer request, 2026-09), so historical exports/CSVs
+# stay consistent with old and new registrants alike.
+SKILL_LEVEL_OPTIONS = [
+    ('Newbie', 'Novice', "I don't really know many birds yet"),
+    ('Beginner', 'Beginner', 'I know some common birds'),
+    ('Intermediate', 'Intermediate', 'I know most local birds and can ID them without assistance'),
+    ('Expert', 'Expert', 'I am confident in my identification skills'),
+]
+
+
+def get_skill_level_label(value):
+    """Map a stored skill_level value to its current human-facing display label."""
+    for stored_value, label, _ in SKILL_LEVEL_OPTIONS:
+        if stored_value == value:
+            return label
+    return value
+
+
 def normalize_participant_record(record):
     """
     Normalize a participant record to include all expected fields with defaults.

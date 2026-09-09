@@ -4,6 +4,7 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, f
 from flask_wtf.csrf import CSRFProtect
 from config.database import get_db_session, teardown_db_session
 from config.organization import get_organization_variables
+from config.fields import get_skill_level_label
 from services.limiter import limiter
 from services.ip_blocker import IPBlockerService, get_client_ip
 from models.circle import CircleModel, CircleAreaModel
@@ -136,6 +137,8 @@ def load_area_boundaries():
     except Exception as e:
         print(f"Warning: Could not load area boundaries: {e}")
         return {'areas': [], 'map_config': {}}
+
+app.jinja_env.filters['skill_label'] = get_skill_level_label
 
 # Make area boundaries and common data available to templates
 @app.context_processor

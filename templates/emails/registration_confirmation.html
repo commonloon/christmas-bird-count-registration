@@ -154,7 +154,7 @@
                 Regular Participant - You'll join a team to survey your assigned area
                 {% endif %}
             </p>
-            <p><strong>Skill Level:</strong> {{ skill_level or 'Not specified' }}</p>
+            <p><strong>Skill Level:</strong> {{ (skill_level|skill_label) if skill_level else 'Not specified' }}</p>
             <p><strong>{{ count_experience_label }}:</strong> {{ experience or 'Not specified' }}</p>
             <p><strong>Equipment:</strong>
                 Binoculars: {{ '✓' if has_binoculars else '✗' }},

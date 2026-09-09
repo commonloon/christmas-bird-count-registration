@@ -188,12 +188,12 @@
                             <td>
                                 <div class="skill-display">
                                     <span class="badge bg-{% if participant.skill_level == 'Expert' %}success{% elif participant.skill_level == 'Intermediate' %}primary{% elif participant.skill_level == 'Beginner' %}info{% else %}secondary{% endif %}">
-                                        {{ participant.skill_level }}
+                                        {{ participant.skill_level|skill_label }}
                                     </span>
                                 </div>
                                 <div class="skill-edit" style="display: none;">
                                     <select class="form-select form-select-sm skill-input">
-                                        <option value="Newbie" {% if participant.skill_level == 'Newbie' %}selected{% endif %}>Newbie</option>
+                                        <option value="Newbie" {% if participant.skill_level == 'Newbie' %}selected{% endif %}>Novice</option>
                                         <option value="Beginner" {% if participant.skill_level == 'Beginner' %}selected{% endif %}>Beginner</option>
                                         <option value="Intermediate" {% if participant.skill_level == 'Intermediate' %}selected{% endif %}>Intermediate</option>
                                         <option value="Expert" {% if participant.skill_level == 'Expert' %}selected{% endif %}>Expert</option>
@@ -589,9 +589,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 }
                 phoneDisplay.innerHTML = phoneText;
 
-                // Update skill level display
+                // Update skill level display (stored value stays 'Newbie'; only the shown label is 'Novice')
                 const skillDisplay = row.querySelector('.skill-display .badge');
-                skillDisplay.textContent = formData.skill_level;
+                skillDisplay.textContent = formData.skill_level === 'Newbie' ? 'Novice' : formData.skill_level;
                 // Update badge color based on skill level
                 skillDisplay.className = 'badge bg-' +
                     (formData.skill_level === 'Expert' ? 'success' :
