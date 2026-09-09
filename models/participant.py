@@ -29,7 +29,7 @@ class ParticipantModel:
     def _base_query(self):
         return self.db.query(Participant).filter_by(year=self.year, circle_slug=self.circle_slug)
 
-    def add_participant(self, participant_data: Dict) -> str:
+    def add_participant(self, participant_data: Dict) -> int:
         """Add a new participant to the year/circle scope."""
         now = datetime.now(timezone.utc)
 
@@ -72,11 +72,15 @@ class ParticipantModel:
                 ) from e
             raise
         self.logger.info(f"Added participant to year {self.year}: {participant.email}")
-        return str(participant.id)
+        return participant.id
 
     def get_participant(self, participant_id) -> Optional[Dict]:
         """Get a participant by ID, scoped to this year/circle."""
-        participant = self._base_query().filter_by(id=int(participant_id)).first()
+        try:
+            participant_id = int(participant_id)
+        except (TypeError, ValueError):
+            return None
+        participant = self._base_query().filter_by(id=participant_id).first()
         return participant.to_dict() if participant else None
 
     def get_participants_by_area(self, area_code: str) -> List[Dict]:

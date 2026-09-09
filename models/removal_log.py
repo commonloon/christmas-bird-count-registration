@@ -18,7 +18,7 @@ class RemovalLogModel:
         return self.db.query(RemovalLog).filter_by(year=self.year, circle_slug=self.circle_slug)
 
     def log_removal(self, participant_name: str, area_code: str, removed_by: str,
-                    reason: str = '', participant_email: str = '') -> str:
+                    reason: str = '', participant_email: str = '') -> int:
         """Log a participant removal."""
         removal = RemovalLog(
             year=self.year,
@@ -34,11 +34,15 @@ class RemovalLogModel:
         self.db.add(removal)
         self.db.commit()
         self.logger.info(f"Logged removal: {participant_name} from area {area_code}")
-        return str(removal.id)
+        return removal.id
 
     def get_removal(self, removal_id) -> Optional[Dict]:
         """Get a removal log entry by ID."""
-        row = self._base_query().filter_by(id=int(removal_id)).first()
+        try:
+            removal_id = int(removal_id)
+        except (TypeError, ValueError):
+            return None
+        row = self._base_query().filter_by(id=removal_id).first()
         return row.to_dict() if row else None
 
     def get_pending_removals(self) -> List[Dict]:
