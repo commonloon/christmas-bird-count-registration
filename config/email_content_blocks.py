@@ -117,6 +117,89 @@ EMAIL_CONTENT_BLOCKS = {
             ),
         },
     },
+    # Stage 2: the three Task-Scheduler-driven digest emails (test/email_generator.py).
+    # Unlike the two transactional types above, team_update/weekly_summary send one
+    # email per area (looped per area code) - their subject blocks get $area_code/
+    # $date substituted fresh per area, not once per circle. Fallback text here
+    # replaces what were literal hardcoded strings in config/email_settings.py's old
+    # EMAIL_SUBJECTS dict (which hardcoded "Vancouver CBC" unconditionally - a real
+    # cross-circle bug this registry entry incidentally fixes) and the three
+    # templates/emails/*.html files.
+    'team_update': {
+        'subject': {
+            'label': 'Email subject',
+            'allow_newlines': False,
+            'max_length': 200,
+            'placeholders': ['date', 'count_event_name', 'area_code'],
+            'fallback': '$date $count_event_name Area $area_code Update',
+        },
+        'greeting_intro': {
+            'label': 'Greeting / intro message',
+            'allow_newlines': True,
+            'max_length': 500,
+            'placeholders': ['count_event_name'],
+            'fallback': 'Your $count_event_name team has been updated. Here are the recent changes:',
+        },
+        'next_steps_body': {
+            'label': "Next Steps (shown after the changes list)",
+            'allow_newlines': True,
+            'max_length': 2000,
+            'placeholders': [],
+            'fallback': (
+                'Share meeting location and time information.\n\n'
+                'Coordinate any special equipment or preparation needs.'
+            ),
+        },
+    },
+    'weekly_summary': {
+        'subject': {
+            'label': 'Email subject',
+            'allow_newlines': False,
+            'max_length': 200,
+            'placeholders': ['date', 'count_event_name', 'area_code'],
+            'fallback': '$date $count_event_name Area $area_code Weekly Summary',
+        },
+        'next_steps_body': {
+            'label': "Next Steps (shown after the changes list)",
+            'allow_newlines': True,
+            'max_length': 2000,
+            'placeholders': [],
+            'fallback': (
+                'Confirm count day logistics with your team.\n\n'
+                'Share meeting location and time details.\n\n'
+                'Coordinate transportation and equipment needs.\n\n'
+                'Review count area boundaries and special considerations.'
+            ),
+        },
+    },
+    'admin_digest': {
+        'subject': {
+            'label': 'Email subject',
+            'allow_newlines': False,
+            'max_length': 200,
+            'placeholders': ['date', 'count_event_name'],
+            'fallback': '$date $count_event_name Unassigned Participants',
+        },
+        'greeting_salutation': {
+            'label': 'Greeting / salutation',
+            'allow_newlines': False,
+            'max_length': 200,
+            'placeholders': ['count_event_name'],
+            'fallback': 'Dear Administrators,',
+        },
+        'recommended_actions_body': {
+            'label': 'Recommended Actions',
+            'allow_newlines': True,
+            'max_length': 2000,
+            'placeholders': [],
+            'fallback': (
+                'Review area capacity and assign participants to areas needing more volunteers.\n\n'
+                'Consider leadership potential for participants expressing interest.\n\n'
+                'Prioritize participants who have been waiting longest.\n\n'
+                'Contact participants if clarification is needed on their preferences.'
+            ),
+        },
+    },
 }
 
 

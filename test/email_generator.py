@@ -20,20 +20,54 @@ from jinja2 import Template
 import logging
 
 from config.database import get_db_session
+from config.organization import get_organization_variables
 from models.db import EmailTimestamp, resolve_default_circle_slug
 from config.admins import ADMIN_EMAILS
 from config.email_settings import (
     is_test_server, get_admin_unassigned_url, get_leader_dashboard_url,
-    EMAIL_SUBJECTS, get_email_branding
+    get_email_branding
 )
 from models.participant import ParticipantModel
 from models.removal_log import RemovalLogModel
 from models.withdrawal_log import WithdrawalLogModel
 from models.reassignment_log import ReassignmentLogModel
+from models.circle import CircleAdminModel
+from models.email_content import EmailContentModel
 from services.email_service import email_service
+from services.email_content_service import substitute_placeholders
 from services.datetime_utils import convert_to_display_timezone
 
 logger = logging.getLogger(__name__)
+
+
+def _substitute_team_update_content(blocks, org_vars, area_code, date_str):
+    """Substitute placeholders into an already-resolved team_update block set
+    (EmailContentModel.resolve_all() called once per circle, outside the area
+    loop - this just re-substitutes per area, no extra DB query). Returns
+    (subject, greeting_intro_text, next_steps_text). Shared by the real send
+    path and the admin email-content preview builder."""
+    placeholder_values = {'date': date_str, 'count_event_name': org_vars['count_event_name'], 'area_code': area_code}
+    subject = substitute_placeholders(blocks['subject'], placeholder_values)
+    greeting_intro_text = substitute_placeholders(blocks['greeting_intro'], placeholder_values)
+    next_steps_text = substitute_placeholders(blocks['next_steps_body'], placeholder_values)
+    return subject, greeting_intro_text, next_steps_text
+
+
+def _substitute_weekly_summary_content(blocks, org_vars, area_code, date_str):
+    """Same as _substitute_team_update_content, for weekly_summary's two blocks."""
+    placeholder_values = {'date': date_str, 'count_event_name': org_vars['count_event_name'], 'area_code': area_code}
+    subject = substitute_placeholders(blocks['subject'], placeholder_values)
+    next_steps_text = substitute_placeholders(blocks['next_steps_body'], placeholder_values)
+    return subject, next_steps_text
+
+
+def _substitute_admin_digest_content(blocks, org_vars, date_str):
+    """Same as _substitute_team_update_content, for admin_digest's three blocks."""
+    placeholder_values = {'date': date_str, 'count_event_name': org_vars['count_event_name']}
+    subject = substitute_placeholders(blocks['subject'], placeholder_values)
+    greeting_salutation_text = substitute_placeholders(blocks['greeting_salutation'], placeholder_values)
+    recommended_actions_text = substitute_placeholders(blocks['recommended_actions_body'], placeholder_values)
+    return subject, greeting_salutation_text, recommended_actions_text
 
 
 def _push_circle_context(flask_app, circle_slug):
@@ -355,16 +389,18 @@ def generate_team_update_emails(app, circle_slug) -> Dict[str, Any]:
         current_year = datetime.now().year
         utc_now = datetime.now(timezone.utc)  # Race condition prevention: pick timestamp first
         current_time, display_timezone = convert_to_display_timezone(utc_now)
-        
+        org_vars = get_organization_variables()
+        content_blocks = EmailContentModel(db).resolve_all(circle_slug, 'team_update')
+
         participant_model = ParticipantModel(db, current_year)
         timestamp_model = EmailTimestampModel(db, current_year)
-        
+
         results = {
             'emails_sent': 0,
             'areas_processed': 0,
             'errors': []
         }
-        
+
         # Get all areas that have leaders
         all_leaders = participant_model.get_leaders()
         areas_with_leaders = set(leader['assigned_area_leader'] for leader in all_leaders if leader.get('is_leader', False))
@@ -435,6 +471,9 @@ def generate_team_update_emails(app, circle_slug) -> Dict[str, Any]:
                 withdrawn_participants = participant_model.get_withdrawn_participants_by_area(area_code)
                 current_team = current_team + withdrawn_participants
 
+                subject, greeting_intro_text, next_steps_text = _substitute_team_update_content(
+                    content_blocks, org_vars, area_code, current_time.strftime('%Y-%m-%d'))
+
                 # Prepare email context
                 email_context = {
                     'area_code': area_code,
@@ -451,9 +490,12 @@ def generate_team_update_emails(app, circle_slug) -> Dict[str, Any]:
                     'display_timezone': display_timezone,
                     'leader_dashboard_url': get_leader_dashboard_url(),
                     'test_mode': is_test_server(),
-                    'branding': get_email_branding()
+                    'branding': get_email_branding(),
+                    'count_event_name': org_vars['count_event_name'],
+                    'greeting_intro_text': greeting_intro_text,
+                    'next_steps_text': next_steps_text,
                 }
-                
+
                 # Render email template
                 try:
                     with app.app_context():
@@ -462,11 +504,7 @@ def generate_team_update_emails(app, circle_slug) -> Dict[str, Any]:
                     logger.error(f"Template rendering error for area {area_code}: {template_error}")
                     # Fallback to basic text email
                     html_content = None
-                subject = EMAIL_SUBJECTS['team_update'].format(
-                    date=current_time.strftime('%Y-%m-%d'),
-                    area_code=area_code
-                )
-                
+
                 # Send email
                 if email_service.send_email(leader_emails, subject, '', html_content):
                     # Update timestamp AFTER successful send
@@ -501,6 +539,8 @@ def generate_weekly_summary_emails(app, circle_slug) -> Dict[str, Any]:
         current_year = datetime.now().year
         utc_now = datetime.now(timezone.utc)
         current_time, display_timezone = convert_to_display_timezone(utc_now)
+        org_vars = get_organization_variables()
+        content_blocks = EmailContentModel(db).resolve_all(circle_slug, 'weekly_summary')
 
         participant_model = ParticipantModel(db, current_year)
         timestamp_model = EmailTimestampModel(db, current_year)
@@ -580,6 +620,9 @@ def generate_weekly_summary_emails(app, circle_slug) -> Dict[str, Any]:
                 experience_breakdown = calculate_experience_breakdown(current_team)
                 leadership_interest_count = sum(1 for p in current_team if p.get('interested_in_leadership'))
                 
+                subject, next_steps_text = _substitute_weekly_summary_content(
+                    content_blocks, org_vars, area_code, current_time.strftime('%Y-%m-%d'))
+
                 # Prepare email context
                 email_context = {
                     'area_code': area_code,
@@ -600,9 +643,11 @@ def generate_weekly_summary_emails(app, circle_slug) -> Dict[str, Any]:
                     'display_timezone': display_timezone,
                     'leader_dashboard_url': get_leader_dashboard_url(),
                     'test_mode': is_test_server(),
-                    'branding': get_email_branding()
+                    'branding': get_email_branding(),
+                    'count_event_name': org_vars['count_event_name'],
+                    'next_steps_text': next_steps_text,
                 }
-                
+
                 # Render email template
                 try:
                     with app.app_context():
@@ -611,11 +656,7 @@ def generate_weekly_summary_emails(app, circle_slug) -> Dict[str, Any]:
                     logger.error(f"Template rendering error for weekly summary {area_code}: {template_error}")
                     # Fallback to basic text email
                     html_content = None
-                subject = EMAIL_SUBJECTS['weekly_summary'].format(
-                    date=current_time.strftime('%Y-%m-%d'),
-                    area_code=area_code
-                )
-                
+
                 # Send email
                 if email_service.send_email(leader_emails, subject, '', html_content):
                     # Update timestamp AFTER successful send
@@ -691,6 +732,11 @@ def generate_admin_digest_email(app, circle_slug) -> Dict[str, Any]:
         
         average_wait_days = round(total_wait_days / len(unassigned_participants)) if unassigned_participants else 0
         
+        org_vars = get_organization_variables()
+        content_blocks = EmailContentModel(db).resolve_all(circle_slug, 'admin_digest')
+        subject, greeting_salutation_text, recommended_actions_text = _substitute_admin_digest_content(
+            content_blocks, org_vars, current_time.strftime('%Y-%m-%d'))
+
         # Prepare email context
         email_context = {
             'unassigned_participants': unassigned_participants,
@@ -701,9 +747,13 @@ def generate_admin_digest_email(app, circle_slug) -> Dict[str, Any]:
             'display_timezone': display_timezone,
             'admin_unassigned_url': get_admin_unassigned_url(),
             'test_mode': is_test_server(),
-            'branding': get_email_branding()
+            'branding': get_email_branding(),
+            'count_event_name': org_vars['count_event_name'],
+            'count_experience_label': org_vars['count_experience_label'],
+            'greeting_salutation_text': greeting_salutation_text,
+            'recommended_actions_text': recommended_actions_text,
         }
-        
+
         # Render email template
         try:
             with app.app_context():
@@ -712,14 +762,18 @@ def generate_admin_digest_email(app, circle_slug) -> Dict[str, Any]:
             logger.error(f"Template rendering error for admin digest: {template_error}")
             # Fallback to basic text email
             html_content = None
-        subject = EMAIL_SUBJECTS['admin_digest'].format(
-            date=current_time.strftime('%Y-%m-%d')
-        )
-        
+
+        # Recipients: union of this circle's own circle-admins and the global
+        # super-admin whitelist - backward-compatible (Vancouver's admins are
+        # already in ADMIN_EMAILS, so its behavior is unchanged) and ensures a
+        # circle with no self-service admins configured yet still gets its digest.
+        circle_admin_emails = [a['email'] for a in CircleAdminModel(db).get_admins_for_circle(circle_slug)]
+        recipients = sorted(set(circle_admin_emails) | set(ADMIN_EMAILS))
+
         # Send email to all admins
-        if email_service.send_email(ADMIN_EMAILS, subject, '', html_content):
+        if email_service.send_email(recipients, subject, '', html_content):
             results['emails_sent'] = 1
-            logger.info(f"Admin digest email sent to {len(ADMIN_EMAILS)} admins for {len(unassigned_participants)} unassigned participants")
+            logger.info(f"Admin digest email sent to {len(recipients)} admins for {len(unassigned_participants)} unassigned participants")
         else:
             results['errors'].append("Failed to send admin digest email")
         
@@ -732,6 +786,138 @@ def generate_admin_digest_email(app, circle_slug) -> Dict[str, Any]:
     finally:
         if ctx:
             ctx.pop()
+
+
+def _sample_participant(**overrides):
+    """A synthetic sample participant dict for the digest-email preview builders
+    below - never real data. Matches the field shape ParticipantModel rows
+    actually have, so it renders through the real templates identically to a
+    genuine participant."""
+    sample = {
+        'first_name': 'Sample', 'last_name': 'Participant', 'email': 'sample@example.com',
+        'phone': '(555) 555-6789', 'skill_level': 'Intermediate', 'experience': '1-2 counts',
+        'participation_type': 'regular', 'status': 'active', 'has_binoculars': True,
+        'spotting_scope': False, 'is_leader': False, 'assigned_area_leader': None,
+        'interested_in_leadership': False, 'notes_to_organizers': '',
+        'created_at': datetime.now(timezone.utc),
+    }
+    sample.update(overrides)
+    return sample
+
+
+def build_team_update_preview(circle_slug):
+    """Render the real team_update template with synthetic sample data and this
+    circle's currently-saved (resolved) email-content blocks, for the admin
+    email-content preview route. Never sends anything. Runs inside a real
+    admin request already resolved to circle_slug (unlike the real
+    generate_team_update_emails, which runs outside any request and needs
+    _push_circle_context) - no fake context pushed here."""
+    db = get_db_session()
+    org_vars = get_organization_variables()
+    current_time, display_timezone = convert_to_display_timezone(datetime.now(timezone.utc))
+
+    content_blocks = EmailContentModel(db).resolve_all(circle_slug, 'team_update')
+    subject, greeting_intro_text, next_steps_text = _substitute_team_update_content(
+        content_blocks, org_vars, 'A', current_time.strftime('%Y-%m-%d'))
+
+    sample = _sample_participant()
+    email_context = {
+        'area_code': 'A',
+        'leader_names': ['Sample Leader'],
+        'new_participants': [sample],
+        'updated_participants': [],
+        'removed_participants': [],
+        'arrivals': [],
+        'departures': [],
+        'withdrawn_participants': [],
+        'reactivated_participants': [],
+        'current_team': [sample],
+        'current_date': current_time,
+        'display_timezone': display_timezone,
+        'leader_dashboard_url': get_leader_dashboard_url(),
+        'test_mode': is_test_server(),
+        'branding': get_email_branding(),
+        'count_event_name': org_vars['count_event_name'],
+        'greeting_intro_text': greeting_intro_text,
+        'next_steps_text': next_steps_text,
+    }
+
+    with current_app.app_context():
+        html_content = render_template('emails/team_update.html', **email_context)
+    return subject, html_content
+
+
+def build_weekly_summary_preview(circle_slug):
+    """Same as build_team_update_preview, for weekly_summary."""
+    db = get_db_session()
+    org_vars = get_organization_variables()
+    current_time, display_timezone = convert_to_display_timezone(datetime.now(timezone.utc))
+
+    content_blocks = EmailContentModel(db).resolve_all(circle_slug, 'weekly_summary')
+    subject, next_steps_text = _substitute_weekly_summary_content(
+        content_blocks, org_vars, 'A', current_time.strftime('%Y-%m-%d'))
+
+    sample = _sample_participant()
+    current_team = [sample]
+    email_context = {
+        'area_code': 'A',
+        'leader_names': ['Sample Leader'],
+        'new_participants': [sample],
+        'updated_participants': [],
+        'removed_participants': [],
+        'arrivals': [],
+        'departures': [],
+        'withdrawn_participants': [],
+        'reactivated_participants': [],
+        'current_team': current_team,
+        'has_changes': True,
+        'skill_breakdown': calculate_skill_breakdown(current_team),
+        'experience_breakdown': calculate_experience_breakdown(current_team),
+        'leadership_interest_count': 0,
+        'current_date': current_time,
+        'display_timezone': display_timezone,
+        'leader_dashboard_url': get_leader_dashboard_url(),
+        'test_mode': is_test_server(),
+        'branding': get_email_branding(),
+        'count_event_name': org_vars['count_event_name'],
+        'next_steps_text': next_steps_text,
+    }
+
+    with current_app.app_context():
+        html_content = render_template('emails/weekly_summary.html', **email_context)
+    return subject, html_content
+
+
+def build_admin_digest_preview(circle_slug):
+    """Same as build_team_update_preview, for admin_digest."""
+    db = get_db_session()
+    org_vars = get_organization_variables()
+    current_time, display_timezone = convert_to_display_timezone(datetime.now(timezone.utc))
+
+    content_blocks = EmailContentModel(db).resolve_all(circle_slug, 'admin_digest')
+    subject, greeting_salutation_text, recommended_actions_text = _substitute_admin_digest_content(
+        content_blocks, org_vars, current_time.strftime('%Y-%m-%d'))
+
+    sample = _sample_participant(interested_in_leadership=True)
+    email_context = {
+        'unassigned_participants': [sample],
+        'leadership_interest_count': 1,
+        'days_waiting': [3],
+        'average_wait_days': 3,
+        'current_date': current_time,
+        'display_timezone': display_timezone,
+        'admin_unassigned_url': get_admin_unassigned_url(),
+        'test_mode': is_test_server(),
+        'branding': get_email_branding(),
+        'count_event_name': org_vars['count_event_name'],
+        'count_experience_label': org_vars['count_experience_label'],
+        'greeting_salutation_text': greeting_salutation_text,
+        'recommended_actions_text': recommended_actions_text,
+    }
+
+    with current_app.app_context():
+        html_content = render_template('emails/admin_digest.html', **email_context)
+    return subject, html_content
 
 
 if __name__ == '__main__':

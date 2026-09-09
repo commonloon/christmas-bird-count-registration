@@ -195,7 +195,7 @@
             <a href="{{ leader_dashboard_url }}" class="btn" style="display: inline-block; padding: 10px 20px; background-color: {{ branding.primary_color }}; color: #ffffff !important; font-weight: bold; text-decoration: none; border-radius: 5px;">View Leader Dashboard</a>
         </div>
 
-        <p>Your Christmas Bird Count team has been updated. Here are the recent changes:</p>
+        <p>{{ greeting_intro_text|nl2br }}</p>
 
         {% if new_participants %}
         <div class="changes-section new-members">
@@ -261,13 +261,10 @@
         {% endif %}
 
         <h4>📋 Next Steps</h4>
-        <ul>
-            {% if new_participants or arrivals or reactivated_participants %}
-                <li><strong>Welcome new, arriving, and rejoining members to the team.</strong> <ul><li>Ideally they should hear from you within a few days of joining your team, even if it's just a quick greeting and a note to say you'll send details later.</li></ul></li>
-            {% endif %}
-            <li>Share meeting location and time information</li>
-            <li>Coordinate any special equipment or preparation needs</li>
-        </ul>
+        {% if new_participants or arrivals or reactivated_participants %}
+        <p><strong>Welcome new, arriving, and rejoining members to the team.</strong> Ideally they should hear from you within a few days of joining your team, even if it's just a quick greeting and a note to say you'll send details later.</p>
+        {% endif %}
+        <div>{{ next_steps_text|nl2br }}</div>
 
         {% if current_team %}
         <h4>👥 Complete List of Team Members ({{ current_team|selectattr('status', 'equalto', 'active')|list|length }} members)</h4>

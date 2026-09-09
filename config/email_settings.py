@@ -178,13 +178,6 @@ EMAIL_TEMPLATES = {
     'admin_digest': 'emails/admin_digest.html'
 }
 
-# Email subjects (with date prefix for all emails)
-EMAIL_SUBJECTS = {
-    'team_update': '{date} Vancouver CBC Area {area_code} Update',
-    'weekly_summary': '{date} Vancouver CBC Area {area_code} Weekly Summary',
-    'admin_digest': '{date} Vancouver CBC Unassigned Participants'
-}
-
 # Email branding configuration
 EMAIL_BRANDING = {
     'organization_name': ORGANIZATION_NAME,

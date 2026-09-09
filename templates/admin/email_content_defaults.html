@@ -9,36 +9,53 @@
     for a given block. A circle's own admin can override any of these from that circle's
     "Email Content" page.</p>
 
-{% for section in sections %}
-<div class="card mb-4">
-    <div class="card-header">
-        <strong>{{ section.email_type.replace('_', ' ')|title }}</strong>
-    </div>
-    <div class="card-body">
-        <form method="POST">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="hidden" name="email_type" value="{{ section.email_type }}">
+<ul class="nav nav-tabs mb-3" role="tablist">
+    {% for section in sections %}
+    {% set is_active = section.email_type == active_email_type %}
+    <li class="nav-item" role="presentation">
+        <button class="nav-link{{ ' active' if is_active }}" id="tab-{{ section.email_type }}"
+                data-bs-toggle="tab" data-bs-target="#pane-{{ section.email_type }}"
+                type="button" role="tab" aria-controls="pane-{{ section.email_type }}"
+                aria-selected="{{ 'true' if is_active else 'false' }}">
+            {{ section.email_type.replace('_', ' ')|title }}
+        </button>
+    </li>
+    {% endfor %}
+</ul>
 
-            {% for block in section.blocks %}
-            <div class="mb-3">
-                <label class="form-label">{{ block.label }}</label>
-                <textarea class="form-control" name="{{ section.email_type }}__{{ block.key }}"
-                          rows="{{ 5 if block.allow_newlines else 1 }}"
-                          maxlength="{{ block.max_length }}">{{ block.value|e }}</textarea>
-                <div class="form-text">
-                    {% if block.placeholders %}
-                    Available placeholders:
-                    {% for p in block.placeholders %}<code>${{ p }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
-                    {% else %}
-                    No placeholders available for this block.
-                    {% endif %}
-                </div>
+<div class="tab-content">
+    {% for section in sections %}
+    {% set is_active = section.email_type == active_email_type %}
+    <div class="tab-pane fade{{ ' show active' if is_active }}" id="pane-{{ section.email_type }}"
+         role="tabpanel" aria-labelledby="tab-{{ section.email_type }}">
+        <div class="card mb-4">
+            <div class="card-body">
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="email_type" value="{{ section.email_type }}">
+
+                    {% for block in section.blocks %}
+                    <div class="mb-3">
+                        <label class="form-label">{{ block.label }}</label>
+                        <textarea class="form-control" name="{{ section.email_type }}__{{ block.key }}"
+                                  rows="{{ 5 if block.allow_newlines else 1 }}"
+                                  maxlength="{{ block.max_length }}">{{ block.value|e }}</textarea>
+                        <div class="form-text">
+                            {% if block.placeholders %}
+                            Available placeholders:
+                            {% for p in block.placeholders %}<code>${{ p }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
+                            {% else %}
+                            No placeholders available for this block.
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </form>
             </div>
-            {% endfor %}
-
-            <button type="submit" class="btn btn-primary">Save</button>
-        </form>
+        </div>
     </div>
+    {% endfor %}
 </div>
-{% endfor %}
 {% endblock %}

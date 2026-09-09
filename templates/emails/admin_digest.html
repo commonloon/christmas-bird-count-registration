@@ -133,7 +133,7 @@
         <!-- Salutation with Dashboard Button -->
         <div style="display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-bottom: 20px;">
             <div>
-                <p style="font-size: 18px; font-weight: bold; margin: 0;">Dear CBC Administrators,</p>
+                <p style="font-size: 18px; font-weight: bold; margin: 0;">{{ greeting_salutation_text|e }}</p>
                 <p style="margin: 5px 0 0 0; color: #666;">{{ current_date.strftime('%B %d, %Y') }}</p>
             </div>
             {% if unassigned_participants %}
@@ -168,7 +168,7 @@
                 <strong>Email:</strong> {{ participant.email|e }}<br>
                 <strong>Phone:</strong> {{ participant.phone|e or 'Not provided' }}<br>
                 <strong>Skill Level:</strong> {{ (participant.skill_level|skill_label) if participant.skill_level else 'Not specified' }} |
-                <strong>CBC Experience:</strong> {{ participant.experience or 'Not specified' }}<br>
+                <strong>{{ count_experience_label|e }}:</strong> {{ participant.experience or 'Not specified' }}<br>
                 <strong>Registered:</strong> {{ participant.created_at.strftime('%Y-%m-%d %H:%M') if participant.created_at else 'Unknown' }}
                 {% if participant.interested_in_leadership %}
                 <br><span class="leadership-interest">🌟 Interested in Leadership</span>
@@ -183,12 +183,7 @@
         {% endfor %}
 
         <p><strong>Recommended Actions:</strong></p>
-        <ul>
-            <li>Review area capacity and assign participants to areas needing more volunteers</li>
-            <li>Consider leadership potential for participants expressing interest</li>
-            <li>Prioritize participants who have been waiting longest</li>
-            <li>Contact participants if clarification is needed on their preferences</li>
-        </ul>
+        <div>{{ recommended_actions_text|nl2br }}</div>
 
         {% else %}
         <div style="background-color: #d4edda; border: 1px solid #c3e6cb; color: #155724; padding: 20px; border-radius: 5px; text-align: center;">

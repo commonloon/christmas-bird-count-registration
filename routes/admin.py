@@ -25,7 +25,10 @@ from services.ip_blocker import IPBlockerService
 from test.email_generator import (
     generate_team_update_emails,
     generate_weekly_summary_emails,
-    generate_admin_digest_email
+    generate_admin_digest_email,
+    build_team_update_preview,
+    build_weekly_summary_preview,
+    build_admin_digest_preview,
 )
 from services.security import (
     sanitize_name, sanitize_email, sanitize_phone, sanitize_notes, sanitize_text_input,
@@ -1218,8 +1221,8 @@ def register_test_email_routes():
             return jsonify({'error': 'Test triggers only available on test server'}), 403
         
         try:
-            # Generate twice-daily team updates for all areas with leaders
-            results = generate_team_update_emails(current_app)
+            # Generate twice-daily team updates for all areas with leaders, for this admin's own circle
+            results = generate_team_update_emails(current_app, g.circle_slug)
             
             message = f"Team update emails: {results['emails_sent']} sent, {results['areas_processed']} areas processed"
             if results['errors']:
@@ -1247,8 +1250,8 @@ def register_test_email_routes():
             return jsonify({'error': 'Test triggers only available on test server'}), 403
         
         try:
-            # Generate weekly summaries for all areas with leaders
-            results = generate_weekly_summary_emails(current_app)
+            # Generate weekly summaries for all areas with leaders, for this admin's own circle
+            results = generate_weekly_summary_emails(current_app, g.circle_slug)
             
             message = f"Weekly summary emails: {results['emails_sent']} sent, {results['areas_processed']} areas processed"
             if results['errors']:
@@ -1276,8 +1279,8 @@ def register_test_email_routes():
             return jsonify({'error': 'Test triggers only available on test server'}), 403
         
         try:
-            # Generate admin digest
-            results = generate_admin_digest_email(current_app)
+            # Generate admin digest for this admin's own circle
+            results = generate_admin_digest_email(current_app, g.circle_slug)
             
             if results['unassigned_count'] == 0:
                 message = "Admin digest: No unassigned participants found"
@@ -1648,16 +1651,21 @@ def email_content_defaults():
         error_response = _save_email_content_blocks(
             email_type,
             save=lambda block_key, content: model.set_default(email_type, block_key, content, updated_by),
-            redirect_target=redirect(url_for('admin.email_content_defaults')),
+            redirect_target=redirect(url_for('admin.email_content_defaults', email_type=email_type)),
         )
         if error_response:
             return error_response
 
         flash('Email defaults updated.', 'success')
-        return redirect(url_for('admin.email_content_defaults'))
+        return redirect(url_for('admin.email_content_defaults', email_type=email_type))
+
+    email_types = get_email_types()
+    active_email_type = request.args.get('email_type')
+    if active_email_type not in email_types:
+        active_email_type = email_types[0]
 
     sections = []
-    for email_type in get_email_types():
+    for email_type in email_types:
         values = model.get_defaults_for_type(email_type, use_fallback=True)
         blocks = [
             {'key': block_key, 'label': block_def['label'], 'value': values[block_key],
@@ -1667,7 +1675,8 @@ def email_content_defaults():
         ]
         sections.append({'email_type': email_type, 'blocks': blocks})
 
-    return render_template('admin/email_content_defaults.html', sections=sections, current_user=get_current_user())
+    return render_template('admin/email_content_defaults.html', sections=sections,
+                            active_email_type=active_email_type, current_user=get_current_user())
 
 
 @admin_bp.route('/circles/<slug>/email-content', methods=['GET', 'POST'])
@@ -1699,21 +1708,26 @@ def circle_email_content(slug):
             else:
                 model.delete_override(slug, email_type, block_key)
                 flash('Reset to default.', 'success')
-            return redirect(url_for('admin.circle_email_content', slug=slug))
+            return redirect(url_for('admin.circle_email_content', slug=slug, email_type=email_type))
 
         error_response = _save_email_content_blocks(
             email_type,
             save=lambda block_key, content: model.set_override(slug, email_type, block_key, content, updated_by),
-            redirect_target=redirect(url_for('admin.circle_email_content', slug=slug)),
+            redirect_target=redirect(url_for('admin.circle_email_content', slug=slug, email_type=email_type)),
         )
         if error_response:
             return error_response
 
         flash('Email content updated.', 'success')
-        return redirect(url_for('admin.circle_email_content', slug=slug))
+        return redirect(url_for('admin.circle_email_content', slug=slug, email_type=email_type))
+
+    email_types = get_email_types()
+    active_email_type = request.args.get('email_type')
+    if active_email_type not in email_types:
+        active_email_type = email_types[0]
 
     sections = []
-    for email_type in get_email_types():
+    for email_type in email_types:
         resolved = model.resolve_all(slug, email_type)
         overrides = model.get_overrides_for_circle(slug, email_type)
         blocks = [
@@ -1725,7 +1739,7 @@ def circle_email_content(slug):
         sections.append({'email_type': email_type, 'blocks': blocks})
 
     return render_template('admin/circle_email_content.html', circle=circle, sections=sections,
-                            current_user=get_current_user())
+                            active_email_type=active_email_type, current_user=get_current_user())
 
 
 @admin_bp.route('/circles/<slug>/email-content/preview/<email_type>')
@@ -1750,6 +1764,15 @@ def circle_email_content_preview(slug, email_type):
         subject, body = email_service.build_withdrawal_confirmation_preview(slug)
         return render_template('admin/email_content_preview.html', circle=circle, email_type=email_type,
                                 subject=subject, body=body, is_html=False)
+    elif email_type in ('team_update', 'weekly_summary', 'admin_digest'):
+        preview_builder = {
+            'team_update': build_team_update_preview,
+            'weekly_summary': build_weekly_summary_preview,
+            'admin_digest': build_admin_digest_preview,
+        }[email_type]
+        subject, html_content = preview_builder(slug)
+        return render_template('admin/email_content_preview.html', circle=circle, email_type=email_type,
+                                subject=subject, html_content=html_content, is_html=True)
     else:
         flash('Invalid email type.', 'error')
         return redirect(url_for('admin.circle_email_content', slug=slug))

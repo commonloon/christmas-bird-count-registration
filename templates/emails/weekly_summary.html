@@ -313,15 +313,10 @@
         {% endif %}
 
         <h4>📋 Next Steps</h4>
-        <ul>
-            {% if new_participants or arrivals or reactivated_participants %}
-                <li><strong>Welcome new, arriving, and rejoining members to the team.</strong> <ul><li>Ideally they should hear from you within a few days of joining your team, even if it's just a quick greeting and a note to say you'll send details later.</li></ul></li>
-            {% endif %}
-            <li>Confirm count day logistics with your team</li>
-            <li>Share meeting location and time details</li>
-            <li>Coordinate transportation and equipment needs</li>
-            <li>Review count area boundaries and special considerations</li>
-        </ul>
+        {% if new_participants or arrivals or reactivated_participants %}
+        <p><strong>Welcome new, arriving, and rejoining members to the team.</strong> Ideally they should hear from you within a few days of joining your team, even if it's just a quick greeting and a note to say you'll send details later.</p>
+        {% endif %}
+        <div>{{ next_steps_text|nl2br }}</div>
 
         {% if current_team %}
         <h4>👥 Complete List of Team Members ({{ current_team|selectattr('status', 'equalto', 'active')|list|length }} members)</h4>
