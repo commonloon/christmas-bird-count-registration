@@ -541,11 +541,5 @@ class TestDataIntegrityAndSynchronization:
             assert leader.get('is_leader', False) == True
 
 
-# Test Markers and Categories
-pytest.mark.critical = pytest.mark.critical
-pytest.mark.admin = pytest.mark.admin
-pytest.mark.slow = pytest.mark.slow
-pytest.mark.regression = pytest.mark.regression
-
 # Mark all tests in this file as regression tests
 pytestmark = pytest.mark.regression
