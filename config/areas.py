@@ -1,6 +1,6 @@
 # Updated by Claude AI on 2025-11-30
 # Area configuration for the application
-# Note: admin_assignment_only is now managed in Firestore collection 'area_signup_type'
+# Note: admin_assignment_only is now managed in the 'area_signup_type' table
 #       Use AreaSignupTypeModel.get_public_areas() to get areas available for public registration
 AREA_CONFIG = {
     'A': {
