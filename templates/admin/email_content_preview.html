@@ -1,0 +1,33 @@
+{# Updated by Claude AI on 2026-09-09 #}
+{% extends "base.html" %}
+
+{% block title %}Preview: {{ email_type.replace('_', ' ')|title }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="mb-0">Preview: {{ email_type.replace('_', ' ')|title }} for {{ circle.circle_name|e }}</h1>
+    <a href="{{ url_for('admin.circle_email_content', slug=circle.slug) }}" class="btn btn-outline-secondary">Back to Email Content</a>
+</div>
+
+<div class="alert alert-info">This preview uses synthetic sample data and is never sent to anyone.</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <strong>Subject:</strong> {{ subject|e }}
+    </div>
+</div>
+
+{% if is_html %}
+<div class="card">
+    <div class="card-body">
+        <iframe srcdoc="{{ html_content|e }}" style="width: 100%; height: 80vh; border: 1px solid #ccc;"></iframe>
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-body">
+        <pre style="white-space: pre-wrap;">{{ body|e }}</pre>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

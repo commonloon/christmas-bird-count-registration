@@ -1,0 +1,70 @@
+{# Updated by Claude AI on 2026-09-09 #}
+{% extends "base.html" %}
+
+{% block title %}Email Content for {{ circle.circle_name|e }}{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">Email Content for {{ circle.circle_name|e }}</h1>
+<p class="text-muted mb-4">Customize the wording of this circle's outgoing emails. Anything left as
+    "Inherited default" uses the super-admin's global default text (or the built-in wording if no
+    default has been set either) - nothing here changes until you save an override.</p>
+
+{% for section in sections %}
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>{{ section.email_type.replace('_', ' ')|title }}</strong>
+        <div>
+            <a href="{{ url_for('admin.circle_email_content_preview', slug=circle.slug, email_type=section.email_type) }}"
+               class="btn btn-sm btn-outline-primary" target="_blank">Preview</a>
+            {% if section.email_type == 'registration_confirmation' %}
+            <a href="{{ url_for('admin.circle_email_content_preview', slug=circle.slug, email_type=section.email_type, variant='unassigned') }}"
+               class="btn btn-sm btn-outline-primary" target="_blank">Preview (unassigned)</a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body">
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="email_type" value="{{ section.email_type }}">
+            <input type="hidden" name="action" value="save">
+
+            {% for block in section.blocks %}
+            <div class="mb-3">
+                <label class="form-label d-flex align-items-center gap-2">
+                    {{ block.label }}
+                    {% if block.is_override %}
+                    <span class="badge bg-primary">Override</span>
+                    {% else %}
+                    <span class="badge bg-secondary">Inherited default</span>
+                    {% endif %}
+                </label>
+                <textarea class="form-control" name="{{ section.email_type }}__{{ block.key }}"
+                          rows="{{ 5 if block.allow_newlines else 1 }}"
+                          maxlength="{{ block.max_length }}">{{ block.value|e }}</textarea>
+                <div class="form-text">
+                    {% if block.placeholders %}
+                    Available placeholders:
+                    {% for p in block.placeholders %}<code>${{ p }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
+                    {% else %}
+                    No placeholders available for this block.
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+
+            <button type="submit" class="btn btn-primary">Save</button>
+        </form>
+
+        {% for block in section.blocks if block.is_override %}
+        <form method="POST" class="d-inline-block mt-2 me-2">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="email_type" value="{{ section.email_type }}">
+            <input type="hidden" name="action" value="reset">
+            <input type="hidden" name="block_key" value="{{ block.key }}">
+            <button type="submit" class="btn btn-sm btn-outline-secondary">Reset "{{ block.label }}" to default</button>
+        </form>
+        {% endfor %}
+    </div>
+</div>
+{% endfor %}
+{% endblock %}

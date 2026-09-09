@@ -135,11 +135,7 @@
 
         <div class="success-box">
             <h3>✅ Welcome to the {{ count_event_name }}!</h3>
-            {% if assigned_area == 'UNASSIGNED' %}
-            <p><strong>You have been registered for assignment wherever you're needed most.</strong></p>
-            {% else %}
-            <p><strong>You have been registered for {{ area_info.name }}.</strong></p>
-            {% endif %}
+            <p><strong>{{ intro_text|nl2br }}</strong></p>
         </div>
 
         <div class="details-section">
@@ -192,24 +188,7 @@
 
         <div class="details-section">
             <h4>📅 What's Next?</h4>
-            <ul>
-                {% if assigned_area == 'UNASSIGNED' %}
-                <li><strong>Assignment Coming Soon:</strong> You will receive an email when an administrator has assigned you to a count area, probably within the next week.</li>
-                <li><strong>Area Leader Contact:</strong> Once assigned, your area leader will be your main contact for information about count day. They will contact you to let you know where to meet, areas you'll survey, etc.</li>
-                {% else %}
-                    {% if area_leaders %}
-                    <li><strong>Area Leader Contact:</strong> Your area leader (listed above) is your main contact for information about count day. They will contact you to let you know where to meet, areas you'll survey, etc.</li>
-                    {% else %}
-                    <li><strong>Area Leader Assignment:</strong> An area leader will be assigned soon and will contact you with count day details.</li>
-                    {% endif %}
-                {% endif %}
-                <li><strong>Count Day Schedule:</strong> The count typically begins early in the morning and lasts until dusk. Please let your area leader know if you aren't available for the full day.</li>
-                <li><strong>Weather:</strong> The {{ count_event_name }} happens rain or shine. Dress to stay warm and dry.</li>
-                <li><strong>Equipment:</strong> Bring binoculars and a sense of adventure!</li>
-                {% if participation_type == 'FEEDER' %}
-                <li><strong>FEEDER Instructions:</strong> You'll receive specific instructions for counting birds at your feeders closer to count day.</li>
-                {% endif %}
-            </ul>
+            <div>{{ whats_next_text|nl2br }}</div>
         </div>
 
         <div class="info-box">
@@ -236,7 +215,7 @@
 
     <div class="footer">
         <p>This is an automated confirmation from the {{ count_event_name }} registration system.<br>
-        Welcome to the count! For questions, contact: {{ count_contact }}</p>
+        {{ closing_text|nl2br }}</p>
         {% if test_mode %}
         <p><strong>TEST MODE:</strong> This email was generated for testing purposes.</p>
         {% endif %}

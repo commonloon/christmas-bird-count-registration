@@ -4,7 +4,12 @@
 {% block title %}{% if circle %}Edit {{ circle.circle_name|e }}{% else %}Add Circle{% endif %}{% endblock %}
 
 {% block content %}
-<h1 class="mb-4">{% if circle %}Edit {{ circle.circle_name|e }}{% else %}Add a New Circle{% endif %}</h1>
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0">{% if circle %}Edit {{ circle.circle_name|e }}{% else %}Add a New Circle{% endif %}</h1>
+    {% if circle %}
+    <a href="{{ url_for('admin.circle_email_content', slug=circle.slug) }}" class="btn btn-outline-secondary">Email Content</a>
+    {% endif %}
+</div>
 
 <form method="POST" class="card">
     <div class="card-body">

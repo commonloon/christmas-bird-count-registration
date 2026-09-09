@@ -240,9 +240,103 @@ This is an automated notification from the CBC registration system.
         return self.send_email(leader_emails, subject, body, from_email=org_vars['from_email'],
                                 test_recipient=org_vars['test_recipient'])
 
+    def _resolve_registration_confirmation_content(self, participant_data, assigned_area, area_info,
+                                                     org_vars, current_year, circle_slug):
+        """Resolve this circle's admin-customizable registration_confirmation blocks
+        (config/email_content_blocks.py) and substitute placeholders. Returns
+        (subject, intro_text, whats_next_text, closing_text). Shared by the real send
+        path and the admin email-content preview route, so both stay in sync."""
+        from models.email_content import EmailContentModel
+        from services.email_content_service import substitute_placeholders
+
+        db = self._get_db_session()
+        blocks = EmailContentModel(db).resolve_all(circle_slug, 'registration_confirmation')
+
+        placeholder_values = {
+            'first_name': participant_data.get('first_name') or '',
+            'count_event_name': org_vars['count_event_name'],
+            'year': current_year,
+            'area_name': area_info['name'] if area_info else '',
+            'count_contact': org_vars['count_contact'],
+        }
+
+        subject = substitute_placeholders(blocks['subject'], placeholder_values)
+        if assigned_area == 'UNASSIGNED':
+            intro_text = substitute_placeholders(blocks['intro_unassigned'], placeholder_values)
+            whats_next_text = substitute_placeholders(blocks['whats_next_unassigned'], placeholder_values)
+        else:
+            intro_text = substitute_placeholders(blocks['intro_assigned'], placeholder_values)
+            whats_next_text = substitute_placeholders(blocks['whats_next_assigned'], placeholder_values)
+        closing_text = substitute_placeholders(blocks['closing_message'], placeholder_values)
+
+        return subject, intro_text, whats_next_text, closing_text
+
+    def build_registration_confirmation_preview(self, circle_slug, variant='assigned'):
+        """Render the real registration_confirmation template with synthetic sample
+        data and this circle's currently-saved (resolved) email-content blocks, for
+        the admin email-content preview route. Never sends anything. variant
+        'unassigned' previews the not-yet-assigned wording instead."""
+        from flask import current_app, render_template
+        from config.email_settings import get_email_branding, is_test_server
+        from services.datetime_utils import convert_to_display_timezone
+
+        org_vars = get_organization_variables()
+        current_year = datetime.now().year
+        registration_date, display_timezone = convert_to_display_timezone(datetime.now(timezone.utc))
+
+        assigned_area = 'UNASSIGNED' if variant == 'unassigned' else 'A'
+        if assigned_area == 'UNASSIGNED':
+            area_info, area_leaders = None, []
+        else:
+            area_info = {
+                'name': 'Area A - Sample Neighbourhood',
+                'description': 'Sample area description for preview purposes.',
+                'difficulty': 'Moderate',
+                'terrain': 'Urban parks and residential streets',
+            }
+            area_leaders = [{
+                'first_name': 'Sample', 'last_name': 'Leader',
+                'leader_email': 'leader@example.com', 'cell_phone': '(555) 555-1234',
+            }]
+
+        participant_data = {
+            'first_name': 'Sample', 'last_name': 'Participant', 'email': 'sample@example.com',
+            'phone': '(555) 555-6789', 'participation_type': 'regular', 'skill_level': 'Intermediate',
+            'experience': '1-2 counts', 'has_binoculars': True, 'spotting_scope': False,
+            'interested_in_leadership': False, 'notes_to_organizers': '',
+        }
+
+        subject, intro_text, whats_next_text, closing_text = self._resolve_registration_confirmation_content(
+            participant_data, assigned_area, area_info, org_vars, current_year, circle_slug)
+
+        email_context = {
+            'count_event_name': f'{current_year} {org_vars["count_event_name"]}',
+            'registration_date': registration_date,
+            'display_timezone': display_timezone,
+            'assigned_area': assigned_area,
+            'area_info': area_info,
+            'area_leaders': area_leaders,
+            **participant_data,
+            'organization_name': org_vars['organization_name'],
+            'count_contact': org_vars['count_contact'],
+            'organization_contact': org_vars['organization_contact'],
+            'count_info_url': org_vars['count_info_url'],
+            'count_experience_label': org_vars['count_experience_label'],
+            'is_cbc': org_vars['is_cbc'],
+            'test_mode': is_test_server(),
+            'branding': get_email_branding(),
+            'intro_text': intro_text,
+            'whats_next_text': whats_next_text,
+            'closing_text': closing_text,
+        }
+
+        with current_app.app_context():
+            html_content = render_template('emails/registration_confirmation.html', **email_context)
+        return subject, html_content
+
     def send_registration_confirmation(self, participant_data: dict, assigned_area: str) -> bool:
         """Send HTML registration confirmation email to participant."""
-        from flask import current_app, render_template
+        from flask import current_app, render_template, g
         from config.email_settings import get_email_branding, is_test_server
         from config.areas import get_area_info
         from models.participant import ParticipantModel
@@ -270,6 +364,10 @@ This is an automated notification from the CBC registration system.
 
         # Get organization variables from config
         org_vars = get_organization_variables()
+        circle_slug = getattr(g, 'circle_slug', None)
+
+        subject, intro_text, whats_next_text, closing_text = self._resolve_registration_confirmation_content(
+            participant_data, assigned_area, area_info, org_vars, current_year, circle_slug)
 
         # Prepare email context
         email_context = {
@@ -297,7 +395,10 @@ This is an automated notification from the CBC registration system.
             'count_experience_label': org_vars['count_experience_label'],
             'is_cbc': org_vars['is_cbc'],
             'test_mode': is_test_server(),
-            'branding': get_email_branding()
+            'branding': get_email_branding(),
+            'intro_text': intro_text,
+            'whats_next_text': whats_next_text,
+            'closing_text': closing_text,
         }
 
         # Render HTML template
@@ -309,35 +410,72 @@ This is an automated notification from the CBC registration system.
             # Fallback to simple text email
             html_content = None
 
-        subject = f"{current_year} {org_vars['count_event_name']} Registration Confirmation"
         participant_email = participant_data.get('email')
 
         return self.send_email([participant_email], subject, '', html_content, from_email=org_vars['from_email'],
                                 test_recipient=org_vars['test_recipient'])
 
+    def _resolve_withdrawal_confirmation_content(self, first_name, last_name, org_vars, current_year, circle_slug):
+        """Resolve this circle's admin-customizable withdrawal_confirmation blocks
+        and substitute placeholders. Returns (subject, intro_message, closing_message).
+        withdrawal_reason and the "REASON FOR WITHDRAWAL:" framing stay fixed, not
+        admin-editable - only the surrounding intro/closing prose is a content block."""
+        from models.email_content import EmailContentModel
+        from services.email_content_service import substitute_placeholders
+
+        db = self._get_db_session()
+        blocks = EmailContentModel(db).resolve_all(circle_slug, 'withdrawal_confirmation')
+
+        placeholder_values = {
+            'first_name': first_name or '',
+            'last_name': last_name or '',
+            'year': current_year,
+            'count_event_name': org_vars['count_event_name'],
+            'count_contact': org_vars['count_contact'],
+            'organization_name': org_vars['organization_name'],
+        }
+
+        subject = substitute_placeholders(blocks['subject'], placeholder_values)
+        intro_message = substitute_placeholders(blocks['intro_message'], placeholder_values)
+        closing_message = substitute_placeholders(blocks['closing_message'], placeholder_values)
+        return subject, intro_message, closing_message
+
+    def build_withdrawal_confirmation_preview(self, circle_slug):
+        """Subject + body for this circle's currently-saved withdrawal_confirmation
+        blocks, using synthetic sample data. Never sends anything."""
+        org_vars = get_organization_variables()
+        current_year = datetime.now().year
+        subject, intro_message, closing_message = self._resolve_withdrawal_confirmation_content(
+            'Sample', 'Participant', org_vars, current_year, circle_slug)
+
+        body = f"""
+{intro_message}
+
+REASON FOR WITHDRAWAL:
+Sample withdrawal reason, shown here for preview purposes only.
+
+{closing_message}
+        """
+        return subject, body
+
     def send_withdrawal_confirmation(self, participant_email: str, first_name: str,
                                     last_name: str, withdrawal_reason: str) -> bool:
         """Send withdrawal confirmation email to participant."""
+        from flask import g
         org_vars = get_organization_variables()
         current_year = datetime.now().year
+        circle_slug = getattr(g, 'circle_slug', None)
 
-        subject = f"[{org_vars['count_event_name']}] Withdrawal Confirmation"
+        subject, intro_message, closing_message = self._resolve_withdrawal_confirmation_content(
+            first_name, last_name, org_vars, current_year, circle_slug)
 
         body = f"""
-Dear {first_name} {last_name},
-
-Your withdrawal from the {current_year} {org_vars['count_event_name']} has been recorded.
+{intro_message}
 
 REASON FOR WITHDRAWAL:
 {withdrawal_reason}
 
-If your circumstances change and you would like to participate, please contact:
-{org_vars['count_contact']}
-
-We hope to have you join us again in the future.
-
-Best regards,
-{org_vars['organization_name']} - {org_vars['count_event_name']} Registration System
+{closing_message}
         """
 
         return self.send_email([participant_email], subject, body, from_email=org_vars['from_email'],

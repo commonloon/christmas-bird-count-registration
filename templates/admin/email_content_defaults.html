@@ -1,0 +1,44 @@
+{# Updated by Claude AI on 2026-09-09 #}
+{% extends "base.html" %}
+
+{% block title %}Email Content Defaults{% endblock %}
+
+{% block content %}
+<h1 class="mb-1">Email Content Defaults</h1>
+<p class="text-muted mb-4">Global default wording for every circle that hasn't set its own override
+    for a given block. A circle's own admin can override any of these from that circle's
+    "Email Content" page.</p>
+
+{% for section in sections %}
+<div class="card mb-4">
+    <div class="card-header">
+        <strong>{{ section.email_type.replace('_', ' ')|title }}</strong>
+    </div>
+    <div class="card-body">
+        <form method="POST">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="email_type" value="{{ section.email_type }}">
+
+            {% for block in section.blocks %}
+            <div class="mb-3">
+                <label class="form-label">{{ block.label }}</label>
+                <textarea class="form-control" name="{{ section.email_type }}__{{ block.key }}"
+                          rows="{{ 5 if block.allow_newlines else 1 }}"
+                          maxlength="{{ block.max_length }}">{{ block.value|e }}</textarea>
+                <div class="form-text">
+                    {% if block.placeholders %}
+                    Available placeholders:
+                    {% for p in block.placeholders %}<code>${{ p }}</code>{% if not loop.last %}, {% endif %}{% endfor %}
+                    {% else %}
+                    No placeholders available for this block.
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+
+            <button type="submit" class="btn btn-primary">Save</button>
+        </form>
+    </div>
+</div>
+{% endfor %}
+{% endblock %}

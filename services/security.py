@@ -245,6 +245,28 @@ def sanitize_notes(notes: str) -> str:
     
     return notes
 
+def sanitize_email_content(content: str, max_length: int, allow_newlines: bool) -> str:
+    """
+    Sanitize an admin-authored email content block (services/email_content_service.py,
+    config/email_content_blocks.py). Styled directly after sanitize_notes(), but
+    parameterized per-block instead of sanitize_notes's fixed 1000-char limit/
+    always-allow-newlines, since blocks range from a single-line subject to
+    multi-paragraph prose.
+
+    Args:
+        content: Raw submitted block text
+        max_length: This block's registry-defined character limit
+        allow_newlines: False for subject-line blocks (used as a mail header -
+            newlines there enable header injection), True otherwise
+
+    Returns:
+        Sanitized content
+    """
+    if not isinstance(content, str):
+        return ""
+
+    return sanitize_text_input(content, max_length=max_length, allow_newlines=allow_newlines)
+
 def validate_area_code(area_code: str) -> bool:
     """
     Validate area code against configured areas.

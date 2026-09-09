@@ -140,6 +140,19 @@ def load_area_boundaries():
 
 app.jinja_env.filters['skill_label'] = get_skill_level_label
 
+
+@app.template_filter('nl2br')
+def nl2br(text):
+    """Render admin-authored email content's newlines as <br> tags, safely.
+    Escapes first (so the text itself can never inject markup), then replaces
+    \\n with <br> - safe because escaping happens before the <br> insertion,
+    and the <br> tags themselves aren't derived from user input. Never use
+    |safe on raw admin-authored content instead of this filter."""
+    from markupsafe import Markup, escape
+    if text is None:
+        return ''
+    return Markup(str(escape(text)).replace('\n', '<br>\n'))
+
 # Make area boundaries and common data available to templates
 @app.context_processor
 def inject_common_data():

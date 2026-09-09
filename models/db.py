@@ -285,6 +285,44 @@ class CircleAdmin(Base, DictMixin):
     created_at = Column(DateTime(timezone=True), nullable=False)
 
 
+class EmailContentDefault(Base, DictMixin):
+    """Super-admin-edited global default text for one admin-customizable email
+    block (config/email_content_blocks.py), used by circles that haven't set
+    their own override. A separate table from EmailContentOverride (rather than
+    one nullable-circle_slug table) because Postgres unique constraints treat
+    NULL as distinct from every other NULL, so a single table couldn't
+    guarantee "exactly one global-default row" per block."""
+    __tablename__ = 'email_content_defaults'
+    __table_args__ = (
+        UniqueConstraint('email_type', 'block_key', name='uq_email_content_defaults_type_block'),
+    )
+
+    id = Column(Integer, primary_key=True)
+    email_type = Column(String(50), nullable=False)
+    block_key = Column(String(50), nullable=False)
+    content = Column(Text, nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+    updated_by = Column(String(254))
+
+
+class EmailContentOverride(Base, DictMixin):
+    """Per-circle override text for one admin-customizable email block -
+    resolved ahead of EmailContentDefault, which is resolved ahead of the
+    hardcoded fallback in config/email_content_blocks.py. See EmailContentModel."""
+    __tablename__ = 'email_content_overrides'
+    __table_args__ = (
+        UniqueConstraint('circle_slug', 'email_type', 'block_key', name='uq_email_content_overrides_circle_type_block'),
+    )
+
+    id = Column(Integer, primary_key=True)
+    circle_slug = Column(String(50), ForeignKey('circles.slug'), nullable=False, index=True)
+    email_type = Column(String(50), nullable=False)
+    block_key = Column(String(50), nullable=False)
+    content = Column(Text, nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+    updated_by = Column(String(254))
+
+
 class MagicLinkToken(Base, DictMixin):
     __tablename__ = 'magic_link_tokens'
 

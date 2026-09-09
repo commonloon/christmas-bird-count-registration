@@ -16,6 +16,9 @@ from config.fields import (
 from config.admins import get_admin_emails
 from routes.auth import require_admin, require_super_admin, get_current_user
 from models.circle import CircleModel, CircleAreaModel, CircleAdminModel
+from models.email_content import EmailContentModel
+from config.email_content_blocks import get_email_types, get_blocks
+from services.email_content_service import extract_placeholders
 from services.kml_import import parse_kml_string, filter_main_areas, calculate_map_center_and_bounds, KmlParseError
 from services.email_service import email_service
 from services.ip_blocker import IPBlockerService
@@ -26,7 +29,8 @@ from test.email_generator import (
 )
 from services.security import (
     sanitize_name, sanitize_email, sanitize_phone, sanitize_notes, sanitize_text_input,
-    validate_area_code, validate_experience, validate_email_format, is_suspicious_input, log_security_event
+    sanitize_email_content, validate_area_code, validate_experience, validate_email_format,
+    is_suspicious_input, log_security_event
 )
 from services.csv_security import escape_csv_formula
 from services.limiter import limiter
@@ -51,6 +55,7 @@ CIRCLE_CONSOLE_ENDPOINTS = {
     'admin.list_circles', 'admin.new_circle', 'admin.edit_circle',
     'admin.circle_admins', 'admin.circle_areas_manage', 'admin.circle_areas_import_kml',
     'admin.circle_logo_upload', 'admin.circle_logo_delete',
+    'admin.email_content_defaults', 'admin.circle_email_content', 'admin.circle_email_content_preview',
 }
 
 
@@ -1594,6 +1599,160 @@ def circle_admins(slug):
 
     admins = model.get_admins_for_circle(slug)
     return render_template('admin/circle_admins.html', circle=circle, admins=admins, current_user=get_current_user())
+
+
+def _save_email_content_blocks(email_type, save, redirect_target):
+    """Shared save-validation for both the super-admin defaults form and a
+    circle's override form: sanitize each submitted block, reject the whole
+    save (nothing persisted) if any block references a placeholder outside
+    its registry whitelist, else call save(block_key, content) for each.
+    Returns None on success, or the redirect response to send back on error."""
+    errors = []
+    to_save = []
+    for block_key, block_def in get_blocks(email_type).items():
+        raw = request.form.get(f'{email_type}__{block_key}', '')
+        content = sanitize_email_content(raw, block_def['max_length'], block_def['allow_newlines'])
+        bad_placeholders = extract_placeholders(content) - set(block_def['placeholders'])
+        if bad_placeholders:
+            bad_list = ', '.join(sorted('$' + p for p in bad_placeholders))
+            errors.append(f"{block_def['label']}: unsupported placeholder(s) {bad_list}")
+            continue
+        to_save.append((block_key, content))
+
+    if errors:
+        for error in errors:
+            flash(error, 'error')
+        return redirect_target
+
+    for block_key, content in to_save:
+        save(block_key, content)
+    return None
+
+
+@admin_bp.route('/email-content/defaults', methods=['GET', 'POST'])
+@require_super_admin
+def email_content_defaults():
+    """Super-admin console: edit the global default text for each admin-customizable
+    email content block - the fallback used by circles that haven't set their own
+    override. Every circle starts with none of these set, so this page always
+    exists even for a brand-new deployment with no overrides anywhere yet."""
+    model = EmailContentModel(g.db)
+    updated_by = get_current_user()['email']
+
+    if request.method == 'POST':
+        email_type = request.form.get('email_type')
+        if email_type not in get_email_types():
+            flash('Invalid request.', 'error')
+            return redirect(url_for('admin.email_content_defaults'))
+
+        error_response = _save_email_content_blocks(
+            email_type,
+            save=lambda block_key, content: model.set_default(email_type, block_key, content, updated_by),
+            redirect_target=redirect(url_for('admin.email_content_defaults')),
+        )
+        if error_response:
+            return error_response
+
+        flash('Email defaults updated.', 'success')
+        return redirect(url_for('admin.email_content_defaults'))
+
+    sections = []
+    for email_type in get_email_types():
+        values = model.get_defaults_for_type(email_type, use_fallback=True)
+        blocks = [
+            {'key': block_key, 'label': block_def['label'], 'value': values[block_key],
+             'allow_newlines': block_def['allow_newlines'], 'max_length': block_def['max_length'],
+             'placeholders': block_def['placeholders']}
+            for block_key, block_def in get_blocks(email_type).items()
+        ]
+        sections.append({'email_type': email_type, 'blocks': blocks})
+
+    return render_template('admin/email_content_defaults.html', sections=sections, current_user=get_current_user())
+
+
+@admin_bp.route('/circles/<slug>/email-content', methods=['GET', 'POST'])
+def circle_email_content(slug):
+    """Edit one circle's own email-content overrides - super-admin (any circle)
+    or that circle's own admin only, same access as edit_circle/areas/logo."""
+    denied = _require_circle_manage_access(slug)
+    if denied:
+        return denied
+
+    circle = CircleModel(g.db).get_by_slug(slug)
+    if not circle:
+        flash('Circle not found.', 'error')
+        return redirect(url_for('main.index'))
+
+    model = EmailContentModel(g.db)
+    updated_by = get_current_user()['email']
+
+    if request.method == 'POST':
+        email_type = request.form.get('email_type')
+        if email_type not in get_email_types():
+            flash('Invalid request.', 'error')
+            return redirect(url_for('admin.circle_email_content', slug=slug))
+
+        if request.form.get('action') == 'reset':
+            block_key = request.form.get('block_key')
+            if block_key not in get_blocks(email_type):
+                flash('Invalid request.', 'error')
+            else:
+                model.delete_override(slug, email_type, block_key)
+                flash('Reset to default.', 'success')
+            return redirect(url_for('admin.circle_email_content', slug=slug))
+
+        error_response = _save_email_content_blocks(
+            email_type,
+            save=lambda block_key, content: model.set_override(slug, email_type, block_key, content, updated_by),
+            redirect_target=redirect(url_for('admin.circle_email_content', slug=slug)),
+        )
+        if error_response:
+            return error_response
+
+        flash('Email content updated.', 'success')
+        return redirect(url_for('admin.circle_email_content', slug=slug))
+
+    sections = []
+    for email_type in get_email_types():
+        resolved = model.resolve_all(slug, email_type)
+        overrides = model.get_overrides_for_circle(slug, email_type)
+        blocks = [
+            {'key': block_key, 'label': block_def['label'], 'value': resolved[block_key],
+             'allow_newlines': block_def['allow_newlines'], 'max_length': block_def['max_length'],
+             'placeholders': block_def['placeholders'], 'is_override': block_key in overrides}
+            for block_key, block_def in get_blocks(email_type).items()
+        ]
+        sections.append({'email_type': email_type, 'blocks': blocks})
+
+    return render_template('admin/circle_email_content.html', circle=circle, sections=sections,
+                            current_user=get_current_user())
+
+
+@admin_bp.route('/circles/<slug>/email-content/preview/<email_type>')
+def circle_email_content_preview(slug, email_type):
+    """Live preview of one circle's currently-saved email content, rendered with
+    synthetic sample data. GET-only - never sends anything."""
+    denied = _require_circle_manage_access(slug)
+    if denied:
+        return denied
+
+    circle = CircleModel(g.db).get_by_slug(slug)
+    if not circle:
+        flash('Circle not found.', 'error')
+        return redirect(url_for('main.index'))
+
+    if email_type == 'registration_confirmation':
+        variant = 'unassigned' if request.args.get('variant') == 'unassigned' else 'assigned'
+        subject, html_content = email_service.build_registration_confirmation_preview(slug, variant=variant)
+        return render_template('admin/email_content_preview.html', circle=circle, email_type=email_type,
+                                subject=subject, html_content=html_content, is_html=True)
+    elif email_type == 'withdrawal_confirmation':
+        subject, body = email_service.build_withdrawal_confirmation_preview(slug)
+        return render_template('admin/email_content_preview.html', circle=circle, email_type=email_type,
+                                subject=subject, body=body, is_html=False)
+    else:
+        flash('Invalid email type.', 'error')
+        return redirect(url_for('admin.circle_email_content', slug=slug))
 
 
 @admin_bp.route('/circles/<slug>/areas', methods=['GET', 'POST'])
