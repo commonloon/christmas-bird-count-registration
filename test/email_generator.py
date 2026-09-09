@@ -36,6 +36,34 @@ from services.datetime_utils import convert_to_display_timezone
 logger = logging.getLogger(__name__)
 
 
+def _push_circle_context(flask_app, circle_slug):
+    """Push (and return, already-entered) a request context resolved to the given
+    circle. Caller must pop it (e.g. in a finally block).
+
+    These digest functions are triggered by the scheduler outside any real HTTP
+    request, so every per-circle helper they rely on (ParticipantModel's
+    circle_slug default via resolve_default_circle_slug(), config/organization.py's
+    get_admin_url()/get_leader_url(), config/areas.py) has no request to read
+    g.circle_slug from. Pushing a fake request context for the circle's own host
+    and running app.py's real resolve_circle() against it makes all of that
+    resolve exactly as it would for a genuine request - no separate per-circle
+    logic needed in this module.
+    """
+    from models.circle import CircleModel
+    import app as app_module
+
+    db = get_db_session()
+    circle = CircleModel(db).get_by_slug(circle_slug)
+    if not circle:
+        raise ValueError(f"Unknown circle: {circle_slug}")
+
+    host = app_module.circle_host(circle_slug, circle['is_cbc'])
+    ctx = flask_app.test_request_context(path='/', base_url=f'https://{host}')
+    ctx.push()
+    app_module.resolve_circle()
+    return ctx
+
+
 class EmailTimestampModel:
     """Handle email timestamp tracking to prevent race conditions."""
 
@@ -318,9 +346,11 @@ def get_participants_changes_since(participant_model: ParticipantModel, area_cod
         return [], [], []
 
 
-def generate_team_update_emails(app=None) -> Dict[str, Any]:
-    """Generate twice-daily team update emails for areas with changes."""
+def generate_team_update_emails(app, circle_slug) -> Dict[str, Any]:
+    """Generate twice-daily team update emails for areas with changes, for one circle."""
+    ctx = None
     try:
+        ctx = _push_circle_context(app, circle_slug)
         db = get_db_session()
         current_year = datetime.now().year
         utc_now = datetime.now(timezone.utc)  # Race condition prevention: pick timestamp first
@@ -426,12 +456,8 @@ def generate_team_update_emails(app=None) -> Dict[str, Any]:
                 
                 # Render email template
                 try:
-                    if app:
-                        with app.app_context():
-                            html_content = render_template('emails/team_update.html', **email_context)
-                    else:
-                        # Fallback to basic text if no app context
-                        html_content = None
+                    with app.app_context():
+                        html_content = render_template('emails/team_update.html', **email_context)
                 except Exception as template_error:
                     logger.error(f"Template rendering error for area {area_code}: {template_error}")
                     # Fallback to basic text email
@@ -457,15 +483,20 @@ def generate_team_update_emails(app=None) -> Dict[str, Any]:
         
         logger.info(f"Team update emails completed: {results['emails_sent']} sent, {results['areas_processed']} areas processed")
         return results
-        
+
     except Exception as e:
         logger.error(f"Critical error in generate_team_update_emails: {e}")
         return {'emails_sent': 0, 'areas_processed': 0, 'errors': [str(e)]}
+    finally:
+        if ctx:
+            ctx.pop()
 
 
-def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
+def generate_weekly_summary_emails(app, circle_slug) -> Dict[str, Any]:
     """Generate weekly summary emails for ALL area leaders."""
+    ctx = None
     try:
+        ctx = _push_circle_context(app, circle_slug)
         db = get_db_session()
         current_year = datetime.now().year
         utc_now = datetime.now(timezone.utc)
@@ -574,12 +605,8 @@ def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
                 
                 # Render email template
                 try:
-                    if app:
-                        with app.app_context():
-                            html_content = render_template('emails/weekly_summary.html', **email_context)
-                    else:
-                        # Fallback to basic text if no app context
-                        html_content = None
+                    with app.app_context():
+                        html_content = render_template('emails/weekly_summary.html', **email_context)
                 except Exception as template_error:
                     logger.error(f"Template rendering error for weekly summary {area_code}: {template_error}")
                     # Fallback to basic text email
@@ -605,15 +632,20 @@ def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
         
         logger.info(f"Weekly summary emails completed: {results['emails_sent']} sent, {results['areas_processed']} areas processed")
         return results
-        
+
     except Exception as e:
         logger.error(f"Critical error in generate_weekly_summary_emails: {e}")
         return {'emails_sent': 0, 'areas_processed': 0, 'errors': [str(e)]}
+    finally:
+        if ctx:
+            ctx.pop()
 
 
-def generate_admin_digest_email(app=None) -> Dict[str, Any]:
-    """Generate daily admin digest with unassigned participants."""
+def generate_admin_digest_email(app, circle_slug) -> Dict[str, Any]:
+    """Generate daily admin digest with unassigned participants, for one circle."""
+    ctx = None
     try:
+        ctx = _push_circle_context(app, circle_slug)
         db = get_db_session()
         current_year = datetime.now().year
         utc_now = datetime.now(timezone.utc)
@@ -674,12 +706,8 @@ def generate_admin_digest_email(app=None) -> Dict[str, Any]:
         
         # Render email template
         try:
-            if app:
-                with app.app_context():
-                    html_content = render_template('emails/admin_digest.html', **email_context)
-            else:
-                # Fallback to basic text if no app context
-                html_content = None
+            with app.app_context():
+                html_content = render_template('emails/admin_digest.html', **email_context)
         except Exception as template_error:
             logger.error(f"Template rendering error for admin digest: {template_error}")
             # Fallback to basic text email
@@ -697,10 +725,13 @@ def generate_admin_digest_email(app=None) -> Dict[str, Any]:
         
         logger.info(f"Admin digest email completed: {results['unassigned_count']} unassigned participants")
         return results
-        
+
     except Exception as e:
         logger.error(f"Critical error in generate_admin_digest_email: {e}")
         return {'emails_sent': 0, 'unassigned_count': 0, 'errors': [str(e)]}
+    finally:
+        if ctx:
+            ctx.pop()
 
 
 if __name__ == '__main__':
@@ -708,25 +739,28 @@ if __name__ == '__main__':
     import argparse
     
     parser = argparse.ArgumentParser(description='Generate CBC emails')
-    parser.add_argument('--type', choices=['team_update', 'weekly_summary', 'admin_digest'], 
+    parser.add_argument('--type', choices=['team_update', 'weekly_summary', 'admin_digest'],
                        help='Email type to generate')
+    parser.add_argument('--circle', required=True, help='Circle slug to generate for (e.g. vancouver)')
     parser.add_argument('--test', action='store_true', help='Enable test mode')
-    
+
     args = parser.parse_args()
-    
+
     if args.test:
         os.environ['TEST_MODE'] = 'true'
-    
+
     logging.basicConfig(level=logging.INFO)
-    
+
+    from app import app as flask_app
+
     if args.type == 'team_update':
-        results = generate_team_update_emails()
+        results = generate_team_update_emails(flask_app, args.circle)
     elif args.type == 'weekly_summary':
-        results = generate_weekly_summary_emails()
+        results = generate_weekly_summary_emails(flask_app, args.circle)
     elif args.type == 'admin_digest':
-        results = generate_admin_digest_email()
+        results = generate_admin_digest_email(flask_app, args.circle)
     else:
         print("Please specify --type (team_update, weekly_summary, or admin_digest)")
         sys.exit(1)
-    
+
     print(f"Results: {results}")

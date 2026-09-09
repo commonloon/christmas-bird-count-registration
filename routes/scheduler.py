@@ -22,6 +22,36 @@ logger = logging.getLogger(__name__)
 scheduler_bp = Blueprint('scheduler', __name__)
 
 
+def _run_for_every_circle(generator_fn, label):
+    """Run a per-circle email-generator function once for every circle, aggregating
+    results. Digest emails are inherently per-circle (each circle's own areas,
+    leaders, participants) - there's no single "current circle" outside a real
+    request for a scheduler-triggered job to default to (see
+    test/email_generator.py's _push_circle_context)."""
+    from config.database import get_db_session
+    from models.circle import CircleModel
+
+    db = get_db_session()
+    circles = CircleModel(db).get_all()
+
+    aggregated = {'emails_sent': 0, 'areas_processed': 0, 'unassigned_count': 0, 'errors': []}
+    for circle in circles:
+        slug = circle['slug']
+        try:
+            results = generator_fn(current_app, slug)
+        except Exception as e:
+            logger.error(f"{label} failed for circle {slug}: {e}", exc_info=True)
+            aggregated['errors'].append(f"{slug}: {e}")
+            continue
+
+        aggregated['emails_sent'] += results.get('emails_sent', 0)
+        aggregated['areas_processed'] += results.get('areas_processed', 0)
+        aggregated['unassigned_count'] += results.get('unassigned_count', 0)
+        aggregated['errors'].extend(f"{slug}: {err}" for err in results.get('errors', []))
+
+    return aggregated
+
+
 def require_cloud_scheduler(f):
     """Decorator to verify requests come from the Task Scheduler via a shared secret."""
     @wraps(f)
@@ -70,7 +100,7 @@ def trigger_team_updates():
         from test.email_generator import generate_team_update_emails
 
         logger.info("Cloud Scheduler triggered: team update emails")
-        results = generate_team_update_emails(current_app)
+        results = _run_for_every_circle(generate_team_update_emails, 'Team updates')
 
         logger.info(f"Team updates completed: {results['emails_sent']} emails sent to {results['areas_processed']} areas")
 
@@ -102,7 +132,7 @@ def trigger_weekly_summaries():
         from test.email_generator import generate_weekly_summary_emails
 
         logger.info("Cloud Scheduler triggered: weekly summary emails")
-        results = generate_weekly_summary_emails(current_app)
+        results = _run_for_every_circle(generate_weekly_summary_emails, 'Weekly summaries')
 
         logger.info(f"Weekly summaries completed: {results['emails_sent']} emails sent to {results['areas_processed']} areas")
 
@@ -134,7 +164,7 @@ def trigger_admin_digest():
         from test.email_generator import generate_admin_digest_email
 
         logger.info("Cloud Scheduler triggered: admin digest email")
-        results = generate_admin_digest_email(current_app)
+        results = _run_for_every_circle(generate_admin_digest_email, 'Admin digest')
 
         if results['unassigned_count'] > 0:
             logger.info(f"Admin digest completed: {results['emails_sent']} email sent for {results['unassigned_count']} unassigned participants")
