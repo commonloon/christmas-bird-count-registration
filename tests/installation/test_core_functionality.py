@@ -59,9 +59,7 @@ class TestRegistrationWorkflow:
         except TimeoutException:
             pytest.fail(
                 f"Registration page failed to load within 10 seconds: {url}\n"
-                f"Check deployment: ./deploy.sh test\n"
-                f"Check service logs: gcloud run services logs tail {installation_config['test_service']} "
-                f"--region={installation_config['gcp_location']}"
+                f"Check that the local dev server is running (python app.py) with TEST_MODE=true"
             )
 
     @pytest.mark.smoke

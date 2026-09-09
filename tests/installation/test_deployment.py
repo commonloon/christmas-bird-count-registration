@@ -46,9 +46,7 @@ class TestURLAccessibility:
             pytest.fail(
                 f"Failed to connect to {url}\n"
                 f"Error: {e}\n"
-                f"Verify deployment: ./deploy.sh test\n"
-                f"Check service status: gcloud run services describe {installation_config['test_service']} "
-                f"--region={installation_config['gcp_location']}"
+                f"Check that the local dev server is running (python app.py) with TEST_MODE=true"
             )
 
     def test_admin_redirects_to_login(self, installation_config):
