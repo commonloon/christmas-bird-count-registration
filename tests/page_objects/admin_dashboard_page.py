@@ -19,7 +19,7 @@ class AdminDashboardPage(BasePage):
 
     def navigate_to_admin(self):
         """Navigate to admin dashboard."""
-        return self.navigate_to("/admin")
+        return self.navigate_to("/bigbird")
 
     def navigate_to_login(self):
         """Navigate to login page."""
@@ -50,152 +50,8 @@ class AdminDashboardPage(BasePage):
         """Check if we're on the login page."""
         return (
             'login' in self.get_current_url().lower() or
-            self.is_element_visible('google-signin') or
-            self.is_element_visible((By.PARTIAL_LINK_TEXT, 'Sign in with Google'))
+            self.is_element_visible((By.XPATH, "//input[@name='email' or @type='email']"))
         )
-
-    def perform_google_oauth_login(self, email, password):
-        """
-        Perform Google OAuth login flow.
-
-        Args:
-            email: Google account email
-            password: Google account password
-
-        Returns:
-            bool: Success of login process
-        """
-        logger.info(f"Attempting Google OAuth login for: {email}")
-
-        # Click the Google sign-in button
-        signin_selectors = [
-            'google-signin',
-            (By.PARTIAL_LINK_TEXT, 'Sign in with Google'),
-            (By.CSS_SELECTOR, '.google-signin'),
-            (By.CSS_SELECTOR, 'button:contains("Google")'),
-            (By.ID, 'google-signin-button')
-        ]
-
-        clicked = False
-        for selector in signin_selectors:
-            if self.safe_click(selector):
-                clicked = True
-                break
-
-        if not clicked:
-            logger.error("Could not find Google sign-in button")
-            return False
-
-        # Wait for Google OAuth page to load
-        time.sleep(2)
-
-        # Handle Google login form
-        success = self._handle_google_login_form(email, password)
-
-        if success:
-            # Wait for redirect back to admin dashboard
-            time.sleep(3)
-            return self.is_dashboard_loaded()
-
-        return False
-
-    def _handle_google_login_form(self, email, password):
-        """Handle the Google login form (email and password entry)."""
-        try:
-            # Enter email
-            email_selectors = [
-                (By.ID, 'identifierId'),
-                (By.CSS_SELECTOR, 'input[type="email"]'),
-                (By.NAME, 'identifier'),
-                (By.CSS_SELECTOR, 'input[autocomplete="username"]')
-            ]
-
-            email_entered = False
-            for selector in email_selectors:
-                element = self.find_element_safely(selector, timeout=5)
-                if element:
-                    element.clear()
-                    element.send_keys(email)
-                    email_entered = True
-                    break
-
-            if not email_entered:
-                logger.error("Could not find email input field")
-                return False
-
-            # Click Next button
-            next_selectors = [
-                (By.ID, 'identifierNext'),
-                (By.CSS_SELECTOR, 'button:contains("Next")'),
-                (By.CSS_SELECTOR, '[data-id="identifierNext"]'),
-                (By.CSS_SELECTOR, 'input[value="Next"]')
-            ]
-
-            for selector in next_selectors:
-                if self.safe_click(selector):
-                    break
-
-            # Wait for password field
-            time.sleep(2)
-
-            # Enter password
-            password_selectors = [
-                (By.NAME, 'password'),
-                (By.CSS_SELECTOR, 'input[type="password"]'),
-                (By.CSS_SELECTOR, 'input[autocomplete="current-password"]')
-            ]
-
-            password_entered = False
-            for selector in password_selectors:
-                element = self.find_element_safely(selector, timeout=5)
-                if element:
-                    element.clear()
-                    element.send_keys(password)
-                    password_entered = True
-                    break
-
-            if not password_entered:
-                logger.error("Could not find password input field")
-                return False
-
-            # Click Sign In button
-            signin_selectors = [
-                (By.ID, 'passwordNext'),
-                (By.CSS_SELECTOR, 'button:contains("Sign in")'),
-                (By.CSS_SELECTOR, '[data-id="passwordNext"]'),
-                (By.CSS_SELECTOR, 'input[value="Sign in"]')
-            ]
-
-            for selector in signin_selectors:
-                if self.safe_click(selector):
-                    break
-
-            # Wait for potential consent screen or redirect
-            time.sleep(3)
-
-            # Handle consent screen if present
-            self._handle_oauth_consent_screen()
-
-            return True
-
-        except Exception as e:
-            logger.error(f"Google OAuth login failed: {e}")
-            return False
-
-    def _handle_oauth_consent_screen(self):
-        """Handle OAuth consent screen if present."""
-        consent_selectors = [
-            (By.CSS_SELECTOR, 'button:contains("Allow")'),
-            (By.CSS_SELECTOR, 'button:contains("Continue")'),
-            (By.ID, 'submit_approve_access'),
-            (By.CSS_SELECTOR, 'input[value="Allow"]')
-        ]
-
-        for selector in consent_selectors:
-            if self.safe_click(selector, timeout=3):
-                logger.info("Handled OAuth consent screen")
-                time.sleep(2)
-                break
 
     def get_year_selector_years(self):
         """Get available years from year selector dropdown."""
@@ -299,7 +155,7 @@ class AdminDashboardPage(BasePage):
         nav_selectors = [
             (By.PARTIAL_LINK_TEXT, 'Participants'),
             (By.LINK_TEXT, 'Manage Participants'),
-            (By.CSS_SELECTOR, 'a[href*="/admin/participants"]'),
+            (By.CSS_SELECTOR, 'a[href*="/bigbird/participants"]'),
             'nav-participants'
         ]
 
@@ -314,7 +170,7 @@ class AdminDashboardPage(BasePage):
         nav_selectors = [
             (By.PARTIAL_LINK_TEXT, 'Leaders'),
             (By.LINK_TEXT, 'Manage Leaders'),
-            (By.CSS_SELECTOR, 'a[href*="/admin/leaders"]'),
+            (By.CSS_SELECTOR, 'a[href*="/bigbird/leaders"]'),
             'nav-leaders'
         ]
 
@@ -329,7 +185,7 @@ class AdminDashboardPage(BasePage):
         nav_selectors = [
             (By.PARTIAL_LINK_TEXT, 'Unassigned'),
             (By.LINK_TEXT, 'Unassigned Participants'),
-            (By.CSS_SELECTOR, 'a[href*="/admin/unassigned"]'),
+            (By.CSS_SELECTOR, 'a[href*="/bigbird/unassigned"]'),
             'nav-unassigned'
         ]
 
@@ -393,7 +249,7 @@ class AdminDashboardPage(BasePage):
 
     def navigate_to_dashboard(self):
         """Navigate to admin dashboard."""
-        return self.navigate_to("/admin/dashboard") or self.navigate_to("/admin")
+        return self.navigate_to("/bigbird/dashboard") or self.navigate_to("/bigbird")
 
     def get_csv_export_content(self):
         """
@@ -409,8 +265,8 @@ class AdminDashboardPage(BasePage):
 
             # Try different CSV export endpoints
             csv_endpoints = [
-                '/admin/export_csv',
-                '/admin/participants/export',
+                '/bigbird/export_csv',
+                '/bigbird/participants/export',
                 '/export_csv'
             ]
 

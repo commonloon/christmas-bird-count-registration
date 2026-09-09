@@ -19,7 +19,7 @@ class AdminParticipantsPage(BasePage):
 
     def navigate_to_participants(self):
         """Navigate to participants management page."""
-        return self.navigate_to("/admin/participants")
+        return self.navigate_to("/bigbird/participants")
 
     def is_participants_page_loaded(self):
         """Check if participants management page is loaded."""
@@ -78,7 +78,7 @@ class AdminParticipantsPage(BasePage):
                 participant = {}
 
                 # Extract fields based on actual table structure:
-                # Name | Email | Cell Phone | Skill Level | Experience | Equipment | Notes | Leader | Scribe | Actions
+                # Name | Email | Cell Phone | Skill Level | Experience | Equipment | Notes | Leader | Actions
                 try:
                     # Column 1: Name (contains FEEDER indicator if applicable)
                     name_cell = cells[0]

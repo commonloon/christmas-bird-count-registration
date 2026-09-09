@@ -15,15 +15,28 @@ from datetime import datetime
 
 # Import deployment configuration for portability
 from config.cloud import (
-    TEST_BASE_URL, PRODUCTION_BASE_URL,
+    LOCAL_BASE_URL, TEST_BASE_URL, PRODUCTION_BASE_URL,
     TEST_DATABASE, PRODUCTION_DATABASE,
     GCP_PROJECT_ID, GCP_LOCATION
 )
 from config.admins import TEST_ADMIN_EMAILS, TEST_LEADER_EMAILS
 
+# The circle every test targets - a dedicated circle (created once, locally) rather
+# than any real circle's data. This is a multi-circle platform with no default/
+# fallback circle (see app.py's resolve_circle(), models/db.py's
+# resolve_default_circle_slug()) - any test code that constructs a model directly
+# (outside an HTTP request, where the Flask app resolves the circle from the
+# request's Host header automatically) must pass this explicitly.
+TEST_CIRCLE_SLUG = 'test'
+
 # Environment Configuration
 TEST_CONFIG = {
-    # Target URLs for testing (imported from config/cloud.py)
+    # Target URLs for testing (imported from config/cloud.py). 'local_url'/'test_url'
+    # both point at the local dev server via the dedicated 'test' circle's *.test
+    # hostname (see .env.example) - post-FullHost-migration there's no separate test
+    # environment to distinguish. 'production_url' is never navigated to (see
+    # tests/conftest.py's pytest_sessionstart guard).
+    'local_url': LOCAL_BASE_URL,
     'test_url': TEST_BASE_URL,
     'production_url': PRODUCTION_BASE_URL,
 
@@ -58,23 +71,24 @@ TEST_CONFIG = {
 }
 
 # Test Account Configuration
-# Account usernames imported from config/admins.py - passwords stored in Google Secret Manager
+# Account emails imported from config/admins.py. No passwords needed - auth is
+# magic-link (session-cookie) based now, not Google OAuth, so there's nothing
+# to store in Secret Manager for these accounts anymore. See
+# tests/utils/auth_utils.py's login_as_test_user() for how a session is
+# established without going through the real magic-link email.
 TEST_ACCOUNTS = {
     'admin_primary': {
         'email': TEST_ADMIN_EMAILS[0],
-        'secret_name': 'test-admin1-password',
         'role': 'admin',
         'description': 'Primary admin account for testing'
     },
     'admin_secondary': {
         'email': TEST_ADMIN_EMAILS[1] if len(TEST_ADMIN_EMAILS) > 1 else TEST_ADMIN_EMAILS[0],
-        'secret_name': 'test-admin2-password',
         'role': 'admin',
         'description': 'Secondary admin account for concurrent testing'
     },
     'leader': {
         'email': TEST_LEADER_EMAILS[0],
-        'secret_name': 'test-leader1-password',
         'role': 'leader',
         'description': 'Area leader account for leader interface testing'
     }
@@ -89,22 +103,38 @@ GCP_CONFIG = {
 
 # Test Environment Detection
 def get_target_environment():
-    """Determine which environment to test against based on settings."""
-    return os.getenv('TEST_TARGET', 'test')  # 'test' or 'production'
+    """Determine which environment to test against based on settings.
+
+    Defaults to 'local' (the FLASK_APP=app.py dev server) since that's the only
+    target that actually works post-FullHost-migration - 'test'/'production'
+    point at decommissioned Cloud Run services and are kept only for reference.
+    """
+    return os.getenv('TEST_TARGET', 'local')  # 'local', 'test', or 'production'
 
 def get_base_url():
     """Get the base URL for the target test environment."""
     env = get_target_environment()
     if env == 'production':
         return TEST_CONFIG['production_url']
-    return TEST_CONFIG['test_url']
+    if env == 'test':
+        return TEST_CONFIG['test_url']
+    return TEST_CONFIG['local_url']
 
 def get_database_name():
-    """Get the database name for the target test environment."""
+    """Get a label for the target environment's data store, for log messages only.
+
+    Postgres (this app's actual DB since the FullHost migration) doesn't have
+    separate named databases per environment the way Firestore did - it's one
+    shared 'cbc'/'cbc_dev' database with every circle's data scoped by
+    circle_slug. This just labels which environment's data a test run is
+    touching; nothing resolves it to an actual connection anymore.
+    """
     env = get_target_environment()
     if env == 'production':
         return TEST_CONFIG['production_database']
-    return TEST_CONFIG['test_database']
+    if env == 'test':
+        return TEST_CONFIG['test_database']
+    return 'cbc_dev (local Postgres)'
 
 # Test Data Paths
 TEST_DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
@@ -135,7 +165,7 @@ VALIDATION_RULES = {
             'first_name', 'last_name', 'email', 'phone', 'preferred_area',
             'skill_level', 'experience', 'participation_type', 'has_binoculars',
             'spotting_scope', 'notes_to_organizers', 'interested_in_leadership',
-            'interested_in_scribe', 'created_at', 'year'
+            'created_at', 'year'
         ],
         'sort_order': ['preferred_area', 'participation_type', 'first_name'],
         'max_export_time': 30  # seconds for large datasets

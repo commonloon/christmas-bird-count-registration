@@ -25,12 +25,11 @@ from contextlib import contextmanager
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, project_root)
 
-from google.cloud import firestore
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-from tests.test_config import get_base_url, get_database_name
+from tests.test_config import get_base_url, TEST_CIRCLE_SLUG
 from tests.page_objects import AdminParticipantsPage
 from tests.utils.load_test_data import load_test_fixture
 from tests.utils.reassignment_helper import reassign_participant_via_ui
@@ -124,32 +123,28 @@ def email_capture():
 
 
 @pytest.fixture(scope="module")
-def firestore_client_module():
-    """Create Firestore client for module scope (reused across tests)."""
-    database_name = get_database_name()
-    if database_name == '(default)':
-        client = firestore.Client()
-    else:
-        client = firestore.Client(database=database_name)
-    yield client
+def db_session_module():
+    """Provide the shared Postgres session for module scope (reused across tests)."""
+    from config.database import get_db_session
+    return get_db_session()
 
 
 @pytest.fixture(scope="module")
-def participant_model_module(firestore_client_module):
+def participant_model_module(db_session_module):
     """Create participant model for current year."""
     current_year = datetime.now().year
-    return ParticipantModel(firestore_client_module, current_year)
+    return ParticipantModel(db_session_module, current_year, TEST_CIRCLE_SLUG)
 
 
 @pytest.fixture(scope="module")
-def load_test_data_module(firestore_client_module):
+def load_test_data_module(db_session_module):
     """Load test data from CSV into database once per module."""
     try:
         current_year = datetime.now().year
         logger.info(f"Starting test data load for year {current_year}")
 
         results = load_test_fixture(
-            firestore_client_module,
+            db_session_module,
             years=[current_year],
             csv_filename='test_participants_2025.csv',
             clear_first=True
@@ -202,7 +197,7 @@ class TestEmailNotifications:
     """Test email notifications for participant reassignments."""
 
     @pytest.mark.critical
-    def test_simple_reassignment(self, authenticated_browser, firestore_client_module,
+    def test_simple_reassignment(self, authenticated_browser, db_session_module,
                                 participant_model_module, email_capture, flask_app_module,
                                 load_test_data_module):
         """
@@ -228,7 +223,7 @@ class TestEmailNotifications:
             with time_section("Phase 1: Setup email timestamps", test_name):
                 logger.info("Phase 1: Setting up email timestamps")
 
-                timestamp_model = EmailTimestampModel(firestore_client_module, current_year)
+                timestamp_model = EmailTimestampModel(db_session_module, current_year, TEST_CIRCLE_SLUG)
                 now = datetime.now(timezone.utc)
 
                 # Set both area C and E timestamps to current time
@@ -248,7 +243,7 @@ class TestEmailNotifications:
 
                 # Get a participant from Area C and reassign to Area E
                 # First, find a participant email to reassign
-                authenticated_browser.get(f"{base_url}/admin/participants")
+                authenticated_browser.get(f"{base_url}/bigbird/participants")
                 WebDriverWait(authenticated_browser, 10).until(
                     EC.presence_of_element_located((By.TAG_NAME, "table"))
                 )
@@ -286,7 +281,7 @@ class TestEmailNotifications:
                 time.sleep(1)  # Give database time to update
 
                 # Verify in reassignments_YYYY collection
-                reassignment_model = ReassignmentLogModel(firestore_client_module, current_year)
+                reassignment_model = ReassignmentLogModel(db_session_module, current_year, TEST_CIRCLE_SLUG)
                 recent_reassignments = reassignment_model.get_reassignments_since(now)
 
                 area_c_to_e_reassignment = None
@@ -316,7 +311,7 @@ class TestEmailNotifications:
                     mock_send.side_effect = email_capture.send_email
 
                     # Generate team update emails with Flask app for template rendering
-                    results = generate_team_update_emails(app=flask_app_module)
+                    results = generate_team_update_emails(flask_app_module, TEST_CIRCLE_SLUG)
 
                     logger.info(f"Team update results: {results['emails_sent']} sent, {results['areas_processed']} areas processed")
 
@@ -397,7 +392,7 @@ class TestEmailNotifications:
                     mock_send.side_effect = email_capture.send_email
 
                     # Generate weekly summary emails with Flask app for template rendering
-                    results = generate_weekly_summary_emails(app=flask_app_module)
+                    results = generate_weekly_summary_emails(flask_app_module, TEST_CIRCLE_SLUG)
 
                     logger.info(f"Weekly summary results: {results['emails_sent']} sent, {results['areas_processed']} areas processed")
 
@@ -451,7 +446,7 @@ class TestEmailNotifications:
             logger.error(f"Test failed with error: {e}", exc_info=True)
             raise
 
-    def test_rapid_reassignment_captures_original_source(self, authenticated_browser, firestore_client_module,
+    def test_rapid_reassignment_captures_original_source(self, authenticated_browser, db_session_module,
                                                          participant_model_module, email_capture, flask_app_module,
                                                          load_test_data_module):
         """
@@ -470,7 +465,7 @@ class TestEmailNotifications:
             # ============================================================
             logger.info("Phase 1: Setting up email timestamps")
 
-            timestamp_model = EmailTimestampModel(firestore_client_module, current_year)
+            timestamp_model = EmailTimestampModel(db_session_module, current_year, TEST_CIRCLE_SLUG)
             now = datetime.now(timezone.utc)
 
             # Set timestamps for all affected areas
@@ -486,7 +481,7 @@ class TestEmailNotifications:
             logger.info("Phase 2: Performing rapid reassignments D → J → R")
 
             # Find a participant in Area D to start with
-            authenticated_browser.get(f"{base_url}/admin/participants")
+            authenticated_browser.get(f"{base_url}/bigbird/participants")
             WebDriverWait(authenticated_browser, 10).until(
                 EC.presence_of_element_located((By.TAG_NAME, "table"))
             )
@@ -528,7 +523,7 @@ class TestEmailNotifications:
             email_capture.clear()
             with patch('services.email_service.email_service.send_email') as mock_send:
                 mock_send.side_effect = email_capture.send_email
-                results = generate_team_update_emails(app=flask_app_module)
+                results = generate_team_update_emails(flask_app_module, TEST_CIRCLE_SLUG)
                 logger.info(f"Team update results: {results['emails_sent']} sent")
 
             # Debug: Log all emails that were sent
@@ -573,7 +568,7 @@ class TestEmailNotifications:
             email_capture.clear()
             with patch('services.email_service.email_service.send_email') as mock_send:
                 mock_send.side_effect = email_capture.send_email
-                results = generate_weekly_summary_emails(app=flask_app_module)
+                results = generate_weekly_summary_emails(flask_app_module, TEST_CIRCLE_SLUG)
                 logger.info(f"Weekly summary results: {results['emails_sent']} sent")
 
             # Validate weekly emails for D, J, and R
@@ -597,7 +592,7 @@ class TestEmailNotifications:
             logger.error(f"Test failed with error: {e}", exc_info=True)
             raise
 
-    def test_reassignment_back_to_original_area(self, authenticated_browser, firestore_client_module,
+    def test_reassignment_back_to_original_area(self, authenticated_browser, db_session_module,
                                                 participant_model_module, email_capture, flask_app_module,
                                                 load_test_data_module):
         """
@@ -615,7 +610,7 @@ class TestEmailNotifications:
             # ============================================================
             logger.info("Phase 1: Setting up email timestamps")
 
-            timestamp_model = EmailTimestampModel(firestore_client_module, current_year)
+            timestamp_model = EmailTimestampModel(db_session_module, current_year, TEST_CIRCLE_SLUG)
             now = datetime.now(timezone.utc)
 
             for area in ['F', 'G']:
@@ -629,7 +624,7 @@ class TestEmailNotifications:
             # ============================================================
             logger.info("Phase 2: Performing round-trip reassignments F → G → F")
 
-            authenticated_browser.get(f"{base_url}/admin/participants")
+            authenticated_browser.get(f"{base_url}/bigbird/participants")
             WebDriverWait(authenticated_browser, 10).until(
                 EC.presence_of_element_located((By.TAG_NAME, "table"))
             )
@@ -704,7 +699,7 @@ class TestEmailNotifications:
             email_capture.clear()
             with patch('services.email_service.email_service.send_email') as mock_send:
                 mock_send.side_effect = email_capture.send_email
-                results = generate_team_update_emails(app=flask_app_module)
+                results = generate_team_update_emails(flask_app_module, TEST_CIRCLE_SLUG)
                 logger.info(f"Team update results: {results['emails_sent']} sent")
 
             # No net changes, so no emails should be generated
@@ -725,7 +720,7 @@ class TestEmailNotifications:
             email_capture.clear()
             with patch('services.email_service.email_service.send_email') as mock_send:
                 mock_send.side_effect = email_capture.send_email
-                results = generate_weekly_summary_emails(app=flask_app_module)
+                results = generate_weekly_summary_emails(flask_app_module, TEST_CIRCLE_SLUG)
                 logger.info(f"Weekly summary results: {results['emails_sent']} sent")
 
             # Check that F and G show no changes in their weekly summaries
@@ -749,7 +744,7 @@ class TestEmailNotifications:
             logger.error(f"Test failed with error: {e}", exc_info=True)
             raise
 
-    def test_reassignment_with_leadership_retention(self, authenticated_browser, firestore_client_module,
+    def test_reassignment_with_leadership_retention(self, authenticated_browser, db_session_module,
                                                     participant_model_module, email_capture, flask_app_module,
                                                     load_test_data_module):
         """
@@ -768,7 +763,7 @@ class TestEmailNotifications:
             # ============================================================
             logger.info("Phase 1: Setting up email timestamps")
 
-            timestamp_model = EmailTimestampModel(firestore_client_module, current_year)
+            timestamp_model = EmailTimestampModel(db_session_module, current_year, TEST_CIRCLE_SLUG)
             now = datetime.now(timezone.utc)
 
             for area in ['K', 'M']:
@@ -812,7 +807,7 @@ class TestEmailNotifications:
             email_capture.clear()
             with patch('services.email_service.email_service.send_email') as mock_send:
                 mock_send.side_effect = email_capture.send_email
-                results = generate_team_update_emails(app=flask_app_module)
+                results = generate_team_update_emails(flask_app_module, TEST_CIRCLE_SLUG)
                 logger.info(f"Team update results: {results['emails_sent']} sent")
 
             # Debug: Log all emails that were sent
@@ -848,7 +843,7 @@ class TestEmailNotifications:
             email_capture.clear()
             with patch('services.email_service.email_service.send_email') as mock_send:
                 mock_send.side_effect = email_capture.send_email
-                results = generate_weekly_summary_emails(app=flask_app_module)
+                results = generate_weekly_summary_emails(flask_app_module, TEST_CIRCLE_SLUG)
                 logger.info(f"Weekly summary results: {results['emails_sent']} sent")
 
             # Area K should not have weekly email (no leader)

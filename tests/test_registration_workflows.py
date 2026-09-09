@@ -17,11 +17,10 @@ from datetime import datetime
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, project_root)
 
-from tests.test_config import get_base_url, get_database_name
+from tests.test_config import get_base_url, TEST_CIRCLE_SLUG
 from tests.page_objects import RegistrationPage
 from tests.data import get_test_participant
 from models.participant import ParticipantModel
-from google.cloud import firestore
 from selenium import webdriver
 from webdriver_manager.firefox import GeckoDriverManager
 from selenium.webdriver.firefox.service import Service
@@ -43,7 +42,7 @@ def registration_page(browser):
 @pytest.fixture
 def db_client(clean_database):
     """Create database client for verification with clean state."""
-    # clean_database fixture provides the cleaned firestore client
+    # clean_database fixture provides the cleaned Postgres session
     return clean_database
 
 
@@ -51,7 +50,7 @@ def db_client(clean_database):
 def participant_model(db_client):
     """Create participant model for current year."""
     current_year = datetime.now().year
-    return ParticipantModel(db_client, current_year)
+    return ParticipantModel(db_client, current_year, TEST_CIRCLE_SLUG)
 
 
 class TestRegistrationWorkflows:
@@ -209,7 +208,6 @@ class TestRegistrationWorkflows:
 
         assert volunteer is not None, f"Unassigned volunteer not found: {participant_email}"
         assert volunteer['preferred_area'] == 'UNASSIGNED'
-        assert volunteer['interested_in_scribe'] == participant_data['interests']['scribe']
 
         logger.info("✓ Unassigned volunteer registration workflow completed successfully")
 
@@ -245,39 +243,6 @@ class TestRegistrationWorkflows:
         assert leader_candidate['skill_level'] == 'Expert'
 
         logger.info("✓ Leadership interested registration workflow completed successfully")
-
-    @pytest.mark.registration
-    def test_scribe_interested_registration(self, registration_page, participant_model):
-        """Test registration with scribe role interest."""
-        logger.info("Testing scribe interested participant registration")
-
-        participant_data = get_test_participant('participants', 'regular_scribe_interested')
-        participant_email = participant_data['personal']['email']
-
-        assert registration_page.navigate_to_registration(), "Failed to navigate to registration page"
-        assert registration_page.fill_complete_registration_form(participant_data), \
-            "Failed to fill registration form for scribe candidate"
-        assert registration_page.submit_registration(), "Failed to submit scribe interested registration"
-
-        time.sleep(3)
-        success_url = registration_page.get_current_url()
-        assert 'success' in success_url or 'registered' in success_url, \
-            f"Scribe interested registration failed: {success_url}"
-
-        # Verify database registration with scribe interest
-        time.sleep(2)
-        participants = participant_model.get_all_participants()
-        scribe_candidate = next(
-            (p for p in participants if p.get('email', '').lower() == participant_email.lower()),
-            None
-        )
-
-        assert scribe_candidate is not None, f"Scribe candidate not found: {participant_email}"
-        assert scribe_candidate['interested_in_scribe'] == True
-        assert scribe_candidate['interested_in_leadership'] == False
-
-        logger.info("✓ Scribe interested registration workflow completed successfully")
-
 
 class TestRegistrationFormValidation:
     """Test form validation and error handling."""
@@ -532,35 +497,3 @@ class TestFormDataPreservation:
                 logger.warning(f"Form data not fully preserved: {preservation_result}")
         else:
             logger.warning("Could not test area leader info navigation - link not found")
-
-    @pytest.mark.registration
-    def test_scribe_info_navigation(self, registration_page):
-        """Test form data preservation when visiting scribe info."""
-        logger.info("Testing form data preservation during scribe info navigation")
-
-        assert registration_page.navigate_to_registration(), "Failed to navigate to registration page"
-
-        # Fill partial form data
-        participant_data = get_test_participant('participants', 'regular_scribe_interested')
-        registration_page.fill_personal_information(participant_data)
-        registration_page.fill_experience_information(participant_data)
-
-        # Get current form data
-        original_data = registration_page.get_form_data()
-
-        # Navigate to scribe info
-        if registration_page.navigate_to_scribe_info():
-            logger.info("Successfully navigated to scribe info page")
-
-            # Navigate back to registration
-            assert registration_page.navigate_to_registration(), "Failed to navigate back to registration"
-
-            # Verify form data is preserved
-            preservation_result = registration_page.verify_form_data_preserved(original_data)
-
-            if preservation_result['preserved']:
-                logger.info("✓ Form data preserved during scribe info navigation")
-            else:
-                logger.warning(f"Form data not fully preserved: {preservation_result}")
-        else:
-            logger.warning("Could not test scribe info navigation - link not found")

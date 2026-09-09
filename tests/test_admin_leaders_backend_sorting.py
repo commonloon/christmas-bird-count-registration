@@ -17,19 +17,20 @@ sys.path.insert(0, project_root)
 
 from models.participant import ParticipantModel
 from tests.utils.database_utils import create_database_manager
+from tests.test_config import TEST_CIRCLE_SLUG
 
 
 @pytest.fixture
-def participant_model(firestore_client):
+def participant_model(db_session):
     """Create participant model for current year."""
     current_year = datetime.now().year
-    return ParticipantModel(firestore_client, current_year)
+    return ParticipantModel(db_session, current_year, TEST_CIRCLE_SLUG)
 
 
 @pytest.fixture(autouse=True)
-def cleanup_test_data(firestore_client):
+def cleanup_test_data(db_session):
     """Clean up test data before and after each test."""
-    db_manager = create_database_manager(firestore_client)
+    db_manager = create_database_manager(db_session)
     db_manager.clear_test_collections()
     yield
     db_manager.clear_test_collections()

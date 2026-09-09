@@ -17,23 +17,23 @@ sys.path.insert(0, project_root)
 
 from models.participant import ParticipantModel
 from tests.utils.database_utils import create_database_manager
-from tests.test_config import get_base_url
+from tests.test_config import get_base_url, TEST_CIRCLE_SLUG
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 
 @pytest.fixture
-def participant_model(firestore_client):
+def participant_model(db_session):
     """Create participant model for current year."""
     current_year = datetime.now().year
-    return ParticipantModel(firestore_client, current_year)
+    return ParticipantModel(db_session, current_year, TEST_CIRCLE_SLUG)
 
 
 @pytest.fixture(autouse=True)
-def cleanup_test_data(firestore_client):
+def cleanup_test_data(db_session):
     """Clean up test data before and after each test."""
-    db_manager = create_database_manager(firestore_client)
+    db_manager = create_database_manager(db_session)
     db_manager.clear_test_collections()
     yield
     db_manager.clear_test_collections()
@@ -102,7 +102,7 @@ class TestAdminLeadersSorting:
         # Beta and Charlie remain as potential leaders
 
         # Navigate to leaders page (already authenticated via fixture)
-        authenticated_browser.get(f"{base_url}/admin/leaders")
+        authenticated_browser.get(f"{base_url}/bigbird/leaders")
 
         wait = WebDriverWait(authenticated_browser, 10)
         wait.until(EC.presence_of_element_located((By.TAG_NAME, "table")))
@@ -168,7 +168,7 @@ class TestAdminLeadersSorting:
         base_url = get_base_url()
 
         # Navigate to leaders page with no data (already authenticated via fixture)
-        authenticated_browser.get(f"{base_url}/admin/leaders")
+        authenticated_browser.get(f"{base_url}/bigbird/leaders")
 
         wait = WebDriverWait(authenticated_browser, 10)
         # Just verify the page loads without errors
@@ -209,7 +209,7 @@ class TestAdminLeadersSorting:
         participant_model.add_participant(potential_participant)
 
         # Navigate to leaders page (already authenticated via fixture)
-        authenticated_browser.get(f"{base_url}/admin/leaders")
+        authenticated_browser.get(f"{base_url}/bigbird/leaders")
 
         wait = WebDriverWait(authenticated_browser, 10)
         wait.until(EC.presence_of_element_located((By.TAG_NAME, "table")))

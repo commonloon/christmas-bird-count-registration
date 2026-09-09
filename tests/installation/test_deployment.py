@@ -52,8 +52,8 @@ class TestURLAccessibility:
             )
 
     def test_admin_redirects_to_login(self, installation_config):
-        """Verify /admin redirects unauthenticated users to login."""
-        url = f"{installation_config['test_url']}/admin"
+        """Verify /bigbird redirects unauthenticated users to login."""
+        url = f"{installation_config['test_url']}/bigbird"
 
         try:
             # Don't follow redirects to check redirect status
@@ -61,7 +61,7 @@ class TestURLAccessibility:
 
             assert response.status_code in [302, 303, 307, 308], \
                 f"Expected redirect (302/303/307/308), got {response.status_code}\n" \
-                f"Unauthenticated access to /admin should redirect to login"
+                f"Unauthenticated access to /bigbird should redirect to login"
 
         except requests.exceptions.RequestException as e:
             pytest.fail(f"Failed to access {url}: {e}")
@@ -130,42 +130,43 @@ class TestURLAccessibility:
 class TestStaticAssets:
     """Validate that static assets are accessible and have correct content."""
 
-    def test_area_boundaries_json_accessible(self, installation_config, area_boundaries_data):
-        """Verify area_boundaries.json is accessible and matches configured areas."""
-        url = f"{installation_config['test_url']}/static/data/area_boundaries.json"
+    def test_area_boundaries_json_accessible(self, installation_config):
+        """Verify the live /api/areas endpoint is accessible and matches the test
+        circle's configured areas - replaces the old static area_boundaries.json file,
+        which nothing serves or reads anymore (area boundaries are DB-backed per
+        circle; see models/circle.py's CircleAreaModel.get_boundary_data())."""
+        url = f"{installation_config['test_url']}/api/areas"
 
         try:
             response = requests.get(url, timeout=10)
             assert response.status_code == 200, \
-                f"Expected status 200, got {response.status_code}\n" \
-                f"File should be at static/data/area_boundaries.json"
+                f"Expected status 200, got {response.status_code} from {url}"
 
-            # Parse JSON
             data = response.json()
 
             # Verify structure
-            assert 'areas' in data, "Missing 'areas' key in area_boundaries.json"
-            assert 'map_config' in data, "Missing 'map_config' key in area_boundaries.json"
+            assert 'areas' in data, "Missing 'areas' key in /api/areas response"
+            assert 'map_config' in data, "Missing 'map_config' key in /api/areas response"
 
             # Verify areas match configuration
-            json_area_codes = {area['letter_code'] for area in data['areas']}
+            api_area_codes = {area['letter_code'] for area in data['areas']}
             config_area_codes = set(installation_config['all_areas'])
 
-            missing = config_area_codes - json_area_codes
-            extra = json_area_codes - config_area_codes
+            missing = config_area_codes - api_area_codes
+            extra = api_area_codes - config_area_codes
 
             assert not missing and not extra, \
-                f"Area mismatch between area_boundaries.json and config/areas.py:\n" \
-                f"Expected (from config/areas.py): {sorted(config_area_codes)}\n" \
-                f"Got from JSON: {sorted(json_area_codes)}\n" \
-                f"Missing from JSON: {sorted(missing)}\n" \
-                f"Extra in JSON: {sorted(extra)}\n" \
-                f"Run: python utils/parse_area_boundaries.py to regenerate"
+                f"Area mismatch between /api/areas and the test circle's configured areas:\n" \
+                f"Expected (circle_areas labels): {sorted(config_area_codes)}\n" \
+                f"Got from /api/areas: {sorted(api_area_codes)}\n" \
+                f"Missing from API: {sorted(missing)}\n" \
+                f"Extra in API: {sorted(extra)}\n" \
+                f"Import boundaries via /bigbird/circles/<slug>/areas for any missing area."
 
         except requests.exceptions.RequestException as e:
             pytest.fail(f"Failed to access {url}: {e}")
         except json.JSONDecodeError as e:
-            pytest.fail(f"Invalid JSON in area_boundaries.json: {e}")
+            pytest.fail(f"Invalid JSON from /api/areas: {e}")
 
     def test_map_js_loads(self, installation_config):
         """Verify static/js/map.js is accessible."""
@@ -404,45 +405,40 @@ class TestAPIEndpoints:
         except requests.exceptions.RequestException as e:
             pytest.fail(f"Failed to access {url}: {e}")
 
-    def test_api_map_config_matches_area_boundaries(self, installation_config):
-        """Verify /api/areas map_config matches static/data/area_boundaries.json."""
+    def test_api_map_config_matches_area_boundaries(self, installation_config, area_boundaries_data):
+        """Verify the live /api/areas endpoint's map_config matches calling
+        CircleAreaModel.get_boundary_data() directly - i.e. the HTTP route wiring
+        (routes/api.py) doesn't diverge from the underlying DB-backed model."""
         api_url = f"{installation_config['test_url']}/api/areas"
-        json_url = f"{installation_config['test_url']}/static/data/area_boundaries.json"
 
         try:
             api_response = requests.get(api_url, timeout=10)
-            json_response = requests.get(json_url, timeout=10)
-
             assert api_response.status_code == 200
-            assert json_response.status_code == 200
 
             api_data = api_response.json()
-            json_data = json_response.json()
-
-            # Extract map_config from both sources
             api_map_config = api_data.get('map_config', {})
-            json_map_config = json_data.get('map_config', {})
+            expected_map_config = area_boundaries_data.get('map_config', {})
 
             # Compare center
-            assert api_map_config.get('center') == json_map_config.get('center'), \
+            assert api_map_config.get('center') == expected_map_config.get('center'), \
                 f"Map center mismatch:\n" \
                 f"API: {api_map_config.get('center')}\n" \
-                f"JSON: {json_map_config.get('center')}\n" \
-                f"These should match. Check routes/api.py and area_boundaries.json"
+                f"Direct model call: {expected_map_config.get('center')}\n" \
+                f"These should match. Check routes/api.py's get_areas()"
 
             # Compare bounds
-            assert api_map_config.get('bounds') == json_map_config.get('bounds'), \
+            assert api_map_config.get('bounds') == expected_map_config.get('bounds'), \
                 f"Map bounds mismatch:\n" \
                 f"API: {api_map_config.get('bounds')}\n" \
-                f"JSON: {json_map_config.get('bounds')}\n" \
-                f"These should match. Check routes/api.py and area_boundaries.json"
+                f"Direct model call: {expected_map_config.get('bounds')}\n" \
+                f"These should match. Check routes/api.py's get_areas()"
 
             # Compare zoom
-            assert api_map_config.get('zoom') == json_map_config.get('zoom'), \
+            assert api_map_config.get('zoom') == expected_map_config.get('zoom'), \
                 f"Map zoom mismatch:\n" \
                 f"API: {api_map_config.get('zoom')}\n" \
-                f"JSON: {json_map_config.get('zoom')}\n" \
-                f"These should match. Check routes/api.py and area_boundaries.json"
+                f"Direct model call: {expected_map_config.get('zoom')}\n" \
+                f"These should match. Check routes/api.py's get_areas()"
 
         except requests.exceptions.RequestException as e:
             pytest.fail(f"Failed to access API endpoints: {e}")
@@ -661,8 +657,9 @@ class TestRegistrationFormRendering:
         """Verify admin-only areas are not shown in public registration form."""
         import re
         from config.areas import get_all_areas
-        from config.database import get_firestore_client
+        from config.database import get_db_session
         from models.area_signup_type import AreaSignupTypeModel
+        from tests.test_config import TEST_CIRCLE_SLUG
 
         url = installation_config['test_url']
         base_url = url.rstrip('/')
@@ -671,12 +668,12 @@ class TestRegistrationFormRendering:
         all_areas = get_all_areas()
 
         # Get current area signup types from database
-        db, _ = get_firestore_client()
-        signup_model = AreaSignupTypeModel(db)
+        db = get_db_session()
+        signup_model = AreaSignupTypeModel(db, circle_slug=TEST_CIRCLE_SLUG)
         current_types = signup_model.get_all_signup_types()
 
         # Navigate to admin page to get CSRF token
-        authenticated_browser.get(f'{base_url}/admin')
+        authenticated_browser.get(f'{base_url}/bigbird')
         page_source = authenticated_browser.page_source
 
         # Extract CSRF token from page source (looks for X-CSRFToken or similar patterns)
@@ -704,7 +701,7 @@ class TestRegistrationFormRendering:
                         'admin_assignment_only': False
                     }
                     response = session.post(
-                        f'{base_url}/admin/api/update-area-signup-type',
+                        f'{base_url}/bigbird/api/update-area-signup-type',
                         json=payload,
                         headers={'X-CSRFToken': csrf_token}
                     )
@@ -718,7 +715,7 @@ class TestRegistrationFormRendering:
                 'admin_assignment_only': True
             }
             response = session.post(
-                f'{base_url}/admin/api/update-area-signup-type',
+                f'{base_url}/bigbird/api/update-area-signup-type',
                 json=payload,
                 headers={'X-CSRFToken': csrf_token}
             )

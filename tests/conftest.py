@@ -11,7 +11,6 @@ import os
 import sys
 import logging
 from datetime import datetime
-from google.cloud import firestore, secretmanager
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
@@ -23,7 +22,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
 from tests.test_config import (
-    TEST_CONFIG, TEST_ACCOUNTS, GCP_CONFIG,
+    TEST_CONFIG, TEST_ACCOUNTS, TEST_CIRCLE_SLUG,
     get_base_url, get_database_name, LOGGING_CONFIG
 )
 
@@ -33,6 +32,72 @@ logging.basicConfig(
     format=LOGGING_CONFIG['format']
 )
 logger = logging.getLogger(__name__)
+
+_LOCAL_HOSTS = ('localhost', '127.0.0.1')
+
+
+def _is_safe_test_host(hostname):
+    """True for localhost/127.0.0.1 or anything under the IANA-reserved .test TLD
+    (RFC 6761 - permanently reserved, can never resolve on the real internet). Used
+    to allow the dedicated local 'test' circle (test.cbc.test, see .env.example)
+    without opening this guard up to any real-looking hostname."""
+    if not hostname:
+        return False
+    hostname = hostname.lower()
+    return hostname in _LOCAL_HOSTS or hostname == 'test' or hostname.endswith('.test')
+
+
+def pytest_sessionstart(session):
+    """Hard-abort the whole run if it isn't pointed at a local database/server.
+
+    Production Postgres lives on a separate host from any app server (SSH-tunnel
+    only), so a legitimate local test run's DATABASE_URL host will never be
+    anything but localhost/127.0.0.1 - even if this suite were somehow launched
+    from the production app server itself. Runs once, before any fixture or
+    test executes (stronger than an autouse fixture, which only runs for tests
+    that request it).
+    """
+    from sqlalchemy.engine import make_url
+    from dotenv import load_dotenv
+
+    # Nothing has loaded .env yet this early (config.database does it, but only
+    # once something imports that module) - load it ourselves so DATABASE_URL
+    # is actually populated before we check it.
+    load_dotenv()
+
+    database_url = os.environ.get('DATABASE_URL', '')
+    if not database_url:
+        pytest.exit("Refusing to run: DATABASE_URL is not set.", returncode=1)
+
+    db_host = make_url(database_url).host
+    if db_host not in _LOCAL_HOSTS:
+        pytest.exit(
+            f"Refusing to run: DATABASE_URL host '{db_host}' is not localhost/127.0.0.1. "
+            "This test suite deletes and inserts rows and must never run against a "
+            "non-local database.",
+            returncode=1
+        )
+
+    from urllib.parse import urlparse
+    from config.cloud import TEST_BASE_URL
+
+    # Check get_base_url() (what get_base_url()-based tests actually navigate to) AND
+    # config.cloud.TEST_BASE_URL directly - tests/installation/*.py read TEST_BASE_URL
+    # straight from config/cloud.py, bypassing get_base_url()/TEST_TARGET entirely.
+    # That gap once let those tests silently send real browser traffic to a live
+    # legacy Cloud Run host (cbc-test.naturevancouver.ca) that looked decommissioned
+    # but wasn't - checking both constants here closes it structurally rather than
+    # trusting every test file to route through the one already-guarded function.
+    for url in (get_base_url(), TEST_BASE_URL):
+        host = urlparse(url).hostname
+        if not _is_safe_test_host(host):
+            pytest.exit(
+                f"Refusing to run: test target '{url}' (host '{host}') is not "
+                "localhost/127.0.0.1 or a *.test hostname. This test suite submits real "
+                "registrations/emails and must never run against a remote server "
+                "(check TEST_TARGET / config/cloud.py).",
+                returncode=1
+            )
 
 # Pytest configuration
 def pytest_configure(config):
@@ -74,99 +139,17 @@ def pytest_collection_modifyitems(config, items):
 
 # Database Fixtures
 @pytest.fixture(scope="session")
-def firestore_client():
-    """Create Firestore client for test session with correct database."""
-    try:
-        os.environ['GOOGLE_CLOUD_PROJECT'] = GCP_CONFIG['project_id']
-        database_name = get_database_name()
-        client = firestore.Client(database=database_name)
-        logger.info(f"Connected to Firestore project: {GCP_CONFIG['project_id']}, database: {database_name}")
-        return client
-    except Exception as e:
-        logger.error(f"Failed to connect to Firestore: {e}")
-        pytest.fail(f"Cannot run tests without Firestore connection: {e}")
+def db_session():
+    """Provide the app's real SQLAlchemy session (Postgres) for test setup/teardown.
 
-@pytest.fixture(scope="session")
-def secret_manager_client():
-    """Create Secret Manager client for retrieving test credentials."""
-    try:
-        client = secretmanager.SecretManagerServiceClient()
-        logger.info("Connected to Secret Manager")
-        return client
-    except Exception as e:
-        logger.error(f"Failed to connect to Secret Manager: {e}")
-        pytest.fail(f"Cannot run tests without Secret Manager access: {e}")
-
-@pytest.fixture(scope="session")
-def test_credentials(secret_manager_client, request):
-    """Retrieve test account credentials from Secret Manager.
-
-    Session-scoped to avoid redundant credential retrieval across all tests.
-    Credentials are static for the entire test suite run.
-
-    For smoke tests that don't need authentication, this fixture returns None
-    and only fails when the credentials are actually accessed.
+    Replaces the old Firestore client fixture - this app has been fully off
+    Firestore since the FullHost migration. Session-scoped since
+    config.database.get_db_session() itself manages a single underlying
+    connection; tests needing isolation should scope their own data changes,
+    not create a second engine here.
     """
-    credentials = {}
-    missing_secrets = []
-
-    for account_name, account_config in TEST_ACCOUNTS.items():
-        try:
-            secret_name = f"projects/{GCP_CONFIG['project_id']}/secrets/{account_config['secret_name']}/versions/latest"
-            response = secret_manager_client.access_secret_version(request={"name": secret_name})
-            password = response.payload.data.decode("UTF-8").strip()
-
-            credentials[account_name] = {
-                'email': account_config['email'],
-                'password': password,
-                'role': account_config['role']
-            }
-            logger.info(f"Retrieved credentials for {account_config['email']}")
-        except Exception as e:
-            logger.error(f"Failed to retrieve credentials for {account_name}: {e}")
-            missing_secrets.append({
-                'name': account_config['secret_name'],
-                'email': account_config['email'],
-                'error': str(e)
-            })
-
-    if missing_secrets:
-        # Check if this is a smoke test - if so, log warning but don't fail
-        if hasattr(request, 'node') and request.node.get_closest_marker('smoke'):
-            logger.warning(f"Test credentials missing but running smoke test - skipping credential validation")
-            return None
-
-        error_msg = "\n" + "=" * 80 + "\n"
-        error_msg += "ERROR: Test Account Credentials Not Configured\n"
-        error_msg += "=" * 80 + "\n\n"
-        error_msg += f"Project: {GCP_CONFIG['project_id']}\n\n"
-        error_msg += "Missing secrets:\n"
-        for secret in missing_secrets:
-            error_msg += f"  - {secret['name']} (for {secret['email']})\n"
-
-        error_msg += "\n" + "-" * 80 + "\n"
-        error_msg += "TO RUN PHASE 1-3 TESTS (Configuration, Infrastructure, Deployment):\n"
-        error_msg += "  These tests don't need credentials. Run them separately:\n\n"
-        error_msg += "  pytest tests/installation/test_configuration.py -m smoke -v\n"
-        error_msg += "  pytest tests/installation/test_infrastructure.py -m smoke -v\n"
-        error_msg += "  pytest tests/installation/test_deployment.py -m smoke -v\n"
-        error_msg += "\n" + "-" * 80 + "\n"
-        error_msg += "TO SET UP TEST CREDENTIALS FOR PHASE 4 (Core Functionality):\n\n"
-        error_msg += "1. Create test admin account passwords in Secret Manager:\n\n"
-        for secret in missing_secrets:
-            error_msg += f"   gcloud config set project {GCP_CONFIG['project_id']}\n"
-            error_msg += f"   echo 'YOUR_PASSWORD_HERE' | gcloud secrets create {secret['name']} --project={GCP_CONFIG['project_id']} --data-file=-\n\n"
-
-        error_msg += "2. Configure test admin emails in config/admins.py:\n"
-        error_msg += "   Update TEST_ADMIN_EMAILS and TEST_LEADER_EMAILS\n\n"
-        error_msg += "3. For detailed setup instructions, see:\n"
-        error_msg += "   - docs/TEST_SETUP.md (complete test environment setup)\n"
-        error_msg += "   - docs/DEPLOYMENT.md (admin account configuration)\n"
-        error_msg += "\n" + "=" * 80 + "\n"
-
-        pytest.fail(error_msg)
-
-    return credentials
+    from config.database import get_db_session
+    return get_db_session()
 
 # Browser Fixtures
 @pytest.fixture(scope="session")
@@ -338,11 +321,12 @@ def browser(chrome_options, firefox_options):
                 logger.warning(f"Error closing {browser_type} browser: {e}")
 
 @pytest.fixture(scope="session")
-def authenticated_browser(chrome_options, firefox_options, test_credentials):
+def authenticated_browser(chrome_options, firefox_options):
     """Create browser and authenticate once for entire test session.
 
-    This fixture performs OAuth authentication once and reuses the browser
-    session across all tests in the session, avoiding repeated expensive OAuth flows.
+    Authenticates via a directly-injected signed session cookie (see
+    tests/utils/auth_utils.py) rather than a real magic-link email, once per
+    session, and reuses the browser across all tests in the session.
     Uses admin_primary credentials by default.
     """
     from tests.utils.auth_utils import admin_login_for_test
@@ -382,9 +366,9 @@ def authenticated_browser(chrome_options, firefox_options, test_credentials):
         driver.set_page_load_timeout(15)
 
         # Perform authentication ONCE for the entire class
-        logger.info("Performing one-time OAuth authentication for test class")
-        admin_login_for_test(driver, get_base_url(), test_credentials['admin_primary'])
-        logger.info("OAuth authentication successful - session will be reused across all tests")
+        logger.info("Performing one-time session-cookie authentication for test class")
+        admin_login_for_test(driver, get_base_url(), TEST_ACCOUNTS['admin_primary'])
+        logger.info("Authentication successful - session will be reused across all tests")
 
         yield driver
 
@@ -395,125 +379,66 @@ def authenticated_browser(chrome_options, firefox_options, test_credentials):
 
 # Database State Management Fixtures
 @pytest.fixture
-def clean_database(firestore_client):
-    """Provide a clean database state for tests."""
-    database_name = get_database_name()
+def clean_database(db_session):
+    """Provide a clean database state for tests (Postgres - replaces the old
+    per-year Firestore collection wipe with row deletes scoped to the dedicated
+    test circle, since every circle's data now lives in shared participants/
+    removal_log tables)."""
+    from models.db import Participant, RemovalLog
+
+    circle_slug = TEST_CIRCLE_SLUG
     current_year = TEST_CONFIG['current_year']
     isolation_year = TEST_CONFIG['isolation_test_year']
 
-    collections_to_clear = [
-        f'participants_{current_year}',
-        f'participants_{isolation_year}',
-        f'removal_log_{current_year}',
-        f'removal_log_{isolation_year}'
-    ]
-
-    # Note: area_leaders collections are preserved for migration utilities
-    # Leadership data is now stored in participants collections with is_leader flag
-
-    def clear_collections():
-        """Clear specified collections."""
-        for collection_name in collections_to_clear:
+    def clear_years():
+        """Delete participants/removal_log rows for the test/isolation years."""
+        for year in (current_year, isolation_year):
             try:
-                collection_ref = firestore_client.collection(collection_name)
-                docs = collection_ref.limit(500).stream()  # Batch delete for efficiency
-
-                for doc in docs:
-                    doc.reference.delete()
-
-                logger.info(f"Cleared collection: {collection_name}")
+                db_session.query(Participant).filter_by(circle_slug=circle_slug, year=year).delete()
+                db_session.query(RemovalLog).filter_by(circle_slug=circle_slug, year=year).delete()
             except Exception as e:
-                logger.warning(f"Error clearing collection {collection_name}: {e}")
+                logger.warning(f"Error clearing year {year} for {circle_slug}: {e}")
+        db_session.commit()
+        logger.info(f"Cleared {circle_slug} participants/removal_log for years {current_year}, {isolation_year}")
 
     # Clear before test
-    clear_collections()
+    clear_years()
     logger.info("Database cleaned for test")
 
-    yield firestore_client
+    yield db_session
 
     # Optionally clear after test (uncomment if needed)
-    # clear_collections()
+    # clear_years()
     # logger.info("Database cleaned after test")
 
 @pytest.fixture(scope="class")
-def populated_database(firestore_client):
+def populated_database(db_session):
     """Provide a database with realistic test data loaded from CSV fixture.
 
     Class-scoped: Loads test data once per test class, allowing related tests
     to share the same dataset. Tests within a class should use different
     participants to avoid interference.
     """
-    from tests.utils.load_test_data import load_csv_participants, load_participants_to_firestore
-    from models.participant import ParticipantModel
+    from tests.utils.load_test_data import load_csv_participants, load_participants_to_postgres
 
     current_year = datetime.now().year
-    participant_model = ParticipantModel(firestore_client, current_year)
+    circle_slug = TEST_CIRCLE_SLUG
 
-    # Clear existing participants for current year to start fresh
-    logger.info("Clearing existing participants for clean test")
-    try:
-        participants_ref = firestore_client.collection(f'participants_{current_year}')
-        batch_size = 100
-        deleted = 0
-
-        while True:
-            docs = participants_ref.limit(batch_size).stream()
-            batch = firestore_client.batch()
-            count = 0
-
-            for doc in docs:
-                batch.delete(doc.reference)
-                count += 1
-                deleted += 1
-
-            if count == 0:
-                break
-
-            batch.commit()
-
-        logger.info(f"Cleared {deleted} existing participants")
-    except Exception as e:
-        logger.warning(f"Could not clear participants: {e}")
-
-    # Load participants from CSV fixture
     csv_path = os.path.join(os.path.dirname(__file__), 'fixtures', 'test_participants_2025.csv')
     logger.info(f"Loading test participants from {csv_path}")
-
     participants = load_csv_participants(csv_path)
-    logger.info(f"Loaded {len(participants)} participants from CSV")
 
-    # Upload to Firestore
-    load_participants_to_firestore(firestore_client, current_year, participants)
-    logger.info(f"Successfully loaded {len(participants)} test participants to Firestore")
+    load_participants_to_postgres(db_session, current_year, participants, clear_first=True, circle_slug=circle_slug)
+    logger.info(f"Successfully loaded {len(participants)} test participants into Postgres")
 
     yield participants
 
     # Clean up test participants
-    logger.info(f"Cleaning up {len(participants)} CSV test participants")
-    try:
-        # Batch delete for efficiency
-        participants_ref = firestore_client.collection(f'participants_{current_year}')
-        batch_size = 100
-        deleted = 0
-
-        while True:
-            docs = participants_ref.limit(batch_size).stream()
-            batch = firestore_client.batch()
-            count = 0
-
-            for doc in docs:
-                batch.delete(doc.reference)
-                count += 1
-                deleted += 1
-
-            if count == 0:
-                break
-
-            batch.commit()
-
-        logger.info(f"Cleaned up {deleted} participants from database")
-    except Exception as e:
-        logger.warning(f"Error during cleanup: {e}")
+    from models.db import Participant, RemovalLog
+    logger.info(f"Cleaning up CSV test participants for {circle_slug} {current_year}")
+    db_session.query(Participant).filter_by(circle_slug=circle_slug, year=current_year).delete()
+    db_session.query(RemovalLog).filter_by(circle_slug=circle_slug, year=current_year).delete()
+    db_session.commit()
 
 @pytest.fixture
 def identity_test_database(clean_database):
@@ -613,7 +538,7 @@ def test_session_setup():
 
 # Coverage download fixture (session-scoped, runs after all tests)
 @pytest.fixture(scope="session", autouse=True)
-def download_coverage_after_tests(test_credentials):
+def download_coverage_after_tests():
     """Download coverage data from test server after all Selenium tests complete.
 
     This fixture automatically runs at the end of the test session if coverage

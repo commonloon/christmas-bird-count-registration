@@ -7,7 +7,7 @@ Tests all critical workflows to ensure the conversion from dual-table (participa
 to single-table (participants with leadership flags) preserves all functionality.
 
 Test Categories:
-1. Participant Registration (all types: regular, feeder, leader candidates, scribes)
+1. Participant Registration (all types: regular, feeder, leader candidates)
 2. Leader Promotion Workflows (participant → leader, validation)
 3. Admin Leader Management UI (add, edit, delete leaders)
 4. CSV Export Functionality (participants and leaders separately)
@@ -62,14 +62,15 @@ def verify_registration_success(browser, expected_email):
     """Verify successful registration by checking database first, then URL."""
     import urllib.parse
     from models.participant import ParticipantModel
-    from config.database import get_firestore_client
+    from config.database import get_db_session
+    from tests.test_config import TEST_CIRCLE_SLUG
 
     # Wait for page redirect and database write
     time.sleep(3)
 
     # Check database FIRST - this is the source of truth
-    db, _ = get_firestore_client()
-    participant_model = ParticipantModel(db, datetime.now().year)
+    db = get_db_session()
+    participant_model = ParticipantModel(db, datetime.now().year, TEST_CIRCLE_SLUG)
 
     # Find participant by email
     participants = participant_model.get_all_participants()
@@ -188,40 +189,6 @@ class TestParticipantRegistration:
         assert participant.get('interested_in_leadership', False) == True
         assert participant.get('is_leader', False) == False  # Not yet promoted
 
-    @pytest.mark.critical
-    def test_scribe_candidate_registration(self, browser, base_url, clean_database):
-        """Test registration of participant interested in being a scribe."""
-        browser.get(base_url)
-
-        # Fill registration form
-        browser.find_element(By.ID, "first_name").send_keys("Alice")
-        browser.find_element(By.ID, "last_name").send_keys("ScribeCandidate")
-        browser.find_element(By.ID, "email").send_keys("alice.scribe@test-regression.ca")
-        browser.find_element(By.ID, "phone").send_keys("604-555-0004")
-
-        # Intermediate birder
-        safe_select_by_value(browser, (By.ID, "skill_level"), "Intermediate")
-        safe_select_by_value(browser, (By.ID, "experience"), "1-2 counts")
-
-        # Select area and participation
-        safe_select_by_value(browser, (By.ID, "preferred_area"), "D")
-        safe_click(browser, (By.ID, "regular"))  # Click radio button for regular participation
-
-        # Express interest in scribe role
-        safe_click(browser, (By.ID, "interested_in_scribe"))
-        safe_click(browser, (By.ID, "has_binoculars"))
-
-        # Add notes
-        browser.find_element(By.ID, "notes_to_organizers").send_keys("Good handwriting, experience with data entry")
-
-        # Submit registration
-        safe_click(browser, (By.XPATH, "//button[@type='submit']"))
-
-        # Verify successful registration
-        participant_id, participant = verify_registration_success(browser, "alice.scribe@test-regression.ca")
-        assert participant.get('interested_in_scribe', False) == True
-
-
 class TestLeaderPromotionWorkflows:
     """Test leader promotion and demotion workflows."""
 
@@ -272,7 +239,7 @@ class TestLeaderPromotionWorkflows:
         # Step 2: Use pre-authenticated admin browser (already logged in)
         # Navigate to leaders page to promote participant
         # Participant must have indicated leadership interest during registration
-        authenticated_browser.get(f"{base_url}/admin/leaders")
+        authenticated_browser.get(f"{base_url}/bigbird/leaders")
         wait = WebDriverWait(authenticated_browser, 10)
 
         # Verify we're on the right page and authenticated
@@ -338,9 +305,10 @@ class TestLeaderPromotionWorkflows:
 
         # Step 5: Verify in database
         from models.participant import ParticipantModel
-        from config.database import get_firestore_client
-        db, _ = get_firestore_client()
-        participant_model = ParticipantModel(db, datetime.now().year)
+        from config.database import get_db_session
+        from tests.test_config import TEST_CIRCLE_SLUG
+        db = get_db_session()
+        participant_model = ParticipantModel(db, datetime.now().year, TEST_CIRCLE_SLUG)
 
         participant = participant_model.get_participant(participant_id)
         assert participant is not None, f"Participant {participant_id} not found after promotion"
@@ -358,7 +326,7 @@ class TestAdminLeaderManagement:
     def test_add_new_leader_via_ui(self, authenticated_browser, base_url, clean_database):
         """Test adding a new leader through the admin leaders interface."""
         # Navigate to leaders page (already authenticated via fixture)
-        authenticated_browser.get(f"{base_url}/admin/leaders")
+        authenticated_browser.get(f"{base_url}/bigbird/leaders")
 
         # Fill new leader form
         wait = WebDriverWait(authenticated_browser, 10)
@@ -395,9 +363,10 @@ class TestAdminLeaderManagement:
 
         # Verify in database
         from models.participant import ParticipantModel
-        from config.database import get_firestore_client
-        db, _ = get_firestore_client()
-        participant_model = ParticipantModel(db, datetime.now().year)
+        from config.database import get_db_session
+        from tests.test_config import TEST_CIRCLE_SLUG
+        db = get_db_session()
+        participant_model = ParticipantModel(db, datetime.now().year, TEST_CIRCLE_SLUG)
         leaders = participant_model.get_leaders_by_area("E")
         assert len(leaders) == 1
         assert leaders[0]['first_name'] == "NewLeader"
@@ -417,7 +386,7 @@ class TestAdminLeaderManagement:
         )
 
         # Navigate to leaders page (already authenticated via fixture)
-        authenticated_browser.get(f"{base_url}/admin/leaders")
+        authenticated_browser.get(f"{base_url}/bigbird/leaders")
 
         wait = WebDriverWait(authenticated_browser, 10)
 
@@ -450,9 +419,10 @@ class TestAdminLeaderManagement:
 
         # Verify in database
         from models.participant import ParticipantModel
-        from config.database import get_firestore_client
-        db, _ = get_firestore_client()
-        participant_model = ParticipantModel(db, datetime.now().year)
+        from config.database import get_db_session
+        from tests.test_config import TEST_CIRCLE_SLUG
+        db = get_db_session()
+        participant_model = ParticipantModel(db, datetime.now().year, TEST_CIRCLE_SLUG)
         updated_participant = participant_model.get_participant(participant_id)
         assert updated_participant['first_name'] == "EditedLeader"
 
@@ -461,7 +431,7 @@ class TestAdminLeaderManagement:
 # The CSV export functionality is comprehensively tested in test_csv_export_workflows.py
 # That file includes:
 # - test_csv_export_button_availability - Verifies export buttons on dashboard and participants page
-# - test_direct_csv_route_access - Tests direct access to /admin/export_csv route
+# - test_direct_csv_route_access - Tests direct access to /bigbird/export_csv route
 # - test_csv_export_with_known_data - Validates export content against known test data
 # - test_csv_field_completeness - Checks all required fields are present
 # - test_csv_sorting_order - Validates sort order (area → participation_type → name)
@@ -485,9 +455,10 @@ class TestDataIntegrityAndSynchronization:
         )
 
         from models.participant import ParticipantModel
-        from config.database import get_firestore_client
-        db, _ = get_firestore_client()
-        participant_model = ParticipantModel(db, datetime.now().year)
+        from config.database import get_db_session
+        from tests.test_config import TEST_CIRCLE_SLUG
+        db = get_db_session()
+        participant_model = ParticipantModel(db, datetime.now().year, TEST_CIRCLE_SLUG)
 
         # Verify participant is a leader
         participant = participant_model.get_participant(participant_id)
@@ -517,9 +488,10 @@ class TestDataIntegrityAndSynchronization:
         )
 
         from models.participant import ParticipantModel
-        from config.database import get_firestore_client
-        db, _ = get_firestore_client()
-        participant_model = ParticipantModel(db, datetime.now().year)
+        from config.database import get_db_session
+        from tests.test_config import TEST_CIRCLE_SLUG
+        db = get_db_session()
+        participant_model = ParticipantModel(db, datetime.now().year, TEST_CIRCLE_SLUG)
 
         # Verify not a leader initially
         participant = participant_model.get_participant(participant_id)
@@ -545,9 +517,10 @@ class TestDataIntegrityAndSynchronization:
     def test_no_orphaned_leader_records(self, single_identity_test):
         """Test that single-table design prevents orphaned leader records."""
         from models.participant import ParticipantModel
-        from config.database import get_firestore_client
-        db, _ = get_firestore_client()
-        participant_model = ParticipantModel(db, datetime.now().year)
+        from config.database import get_db_session
+        from tests.test_config import TEST_CIRCLE_SLUG
+        db = get_db_session()
+        participant_model = ParticipantModel(db, datetime.now().year, TEST_CIRCLE_SLUG)
 
         # Get all participants
         all_participants = participant_model.get_all_participants()

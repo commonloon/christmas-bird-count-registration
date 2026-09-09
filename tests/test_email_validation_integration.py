@@ -36,7 +36,6 @@ sys.path.insert(0, project_root)
 from tests.test_config import get_base_url, TEST_CONFIG
 from tests.page_objects.registration_page import RegistrationPage
 from tests.data.test_scenarios import get_test_participant, generate_unique_email, generate_unique_identity
-from google.cloud import firestore
 
 
 # ============================================================================
@@ -45,10 +44,9 @@ from google.cloud import firestore
 
 @pytest.fixture(scope="module")
 def db():
-    """Firestore database client with correct database."""
-    from config.database import get_firestore_client
-    db_client, database_id = get_firestore_client()
-    return db_client
+    """Postgres session (module-scoped for compatibility with this file's existing fixtures)."""
+    from config.database import get_db_session
+    return get_db_session()
 
 
 @pytest.fixture
@@ -64,7 +62,8 @@ def test_cleanup(db):
     """Clean up test data after each test."""
     yield
     # Cleanup any test participants created during tests
-    participants_ref = db.collection('participants_2025')
+    from models.db import Participant
+    from tests.test_config import TEST_CIRCLE_SLUG
     test_emails = [
         'valid-test@example.com',
         'invalid-test@example.com',
@@ -76,15 +75,16 @@ def test_cleanup(db):
         'test.user@example.com',
     ]
 
-    for email in test_emails:
-        try:
-            # Use filter() keyword argument as recommended
-            docs = participants_ref.where(filter=firestore.FieldFilter('email', '==', email)).limit(10).get()
-            for doc in docs:
-                doc.reference.delete()
-        except Exception as e:
-            # Ignore cleanup errors - test environment may be empty
-            pass
+    try:
+        db.query(Participant).filter(
+            Participant.circle_slug == TEST_CIRCLE_SLUG,
+            Participant.year == TEST_CONFIG['current_year'],
+            Participant.email.in_(test_emails),
+        ).delete(synchronize_session=False)
+        db.commit()
+    except Exception:
+        # Ignore cleanup errors - test environment may be empty
+        db.rollback()
 
 
 # ============================================================================
@@ -316,8 +316,14 @@ class TestBackendAPIEmailValidation:
             "Backend must validate even when JavaScript is bypassed"
 
         # Verify no participant was created
-        participants = db.collection('participants_2025').where('email', '==', 'invalid!email@example.com').limit(1).get()
-        assert len(list(participants)) == 0, \
+        from models.db import Participant
+        from tests.test_config import TEST_CIRCLE_SLUG
+        participants = db.query(Participant).filter_by(
+            circle_slug=TEST_CIRCLE_SLUG,
+            year=TEST_CONFIG['current_year'],
+            email='invalid!email@example.com',
+        ).limit(1).all()
+        assert len(participants) == 0, \
             "Invalid email should not create database record"
 
 
@@ -335,7 +341,7 @@ class TestAdminEmailValidation:
         base_url = get_base_url()
 
         # Navigate to participants page (already authenticated)
-        authenticated_browser.get(f"{base_url}/admin/participants")
+        authenticated_browser.get(f"{base_url}/bigbird/participants")
         time.sleep(2)
 
         # Find ANY participant row to test editing (avoid registration to prevent duplicates)
@@ -382,7 +388,7 @@ class TestAdminEmailValidation:
         base_url = get_base_url()
 
         # Navigate to leaders page (already authenticated)
-        authenticated_browser.get(f"{base_url}/admin/leaders")
+        authenticated_browser.get(f"{base_url}/bigbird/leaders")
         time.sleep(2)
 
         # Check if there are existing leaders to edit
@@ -428,7 +434,7 @@ class TestAdminEmailValidation:
         base_url = get_base_url()
 
         # Navigate to leaders page (already authenticated)
-        authenticated_browser.get(f"{base_url}/admin/leaders")
+        authenticated_browser.get(f"{base_url}/bigbird/leaders")
         time.sleep(2)
 
         # Fill in the Add Leader form with invalid email
@@ -459,7 +465,7 @@ class TestAdminEmailValidation:
             f"Expected email validation error, got: {error_div.text}"
 
         # Should still be on leaders page (not redirected)
-        assert '/admin/leaders' in authenticated_browser.current_url, \
+        assert '/bigbird/leaders' in authenticated_browser.current_url, \
             "Should remain on leaders page after validation failure"
 
 
@@ -498,8 +504,14 @@ class TestEmailValidationSecurity:
             "XSS attempt in email should be rejected"
 
         # Verify no participant created with XSS email
-        participants = db.collection('participants_2025').where('email', '==', xss_email).limit(1).get()
-        assert len(list(participants)) == 0, \
+        from models.db import Participant
+        from tests.test_config import TEST_CIRCLE_SLUG
+        participants = db.query(Participant).filter_by(
+            circle_slug=TEST_CIRCLE_SLUG,
+            year=TEST_CONFIG['current_year'],
+            email=xss_email.lower(),
+        ).limit(1).all()
+        assert len(participants) == 0, \
             "XSS email should not create database record"
 
 
@@ -529,22 +541,25 @@ class TestEmailValidationSecurity:
         # Should accept and redirect
         if response.status_code == 302 and "/registration-success" in response.headers.get('Location', ''):
             # Verify email was stored in lowercase
-            time.sleep(1)  # Allow Firestore write to complete
-            participants = db.collection('participants_2025').where(
-                filter=firestore.FieldFilter('email', '==', 'test.user@example.com')
-            ).limit(1).get()
+            time.sleep(1)  # Allow database write to complete
+            from models.db import Participant
+            from tests.test_config import TEST_CIRCLE_SLUG
+            participants_list = db.query(Participant).filter_by(
+                circle_slug=TEST_CIRCLE_SLUG,
+                year=TEST_CONFIG['current_year'],
+                email='test.user@example.com',
+            ).limit(1).all()
 
-            participants_list = list(participants)
             assert len(participants_list) > 0, \
                 "Email should be stored in lowercase"
 
-            stored_email = participants_list[0].to_dict().get('email')
+            stored_email = participants_list[0].email
             assert stored_email == 'test.user@example.com', \
                 f"Expected lowercase email test.user@example.com, got {stored_email}"
 
 
     def test_sql_injection_attempt_in_email(self, db, test_cleanup):
-        """Test that SQL injection attempts are handled (Firestore is NoSQL but still test)."""
+        """Test that SQL injection attempts in the email field are rejected/parameterized safely."""
         base_url = get_base_url()
 
         # Attempt with SQL injection payload
@@ -568,10 +583,11 @@ class TestEmailValidationSecurity:
         assert response.status_code != 200 or "/registration-success" not in response.headers.get('Location', ''), \
             "SQL injection attempt should be rejected"
 
-        # Verify collection still exists and is intact
-        participants = db.collection('participants_2025').limit(1).get()
-        # If this succeeds without exception, collection is intact
-        assert True, "Database collection should remain intact after injection attempt"
+        # Verify the participants table still exists and is intact
+        from models.db import Participant
+        db.query(Participant).limit(1).all()
+        # If this succeeds without exception, the table is intact
+        assert True, "Database table should remain intact after injection attempt"
 
 
 # ============================================================================

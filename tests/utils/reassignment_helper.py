@@ -45,8 +45,8 @@ def reassign_participant_via_ui(browser, base_url, participant_email, new_area, 
     """
 
     # Navigate to participants page
-    logger.info(f"Navigating to {base_url}/admin/participants")
-    browser.get(f"{base_url}/admin/participants")
+    logger.info(f"Navigating to {base_url}/bigbird/participants")
+    browser.get(f"{base_url}/bigbird/participants")
 
     # Wait for table to load
     try:

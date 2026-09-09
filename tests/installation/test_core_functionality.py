@@ -149,8 +149,9 @@ class TestRegistrationWorkflow:
         import requests
         import re
         from config.areas import get_all_areas
-        from config.database import get_firestore_client
+        from config.database import get_db_session
         from models.area_signup_type import AreaSignupTypeModel
+        from tests.test_config import TEST_CIRCLE_SLUG
 
         url = installation_config['test_url']
         base_url = url.rstrip('/')
@@ -159,12 +160,12 @@ class TestRegistrationWorkflow:
         all_areas = get_all_areas()
 
         # Get current area signup types from database
-        db, _ = get_firestore_client()
-        signup_model = AreaSignupTypeModel(db)
+        db = get_db_session()
+        signup_model = AreaSignupTypeModel(db, circle_slug=TEST_CIRCLE_SLUG)
         current_types = signup_model.get_all_signup_types()
 
         # Navigate to admin page to get CSRF token
-        authenticated_browser.get(f'{base_url}/admin')
+        authenticated_browser.get(f'{base_url}/bigbird')
         page_source = authenticated_browser.page_source
 
         # Extract CSRF token from page source (looks for X-CSRFToken or similar patterns)
@@ -192,7 +193,7 @@ class TestRegistrationWorkflow:
                         'admin_assignment_only': False
                     }
                     response = session.post(
-                        f'{base_url}/admin/api/update-area-signup-type',
+                        f'{base_url}/bigbird/api/update-area-signup-type',
                         json=payload,
                         headers={'X-CSRFToken': csrf_token}
                     )
@@ -206,7 +207,7 @@ class TestRegistrationWorkflow:
                 'admin_assignment_only': True
             }
             response = session.post(
-                f'{base_url}/admin/api/update-area-signup-type',
+                f'{base_url}/bigbird/api/update-area-signup-type',
                 json=payload,
                 headers={'X-CSRFToken': csrf_token}
             )
@@ -331,8 +332,8 @@ class TestAdminAccess:
 
     @pytest.mark.smoke
     def test_admin_login_redirects_when_not_authenticated(self, browser, installation_config):
-        """Verify /admin redirects to login when not authenticated."""
-        url = f"{installation_config['test_url']}/admin"
+        """Verify /bigbird redirects to login when not authenticated."""
+        url = f"{installation_config['test_url']}/bigbird"
 
         browser.get(url)
 
@@ -349,17 +350,17 @@ class TestAdminAccess:
 
         except TimeoutException:
             # Check if we're still on admin page (bad - should have redirected)
-            if '/admin' in browser.current_url and 'login' not in browser.current_url.lower():
+            if '/bigbird' in browser.current_url and 'login' not in browser.current_url.lower():
                 pytest.fail(
                     "Admin page did not redirect to login\n"
-                    "Unauthenticated users should not access /admin\n"
+                    "Unauthenticated users should not access /bigbird\n"
                     "Check routes/admin.py @require_admin decorator"
                 )
 
     @pytest.mark.smoke
     def test_admin_dashboard_loads_with_authentication(self, authenticated_browser, installation_config):
         """Verify admin dashboard loads after authentication."""
-        url = f"{installation_config['test_url']}/admin"
+        url = f"{installation_config['test_url']}/bigbird"
 
         # Browser is already authenticated via authenticated_browser fixture
         authenticated_browser.get(url)
@@ -370,8 +371,10 @@ class TestAdminAccess:
             # Wait for dashboard to load
             wait.until(EC.presence_of_element_located((By.TAG_NAME, 'h1')))
 
-            # Verify we're on admin dashboard (not redirected to login)
-            assert 'admin' in authenticated_browser.current_url.lower(), \
+            # Verify we're on admin dashboard (not redirected to login) - the admin
+            # blueprint moved from /admin to /bigbird (the old path is now a bot
+            # honeypot, see routes/main.py's honeypot_trap()).
+            assert 'bigbird' in authenticated_browser.current_url.lower(), \
                 f"Not on admin page. Current URL: {authenticated_browser.current_url}\n" \
                 "Admin authentication may have failed"
 
@@ -397,7 +400,7 @@ class TestAdminAccess:
     @pytest.mark.installation
     def test_participants_page_shows_all_areas(self, authenticated_browser, installation_config):
         """Verify admin participants page displays all configured areas."""
-        url = f"{installation_config['test_url']}/admin/participants"
+        url = f"{installation_config['test_url']}/bigbird/participants"
         all_areas = installation_config['all_areas']
 
         authenticated_browser.get(url)
@@ -429,7 +432,7 @@ class TestAdminAccess:
     @pytest.mark.installation
     def test_can_view_leader_management_page(self, authenticated_browser, installation_config):
         """Verify admin can access leader management page."""
-        url = f"{installation_config['test_url']}/admin/leaders"
+        url = f"{installation_config['test_url']}/bigbird/leaders"
 
         authenticated_browser.get(url)
 
@@ -486,7 +489,7 @@ class TestCSVExport:
                 pass
 
         # Navigate to admin page
-        admin_url = f"{installation_config['test_url']}/admin"
+        admin_url = f"{installation_config['test_url']}/bigbird"
         authenticated_browser.get(admin_url)
 
         try:
@@ -516,7 +519,7 @@ class TestCSVExport:
             assert csv_url and 'export_csv' in csv_url, \
                 f"Export link doesn't point to CSV export endpoint\n" \
                 f"Link href: {csv_url}\n" \
-                "Check that export button links to /admin/export_csv"
+                "Check that export button links to /bigbird/export_csv"
 
             # Record existing files BEFORE triggering download
             existing_files = set(glob.glob(os.path.join(download_dir, '*.csv')))
@@ -817,52 +820,38 @@ class TestMapConfiguration:
 class TestDataIntegrity:
     """Validate data models and database integrity (comprehensive tests)."""
 
-    def test_database_collections_accessible(self, installation_config):
-        """Verify can access participant and leader collections for current year."""
-        from google.cloud import firestore
-        from config.database import get_firestore_client
+    def test_database_tables_accessible(self, installation_config):
+        """Verify the participants and removal_log tables are queryable for the
+        current year (leadership is a flag on the participant row now, not a
+        separate table)."""
+        from config.database import get_db_session
+        from models.db import Participant, RemovalLog
+        from tests.test_config import TEST_CIRCLE_SLUG
 
-        db, database_id = get_firestore_client()
+        db = get_db_session()
         current_year = installation_config['current_year']
+        circle_slug = TEST_CIRCLE_SLUG
 
         try:
-            # Check participants collection exists and is accessible
-            participants_collection = db.collection(f'participants_{current_year}')
-
-            # Try to query (limit to 1 to avoid loading all data)
-            try:
-                list(participants_collection.limit(1).stream())
-            except Exception as e:
-                pytest.fail(
-                    f"Cannot access participants_{current_year} collection: {e}\n"
-                    f"Database: {database_id}\n"
-                    "Run: python utils/verify_indexes.py {database_id}"
-                )
-
-            # Check area_leaders collection exists and is accessible
-            leaders_collection = db.collection(f'area_leaders_{current_year}')
-
-            try:
-                list(leaders_collection.limit(1).stream())
-            except Exception as e:
-                pytest.fail(
-                    f"Cannot access area_leaders_{current_year} collection: {e}\n"
-                    f"Database: {database_id}\n"
-                    "Collection should be created automatically on first use"
-                )
-
+            db.query(Participant).filter_by(circle_slug=circle_slug, year=current_year).limit(1).all()
         except Exception as e:
-            pytest.fail(f"Database connection error: {e}")
+            pytest.fail(f"Cannot query participants table for year {current_year}: {e}")
+
+        try:
+            db.query(RemovalLog).filter_by(circle_slug=circle_slug, year=current_year).limit(1).all()
+        except Exception as e:
+            pytest.fail(f"Cannot query removal_log table for year {current_year}: {e}")
 
     def test_participant_model_methods_available(self, installation_config):
         """Verify ParticipantModel core methods are available and functional."""
         from models.participant import ParticipantModel
-        from config.database import get_firestore_client
+        from config.database import get_db_session
+        from tests.test_config import TEST_CIRCLE_SLUG
 
-        db, _ = get_firestore_client()
+        db = get_db_session()
 
         try:
-            model = ParticipantModel(db)
+            model = ParticipantModel(db, circle_slug=TEST_CIRCLE_SLUG)
 
             # Verify critical methods exist
             assert hasattr(model, 'get_all_participants'), \
@@ -902,12 +891,13 @@ class TestDataIntegrity:
     def test_removal_log_model_accessible(self, installation_config):
         """Verify RemovalLogModel is accessible and functional."""
         from models.removal_log import RemovalLogModel
-        from config.database import get_firestore_client
+        from config.database import get_db_session
+        from tests.test_config import TEST_CIRCLE_SLUG
 
-        db, _ = get_firestore_client()
+        db = get_db_session()
 
         try:
-            model = RemovalLogModel(db)
+            model = RemovalLogModel(db, circle_slug=TEST_CIRCLE_SLUG)
 
             # Verify critical methods exist
             assert hasattr(model, 'log_removal'), \
