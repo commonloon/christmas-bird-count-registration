@@ -40,6 +40,44 @@ function initializeMap(mapConfig) {
     if (bounds && bounds.length === 2) {
         map.setMaxBounds(bounds);
     }
+
+    // Force an SVG renderer onto the map up front (rather than letting Leaflet
+    // create one lazily on first polygon add) so we have a handle on its <svg>
+    // container to inject the admin-only hatch patterns into.
+    L.svg().addTo(map);
+    createHatchPatterns();
+}
+
+// Diagonal-hatch fill patterns for admin-assignment-only areas, one per count
+// tier so the tier color stays visible - just hatched instead of solid.
+function createHatchPatterns() {
+    const svg = map.getPane('overlayPane').querySelector('svg');
+    if (!svg || document.getElementById('admin-hatch-defs')) return;
+
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const defs = document.createElementNS(svgNS, 'defs');
+    defs.id = 'admin-hatch-defs';
+
+    ['low', 'med', 'high'].forEach(tier => {
+        const pattern = document.createElementNS(svgNS, 'pattern');
+        pattern.setAttribute('id', `admin-hatch-${tier}`);
+        pattern.setAttribute('width', '8');
+        pattern.setAttribute('height', '8');
+        pattern.setAttribute('patternUnits', 'userSpaceOnUse');
+        pattern.setAttribute('patternTransform', 'rotate(45)');
+
+        const line = document.createElementNS(svgNS, 'line');
+        line.setAttribute('x1', '0');
+        line.setAttribute('y1', '0');
+        line.setAttribute('x2', '0');
+        line.setAttribute('y2', '8');
+        line.setAttribute('style', `stroke: var(--map-color-${tier}); stroke-width: 5;`);
+        pattern.appendChild(line);
+
+        defs.appendChild(pattern);
+    });
+
+    svg.insertBefore(defs, svg.firstChild);
 }
 
 function loadAreaData() {
@@ -80,13 +118,16 @@ function displayAreas(areas) {
         // Convert coordinates to Leaflet format [lat, lng]
         const leafletCoords = coordinates.map(coord => [coord[1], coord[0]]);
 
-        // Determine style based on registration count
-        const style = getAreaStyle(area.current_count);
+        // Determine style based on registration count (hatched if admin-only)
+        const style = getAreaStyle(area.current_count, area.admin_assignment_only);
+
+        const tooltipText = `Area ${escapeHtml(areaCode)}: ${escapeHtml(area.name)}<br>Current volunteers: ${area.current_count}` +
+            (area.admin_assignment_only ? '<br>🔒 Admin-assignment only' : '');
 
         // Create polygon
         const polygon = L.polygon(leafletCoords, style)
             .addTo(map)
-            .bindTooltip(`Area ${escapeHtml(areaCode)}: ${escapeHtml(area.name)}<br>Current volunteers: ${area.current_count}`, {
+            .bindTooltip(tooltipText, {
                 permanent: false,
                 direction: 'center'
             });
@@ -132,32 +173,39 @@ function displayCountCircle(countCircle) {
     console.log('Count circle boundary displayed');
 }
 
-function getAreaStyle(count) {
+function getAreaStyle(count, isAdminOnly) {
     // Colors from DISTINCT_COLOURS palette (config/colors.py) using CSS variables
     const rootStyles = getComputedStyle(document.documentElement);
     const baseStyle = {
         weight: 2,
         opacity: 0.8,
-        fillOpacity: 0.3
+        // Hatched areas need more fill-opacity than a solid wash to read clearly
+        fillOpacity: isAdminOnly ? 0.6 : 0.3
     };
 
+    let tier;
     if (count <= 3) {
-        const color = rootStyles.getPropertyValue('--map-color-low').trim();
-        return { ...baseStyle, color: color, fillColor: color }; // Orange: 0-3 registered
+        tier = 'low'; // Orange: 0-3 registered
     } else if (count <= 8) {
-        const color = rootStyles.getPropertyValue('--map-color-med').trim();
-        return { ...baseStyle, color: color, fillColor: color }; // Maroon: 4-8 registered
+        tier = 'med'; // Maroon: 4-8 registered
     } else {
-        const color = rootStyles.getPropertyValue('--map-color-high').trim();
-        return { ...baseStyle, color: color, fillColor: color }; // Navy: 8+ registered
+        tier = 'high'; // Navy: 8+ registered
     }
+
+    const color = rootStyles.getPropertyValue(`--map-color-${tier}`).trim();
+    return {
+        ...baseStyle,
+        color: color,
+        fillColor: isAdminOnly ? `url(#admin-hatch-${tier})` : color
+    };
 }
 
 function selectAreaOnMap(areaCode, areaName, polygon) {
     // Clear previous selection
     if (selectedArea && areaLayers[selectedArea]) {
         const prevStyle = getAreaStyle(
-            areaLayers[selectedArea].data.current_count
+            areaLayers[selectedArea].data.current_count,
+            areaLayers[selectedArea].data.admin_assignment_only
         );
         areaLayers[selectedArea].polygon.setStyle(prevStyle);
     }
@@ -283,7 +331,8 @@ function highlightAreaFromDropdown(areaCode) {
         // Clear any map selection for "anywhere" option
         if (selectedArea && areaLayers[selectedArea]) {
             const prevStyle = getAreaStyle(
-                areaLayers[selectedArea].data.current_count
+                areaLayers[selectedArea].data.current_count,
+                areaLayers[selectedArea].data.admin_assignment_only
             );
             areaLayers[selectedArea].polygon.setStyle(prevStyle);
         }
