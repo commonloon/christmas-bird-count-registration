@@ -1605,30 +1605,36 @@ def list_circles():
 @require_super_admin
 def new_circle():
     """Super-admin console: create a new count circle."""
+    from config.email_settings import ALLOWED_FROM_EMAIL_DOMAINS
+    import pytz
+
     if request.method == 'GET':
-        import pytz
-        return render_template('admin/circle_form.html', circle=None, current_user=get_current_user(),
-                                timezones=pytz.all_timezones)
+        return render_template('admin/circle_form.html', circle=None, form_data=None, field_errors=None,
+                                current_user=get_current_user(), timezones=pytz.all_timezones,
+                                allowed_from_email_domains=ALLOWED_FROM_EMAIL_DOMAINS)
 
     slug = sanitize_text_input(request.form.get('slug', ''), max_length=50).lower()
-    if not _valid_circle_slug(slug):
-        flash(f'Invalid slug: {CIRCLE_SLUG_PATTERN_MESSAGE}', 'error')
-        return redirect(url_for('admin.new_circle'))
-
-    if CircleModel(g.db).get_by_slug(slug):
-        flash(f'A circle with slug "{slug}" already exists.', 'error')
-        return redirect(url_for('admin.new_circle'))
-
     data = _circle_form_data(request.form)
     data['slug'] = slug
-
-    if not _from_email_domain_allowed(data['from_email']):
-        from config.email_settings import ALLOWED_FROM_EMAIL_DOMAINS
-        flash(f'From email must be on one of these domains: {", ".join(ALLOWED_FROM_EMAIL_DOMAINS)}', 'error')
-        return redirect(url_for('admin.new_circle'))
-
     count_date = request.form.get('count_date', '').strip()
     data['yearly_count_dates'] = {str(datetime.now().year): count_date} if count_date else {}
+
+    field_errors = {}
+    if not _valid_circle_slug(slug):
+        field_errors['slug'] = f'Invalid slug: {CIRCLE_SLUG_PATTERN_MESSAGE}'
+    elif CircleModel(g.db).get_by_slug(slug):
+        field_errors['slug'] = f'A circle with slug "{slug}" already exists.'
+
+    if not _from_email_domain_allowed(data['from_email']):
+        field_errors['from_email'] = f'Must be on one of these domains: {", ".join(ALLOWED_FROM_EMAIL_DOMAINS)}'
+
+    if field_errors:
+        for message in field_errors.values():
+            flash(message, 'error')
+        return render_template('admin/circle_form.html', circle=None,
+                                form_data={**data, 'count_date': count_date}, field_errors=field_errors,
+                                current_user=get_current_user(), timezones=pytz.all_timezones,
+                                allowed_from_email_domains=ALLOWED_FROM_EMAIL_DOMAINS)
 
     CircleModel(g.db).create(data)
     flash(f'Circle "{data["circle_name"]}" created.', 'success')
@@ -1642,22 +1648,20 @@ def edit_circle(slug):
     if denied:
         return denied
 
+    from config.email_settings import ALLOWED_FROM_EMAIL_DOMAINS
+    import pytz
+
     circle = CircleModel(g.db).get_by_slug(slug)
     if not circle:
         flash('Circle not found.', 'error')
         return redirect(url_for('main.index'))
 
     if request.method == 'GET':
-        import pytz
-        return render_template('admin/circle_form.html', circle=circle, current_user=get_current_user(),
-                                timezones=pytz.all_timezones)
+        return render_template('admin/circle_form.html', circle=circle, form_data=None, field_errors=None,
+                                current_user=get_current_user(), timezones=pytz.all_timezones,
+                                allowed_from_email_domains=ALLOWED_FROM_EMAIL_DOMAINS)
 
     data = _circle_form_data(request.form)
-
-    if not _from_email_domain_allowed(data['from_email']):
-        from config.email_settings import ALLOWED_FROM_EMAIL_DOMAINS
-        flash(f'From email must be on one of these domains: {", ".join(ALLOWED_FROM_EMAIL_DOMAINS)}', 'error')
-        return redirect(url_for('admin.edit_circle', slug=slug))
 
     count_date = request.form.get('count_date', '').strip()
     yearly_dates = dict(circle.get('yearly_count_dates') or {})
@@ -1669,6 +1673,14 @@ def edit_circle(slug):
         # than silently leaving a previously-set date in place.
         yearly_dates.pop(current_year_key, None)
     data['yearly_count_dates'] = {str(k): v for k, v in yearly_dates.items()}
+
+    if not _from_email_domain_allowed(data['from_email']):
+        field_errors = {'from_email': f'Must be on one of these domains: {", ".join(ALLOWED_FROM_EMAIL_DOMAINS)}'}
+        flash(field_errors['from_email'], 'error')
+        return render_template('admin/circle_form.html', circle=circle,
+                                form_data={**data, 'count_date': count_date}, field_errors=field_errors,
+                                current_user=get_current_user(), timezones=pytz.all_timezones,
+                                allowed_from_email_domains=ALLOWED_FROM_EMAIL_DOMAINS)
 
     CircleModel(g.db).update(slug, data)
     flash(f'Circle "{data["circle_name"]}" updated.', 'success')
