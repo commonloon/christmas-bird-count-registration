@@ -29,6 +29,14 @@ from config.admins import TEST_ADMIN_EMAILS, TEST_LEADER_EMAILS
 # request's Host header automatically) must pass this explicitly.
 TEST_CIRCLE_SLUG = 'test'
 
+# A second, lightweight test circle (see tests/conftest.py's second_test_circle
+# fixture) used only to prove circle isolation actually holds - deliberately
+# distinct name/count_event_name/count_contact/is_cbc/timezone from both
+# Vancouver's module constants and TEST_CIRCLE_SLUG's own row, so a test
+# asserting on these values can catch cross-circle bleed-through. No real
+# areas/KML - label-only, isolation tests don't need real map geometry.
+TEST_CIRCLE_SLUG_2 = 'test2'
+
 # Environment Configuration
 TEST_CONFIG = {
     # Target URLs for testing (imported from config/cloud.py). 'local_url'/'test_url'

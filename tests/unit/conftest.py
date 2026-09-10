@@ -8,6 +8,27 @@ pytest scoping.
 
 import pytest
 
+# Flask-Limiter's storage is in-memory (config/rate_limits.py's
+# LIMITER_STORAGE_URL) and persists for the life of this pytest PROCESS, not
+# per test file - every test_client() request shares one counter keyed by
+# '127.0.0.1' (config/rate_limits.py's get_rate_limit_key()). Enough
+# tests/unit/ files hitting admin routes in one run exhausts a route's
+# per-minute budget partway through collection, 429ing whichever test happens
+# to run later - not a bug in any individual test, just an artifact of real
+# rate limiting sharing state across unrelated files. Disabled here, once,
+# for the whole tests/unit/ tier, since nothing in it tests rate-limiting
+# behavior itself (confirmed via grep before adding this).
+#
+# app.config['RATELIMIT_ENABLED'] = False does NOT work for this - Flask-
+# Limiter reads that flag once, at Limiter.init_app(app) time (which already
+# ran during `import app`, long before any fixture runs), not per-request -
+# setting it afterward from a fixture is silently too late. The Limiter
+# instance's own .enabled attribute IS checked per-request, so toggle that
+# directly instead (confirmed empirically - the config-flag approach was
+# tried first and measured to still 429).
+from services.limiter import limiter
+limiter.enabled = False
+
 
 @pytest.fixture
 def app():

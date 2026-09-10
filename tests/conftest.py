@@ -22,7 +22,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
 from tests.test_config import (
-    TEST_CONFIG, TEST_ACCOUNTS, TEST_CIRCLE_SLUG,
+    TEST_CONFIG, TEST_ACCOUNTS, TEST_CIRCLE_SLUG, TEST_CIRCLE_SLUG_2,
     get_base_url, get_database_name, LOGGING_CONFIG
 )
 
@@ -150,6 +150,65 @@ def db_session():
     """
     from config.database import get_db_session
     return get_db_session()
+
+
+def _wipe_test_circle_2_data(db_session):
+    """Delete every row scoped to TEST_CIRCLE_SLUG_2 across every circle-scoped
+    table, plus the circle row itself. Shared by second_test_circle's pre- and
+    post-test cleanup - pre-cleanup guards against a stray row left by a
+    previously interrupted run (slug is the primary key, so a leftover row
+    would otherwise make CircleModel.create() raise on the next run)."""
+    from models.db import (
+        Circle, CircleArea, CircleAdmin, Participant, RemovalLog,
+        ReassignmentLog, WithdrawalLog, EmailTimestamp, EmailContentOverride,
+    )
+    for model_cls in (Participant, RemovalLog, ReassignmentLog, WithdrawalLog,
+                       CircleArea, CircleAdmin, EmailTimestamp, EmailContentOverride):
+        db_session.query(model_cls).filter_by(circle_slug=TEST_CIRCLE_SLUG_2).delete(synchronize_session=False)
+    db_session.query(Circle).filter_by(slug=TEST_CIRCLE_SLUG_2).delete(synchronize_session=False)
+    db_session.commit()
+
+
+@pytest.fixture
+def second_test_circle(db_session):
+    """A second, lightweight test circle (TEST_CIRCLE_SLUG_2 = 'test2',
+    resolvable at test2.cbc.test - already matched by app.py's existing
+    CIRCLE_SUBDOMAIN_PATTERNS, no app change needed) for proving cross-circle
+    isolation actually holds, not just that the one circle under test works.
+    Field values are deliberately distinct from both Vancouver's module
+    constants and TEST_CIRCLE_SLUG's own row (see tests/test_config.py's
+    comment) - is_cbc is even flipped to False, so an isolation bug that
+    leaks either circle's config into the other is easy to catch. No
+    KML/area boundaries - label-only, isolation tests don't need real map
+    geometry (see PROMPT.md's multi-circle test plan, "explicitly out of
+    scope" section)."""
+    from models.circle import CircleModel
+
+    _wipe_test_circle_2_data(db_session)
+
+    model = CircleModel(db_session)
+    circle = model.create({
+        'slug': TEST_CIRCLE_SLUG_2,
+        'name': 'Test Organization Two',
+        'circle_name': 'Test Circle Two',
+        'website': 'https://test2.example.com',
+        'contact': 'test2-org-contact@example.com',
+        'count_contact': 'test2-count-contact@example.com',
+        'count_event_name': 'Second Test Circle for Isolation Testing',
+        'count_info_url': 'https://test2.example.com/info',
+        'from_email': 'test2@example.com',
+        'test_recipient': 'test2-recipient@example.com',
+        'display_timezone': 'America/Toronto',
+        'is_cbc': False,
+        'count_experience_label': 'Test2 Experience Label',
+        'feeder_counter_label': 'Test2 feeder counting option',
+        'notes_placeholder_example': 'Test2 notes placeholder example',
+    })
+
+    yield circle
+
+    _wipe_test_circle_2_data(db_session)
+
 
 # Browser Fixtures
 @pytest.fixture(scope="session")
