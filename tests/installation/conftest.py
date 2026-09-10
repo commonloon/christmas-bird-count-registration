@@ -29,14 +29,23 @@ def installation_config():
     from models.circle import CircleAreaModel
     from tests.test_config import TEST_CIRCLE_SLUG
 
-    # config.areas.get_all_areas() falls back to the static, Vancouver-only AREA_CONFIG
-    # outside a real Flask request context (see config/areas.py's _get_circle_areas())
-    # - correct behavior there, but wrong for this fixture, which runs as plain pytest
-    # setup with no request in flight. Query the test circle's real areas directly instead.
+    # config.areas.get_all_areas()/get_organization_variables() both raise when no
+    # circle is resolved (this is a multi-circle platform with no default circle -
+    # see config/areas.py's _get_circle_areas()/config/organization.py's
+    # _circle_value()), which is correct in the real app but means this fixture,
+    # which runs as plain pytest setup with no request in flight, must resolve
+    # the test circle itself first. Areas are queried directly (no request needed);
+    # org_vars needs a real resolved-circle request context, built the same way
+    # test/email_generator.py's _push_circle_context() does for the scheduler.
     db = get_db_session()
     area_signup_model = AreaSignupTypeModel(db, circle_slug=TEST_CIRCLE_SLUG)
     public_areas = area_signup_model.get_public_areas()
     all_areas = [a['code'] for a in CircleAreaModel(db).get_areas_for_circle(TEST_CIRCLE_SLUG)]
+
+    from app import app as flask_app
+    with flask_app.test_request_context('/', headers={'Host': f'{TEST_CIRCLE_SLUG}.cbc.test'}):
+        flask_app.preprocess_request()
+        org_vars = get_organization_variables()
 
     return {
         # Area configuration
@@ -45,7 +54,7 @@ def installation_config():
         'area_config': AREA_CONFIG,
 
         # Organization configuration
-        'org_vars': get_organization_variables(),
+        'org_vars': org_vars,
 
         # Cloud configuration
         'test_url': TEST_BASE_URL,

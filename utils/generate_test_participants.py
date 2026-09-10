@@ -43,9 +43,24 @@ from config.areas import get_all_areas
 BASE_URL = TEST_BASE_URL  # Automatically uses correct test URL from config/cloud.py
 REGISTRATION_URL = f"{BASE_URL}/register"
 
-# Get organization variables for email domain
-org_vars = get_organization_variables()
-EMAIL_DOMAIN = org_vars['count_contact'].split('@')[1]  # Extract domain from count contact email
+# TEST_BASE_URL is hardcoded to the dedicated 'test' circle (config/cloud.py) - this
+# script has only ever generated data for that one circle. get_organization_variables()/
+# get_all_areas() below are circle-specific (this is a multi-circle platform with no
+# default/fallback circle - see app.py's resolve_circle()), so a real request context
+# resolved to 'test' must be pushed before calling them, same as test/email_generator.py's
+# _push_circle_context()/app.py's push_circle_context() do for the scheduler.
+import app as app_module
+_ctx = app_module.push_circle_context('test')
+try:
+    # Get organization variables for email domain
+    org_vars = get_organization_variables()
+    EMAIL_DOMAIN = org_vars['count_contact'].split('@')[1]  # Extract domain from count contact email
+
+    # Dynamically load all areas from config (server validates which are open for registration)
+    # Note: admin_assignment_only status is now managed in Firestore and validated on registration
+    ALL_AREAS = get_all_areas()
+finally:
+    _ctx.pop()
 
 # Initialize faker for realistic names
 fake = Faker()
@@ -54,9 +69,6 @@ fake = Faker()
 SKILL_LEVELS = ["Newbie", "Beginner", "Intermediate", "Expert"]
 EXPERIENCE_LEVELS = ["None", "1-2 counts", "3+ counts"]
 
-# Dynamically load all areas from config (server validates which are open for registration)
-# Note: admin_assignment_only status is now managed in Firestore and validated on registration
-ALL_AREAS = get_all_areas()
 AREAS = ALL_AREAS + ["UNASSIGNED"]  # Add UNASSIGNED option for "wherever needed"
 
 # Canadian area codes for realistic phone numbers

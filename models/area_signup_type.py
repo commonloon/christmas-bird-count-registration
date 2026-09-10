@@ -1,7 +1,6 @@
 from datetime import datetime, timezone
 import re
 
-from config.areas import get_all_areas
 from models.db import AreaSignupType, resolve_default_circle_slug
 
 
@@ -34,13 +33,22 @@ class AreaSignupTypeModel:
             return row.to_dict()
         return {'admin_assignment_only': False, 'area_code': area_code}
 
+    def _this_circles_area_codes(self):
+        # Deliberately not config/areas.py's get_all_areas() - that reads the
+        # *ambient* Flask g.circle_slug (raises without one), which may differ
+        # from - or not exist alongside - this model's own self.circle_slug.
+        # Local import: models.circle imports this module's natural_sort_key,
+        # so importing models.circle back at module level here would cycle.
+        from models.circle import CircleAreaModel
+        return [a['code'] for a in CircleAreaModel(self.db).get_areas_for_circle(self.circle_slug)]
+
     def get_all_signup_types(self):
         """Get signup types for all areas."""
         result = {}
         for row in self._base_query().all():
             result[row.area_code] = row.to_dict()
 
-        for area_code in get_all_areas():
+        for area_code in self._this_circles_area_codes():
             if area_code not in result:
                 result[area_code] = {'admin_assignment_only': False, 'area_code': area_code}
 
@@ -89,7 +97,7 @@ class AreaSignupTypeModel:
         now = datetime.now(timezone.utc)
         existing = {row.area_code for row in self._base_query().all()}
 
-        for area_code in get_all_areas():
+        for area_code in self._this_circles_area_codes():
             if area_code not in existing:
                 self.db.add(AreaSignupType(
                     circle_slug=self.circle_slug,

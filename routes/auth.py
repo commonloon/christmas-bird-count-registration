@@ -218,7 +218,14 @@ def request_magic_link():
 
                 verify_url = url_for('auth.verify', token=raw_token, next=next_url, _external=True)
 
-                email_service.send_magic_link(email, verify_url)
+                if g.circle_slug is None:
+                    # Only role == 'super_admin' can reach here with no circle
+                    # (get_user_role returns 'public' for admin/leader otherwise) -
+                    # no single circle's name belongs in this email (see
+                    # send_landing_host_magic_link's docstring).
+                    email_service.send_landing_host_magic_link(email, verify_url)
+                else:
+                    email_service.send_magic_link(email, verify_url)
 
                 logger.info(f"Magic link requested for {email} (role: {role})")
             else:

@@ -91,15 +91,44 @@ def _active_circle():
     return None
 
 
-def _circle_value(key, default):
-    """Get a config value from the active circle if resolved, else the module default.
+_NO_DEFAULT = object()
 
-    This is how config/organization.py and config/areas.py stay per-circle without
-    requiring every call site to be updated - see the multi-circle-architecture note.
+
+def _circle_value(key, default=_NO_DEFAULT, unset_default=None):
+    """Get a config value from the active circle.
+
+    Two distinct "no value" cases, handled differently:
+
+    1. No circle resolved AT ALL (outside a request context, or g.circle is None
+       on the landing host) - this is a multi-circle platform with no default/
+       fallback circle, so there is nothing to substitute. Raises unless the
+       caller explicitly opts into a real fallback via `default` - currently
+       only display_timezone does this (see get_organization_variables()),
+       since a slightly-wrong timezone for a not-yet-multi-timezone deployment
+       is low stakes compared to leaking organization identity. Callers with no
+       request in flight (scripts, tests) must push a request context for one
+       specific circle first - see test/email_generator.py's
+       _push_circle_context() for the established pattern.
+
+    2. A real circle IS resolved, but this particular field was never filled in
+       for it - most of these columns are nullable (models/db.py's Circle table),
+       so this is routine for a newly-created or partially-configured circle, not
+       a bug. Never falls back to Vancouver's value here either (same reasoning),
+       but crashing the whole site over one blank optional field would be worse
+       than showing something neutral - returns `unset_default` (plain empty/
+       generic, never another circle's real data).
     """
     circle = _active_circle()
-    if circle is not None and circle.get(key) is not None:
-        return circle[key]
+    if circle is not None:
+        value = circle.get(key)
+        return value if value is not None else unset_default
+    if default is _NO_DEFAULT:
+        raise RuntimeError(
+            f"No circle resolved - '{key}' has no cross-circle default. This is a "
+            f"multi-circle platform; every caller needs a real, resolved circle "
+            f"(see app.py's resolve_circle() / test/email_generator.py's "
+            f"_push_circle_context() for scripts)."
+        )
     return default
 
 
@@ -170,7 +199,7 @@ def get_count_date(year=None):
     if year is None:
         year = datetime.now().year
 
-    date_str = _circle_value('yearly_count_dates', YEARLY_COUNT_DATES).get(year)
+    date_str = _circle_value('yearly_count_dates').get(year)
     if not date_str:
         return "TBD"
 
@@ -183,25 +212,44 @@ def get_count_date(year=None):
 
 # Template variable dictionary for email rendering
 def get_organization_variables():
-    """Get all organization variables for email template rendering."""
+    """Get all organization variables for email template rendering.
+
+    Requires a resolved circle (raises RuntimeError otherwise, via _circle_value) -
+    there is no cross-circle default for any of these. display_timezone is the
+    sole exception to that no-circle-at-all case, still falling back to this
+    module's constant - see _circle_value's docstring for why.
+
+    Most of these columns are nullable (models/db.py's Circle table) - a real,
+    correctly-resolved circle that simply hasn't filled in an optional field
+    (very normal for a newly-created circle) gets a plain, neutral unset_default
+    below, never Vancouver's actual value - see _circle_value's docstring, case 2.
+    'name'/'circle_name'/'is_cbc'/'display_timezone' are NOT NULL at the DB level,
+    so they need no unset_default; they can only be missing via the no-circle-at-
+    all case, which correctly raises instead.
+    """
     return {
-        'organization_name': _circle_value('name', ORGANIZATION_NAME),
-        'organization_website': _circle_value('website', ORGANIZATION_WEBSITE),
-        'organization_contact': _circle_value('contact', ORGANIZATION_CONTACT),
-        'count_contact': _circle_value('count_contact', COUNT_CONTACT),
-        'count_event_name': _circle_value('count_event_name', COUNT_EVENT_NAME),
-        'count_info_url': _circle_value('count_info_url', COUNT_INFO_URL),
-        'from_email': _circle_value('from_email', FROM_EMAIL),
+        'organization_name': _circle_value('name'),
+        'organization_website': _circle_value('website', unset_default=''),
+        'organization_contact': _circle_value('contact', unset_default=''),
+        'count_contact': _circle_value('count_contact', unset_default=''),
+        # Unset count_event_name falls back to this circle's own circle_name
+        # (NOT NULL) - its own real data, not another circle's.
+        'count_event_name': _circle_value('count_event_name', unset_default=_circle_value('circle_name')),
+        'count_info_url': _circle_value('count_info_url', unset_default=''),
+        # None (not '') for from_email/test_recipient - lets send_email()'s own
+        # env-configured fallback apply, same as it already does for callers
+        # outside any circle context (e.g. the landing host's multi-circle email).
+        'from_email': _circle_value('from_email', unset_default=None),
         'registration_url': get_registration_url(),
         'admin_url': get_admin_url(),
         'leader_url': get_leader_url(),
         'logo_url': get_logo_url(),
-        'test_recipient': _circle_value('test_recipient', TEST_RECIPIENT),
+        'test_recipient': _circle_value('test_recipient', unset_default=None),
         'display_timezone': _circle_value('display_timezone', DISPLAY_TIMEZONE),
-        'is_cbc': _circle_value('is_cbc', IS_CBC),
-        'count_experience_label': _circle_value('count_experience_label', COUNT_EXPERIENCE_LABEL),
-        'feeder_counter_label': _circle_value('feeder_counter_label', FEEDER_COUNTER_LABEL),
-        'notes_placeholder_example': _circle_value('notes_placeholder_example', NOTES_PLACEHOLDER_EXAMPLE)
+        'is_cbc': _circle_value('is_cbc'),
+        'count_experience_label': _circle_value('count_experience_label', unset_default='Experience'),
+        'feeder_counter_label': _circle_value('feeder_counter_label', unset_default='Count birds at my home feeder'),
+        'notes_placeholder_example': _circle_value('notes_placeholder_example', unset_default='')
     }
 
 # Registration Window Helper Functions
@@ -209,7 +257,7 @@ def get_organization_variables():
 def _get_validated_registration_closes():
     """Get validated registration-closes-days value with proper bounds checking."""
     try:
-        value = abs(int(_circle_value('registration_closes_days', REGISTRATION_CLOSES)))  # Treat negative as positive
+        value = abs(int(_circle_value('registration_closes_days')))  # Treat negative as positive
         if value > 21:
             return 1  # Default for out of bounds
         return value
@@ -219,7 +267,7 @@ def _get_validated_registration_closes():
 def _get_validated_registration_opens():
     """Get validated registration-opens-months value."""
     try:
-        value = int(_circle_value('registration_opens_months', REGISTRATION_OPENS))
+        value = int(_circle_value('registration_opens_months'))
         if value <= 0:
             return 3  # Default for non-positive
         return value

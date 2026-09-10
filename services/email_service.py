@@ -275,14 +275,28 @@ This is an automated notification from the CBC registration system.
         """Render the real registration_confirmation template with synthetic sample
         data and this circle's currently-saved (resolved) email-content blocks, for
         the admin email-content preview route. Never sends anything. variant
-        'unassigned' previews the not-yet-assigned wording instead."""
+        'unassigned' previews the not-yet-assigned wording instead.
+
+        Reachable via routes/admin.py's CIRCLE_CONSOLE_ENDPOINTS from any host, so
+        the ambient request's own g.circle may be a different circle than
+        circle_slug (or None) - org_vars must come from circle_slug explicitly via
+        a pushed context, not from get_organization_variables()'s ambient lookup,
+        or this could preview circle_slug's content dressed in another circle's
+        (or no circle's) organization name/timezone/etc."""
         from flask import current_app, render_template
         from config.email_settings import get_email_branding, is_test_server
         from services.datetime_utils import convert_to_display_timezone
+        import app as app_module
 
-        org_vars = get_organization_variables()
+        ctx = app_module.push_circle_context(circle_slug)
+        try:
+            org_vars = get_organization_variables()
+            branding = get_email_branding()
+            registration_date, display_timezone = convert_to_display_timezone(datetime.now(timezone.utc))
+        finally:
+            ctx.pop()
+
         current_year = datetime.now().year
-        registration_date, display_timezone = convert_to_display_timezone(datetime.now(timezone.utc))
 
         assigned_area = 'UNASSIGNED' if variant == 'unassigned' else 'A'
         if assigned_area == 'UNASSIGNED':
@@ -324,7 +338,7 @@ This is an automated notification from the CBC registration system.
             'count_experience_label': org_vars['count_experience_label'],
             'is_cbc': org_vars['is_cbc'],
             'test_mode': is_test_server(),
-            'branding': get_email_branding(),
+            'branding': branding,
             'intro_text': intro_text,
             'whats_next_text': whats_next_text,
             'closing_text': closing_text,
@@ -442,8 +456,20 @@ This is an automated notification from the CBC registration system.
 
     def build_withdrawal_confirmation_preview(self, circle_slug):
         """Subject + body for this circle's currently-saved withdrawal_confirmation
-        blocks, using synthetic sample data. Never sends anything."""
-        org_vars = get_organization_variables()
+        blocks, using synthetic sample data. Never sends anything.
+
+        Reachable via routes/admin.py's CIRCLE_CONSOLE_ENDPOINTS from any host, so
+        org_vars must come from circle_slug explicitly via a pushed context, not
+        get_organization_variables()'s ambient lookup - see
+        build_registration_confirmation_preview's docstring for why."""
+        import app as app_module
+
+        ctx = app_module.push_circle_context(circle_slug)
+        try:
+            org_vars = get_organization_variables()
+        finally:
+            ctx.pop()
+
         current_year = datetime.now().year
         subject, intro_message, closing_message = self._resolve_withdrawal_confirmation_content(
             'Sample', 'Participant', org_vars, current_year, circle_slug)
@@ -511,6 +537,37 @@ If you didn't request this, you can safely ignore this email.
 
         return self.send_email([email], subject, body, html_body, from_email=org_vars['from_email'],
                                 test_recipient=org_vars['test_recipient'])
+
+    def send_landing_host_magic_link(self, email: str, verify_url: str) -> bool:
+        """Send a magic-link login email with no circle-specific wording.
+
+        Used for a super-admin logging in from the landing host (cbc.birdcount.ca),
+        where g.circle is None - there is no single circle's name to put in the
+        subject/body (send_magic_link's get_organization_variables() call would
+        raise there, by design; it used to silently fall back to Vancouver's
+        wording regardless of which admin was logging in, which is exactly the
+        kind of cross-circle identity leak this platform must not have).
+        """
+        subject = "Christmas Bird Count - Login Link"
+
+        body = f"""
+Click the link below to log in:
+
+{verify_url}
+
+This link expires in 15 minutes and can only be used once.
+
+If you didn't request this, you can safely ignore this email.
+        """
+
+        html_body = f"""
+        <p>Click the link below to log in:</p>
+        <p><a href="{verify_url}">{verify_url}</a></p>
+        <p>This link expires in 15 minutes and can only be used once.</p>
+        <p>If you didn't request this, you can safely ignore this email.</p>
+        """
+
+        return self.send_email([email], subject, body, html_body)
 
     def send_multi_circle_magic_link(self, email: str, circle_links: list) -> bool:
         """Send a login email listing one link per circle this email administers.

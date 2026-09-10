@@ -146,7 +146,6 @@ class TestRegistrationWorkflow:
         """Verify areas with admin_assignment_only=True are excluded from dropdown."""
         import requests
         import re
-        from config.areas import get_all_areas
         from config.database import get_db_session
         from models.area_signup_type import AreaSignupTypeModel
         from tests.test_config import TEST_CIRCLE_SLUG
@@ -154,8 +153,9 @@ class TestRegistrationWorkflow:
         url = installation_config['test_url']
         base_url = url.rstrip('/')
 
-        # Get all area codes
-        all_areas = get_all_areas()
+        # Get all area codes (get_all_areas() itself requires a resolved circle -
+        # no request is in flight here, so use the fixture's own DB-direct query)
+        all_areas = installation_config['all_areas']
 
         # Get current area signup types from database
         db = get_db_session()

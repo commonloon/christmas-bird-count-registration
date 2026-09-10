@@ -78,24 +78,14 @@ def _push_circle_context(flask_app, circle_slug):
     request, so every per-circle helper they rely on (ParticipantModel's
     circle_slug default via resolve_default_circle_slug(), config/organization.py's
     get_admin_url()/get_leader_url(), config/areas.py) has no request to read
-    g.circle_slug from. Pushing a fake request context for the circle's own host
-    and running app.py's real resolve_circle() against it makes all of that
-    resolve exactly as it would for a genuine request - no separate per-circle
-    logic needed in this module.
+    g.circle_slug from. Delegates to app.py's push_circle_context() (originally
+    written here, moved there so services/email_service.py's preview builders
+    could reuse the exact same logic - see that function's docstring).
+    flask_app is unused (there's only ever one real Flask app instance) but kept
+    as a parameter so existing call sites don't need to change.
     """
-    from models.circle import CircleModel
     import app as app_module
-
-    db = get_db_session()
-    circle = CircleModel(db).get_by_slug(circle_slug)
-    if not circle:
-        raise ValueError(f"Unknown circle: {circle_slug}")
-
-    host = app_module.circle_host(circle_slug, circle['is_cbc'])
-    ctx = flask_app.test_request_context(path='/', base_url=f'https://{host}')
-    ctx.push()
-    app_module.resolve_circle()
-    return ctx
+    return app_module.push_circle_context(circle_slug)
 
 
 class EmailTimestampModel:
@@ -506,7 +496,9 @@ def generate_team_update_emails(app, circle_slug) -> Dict[str, Any]:
                     html_content = None
 
                 # Send email
-                if email_service.send_email(leader_emails, subject, '', html_content):
+                if email_service.send_email(leader_emails, subject, '', html_content,
+                                             from_email=org_vars['from_email'],
+                                             test_recipient=org_vars['test_recipient']):
                     # Update timestamp AFTER successful send
                     timestamp_model.update_last_email_sent(area_code, 'team_update', current_time)
                     results['emails_sent'] += 1
@@ -658,7 +650,9 @@ def generate_weekly_summary_emails(app, circle_slug) -> Dict[str, Any]:
                     html_content = None
 
                 # Send email
-                if email_service.send_email(leader_emails, subject, '', html_content):
+                if email_service.send_email(leader_emails, subject, '', html_content,
+                                             from_email=org_vars['from_email'],
+                                             test_recipient=org_vars['test_recipient']):
                     # Update timestamp AFTER successful send
                     timestamp_model.update_last_email_sent(area_code, 'weekly_summary', current_time)
                     results['emails_sent'] += 1
@@ -771,7 +765,9 @@ def generate_admin_digest_email(app, circle_slug) -> Dict[str, Any]:
         recipients = sorted(set(circle_admin_emails) | set(ADMIN_EMAILS))
 
         # Send email to all admins
-        if email_service.send_email(recipients, subject, '', html_content):
+        if email_service.send_email(recipients, subject, '', html_content,
+                                     from_email=org_vars['from_email'],
+                                     test_recipient=org_vars['test_recipient']):
             results['emails_sent'] = 1
             logger.info(f"Admin digest email sent to {len(recipients)} admins for {len(unassigned_participants)} unassigned participants")
         else:
@@ -808,13 +804,26 @@ def _sample_participant(**overrides):
 def build_team_update_preview(circle_slug):
     """Render the real team_update template with synthetic sample data and this
     circle's currently-saved (resolved) email-content blocks, for the admin
-    email-content preview route. Never sends anything. Runs inside a real
-    admin request already resolved to circle_slug (unlike the real
-    generate_team_update_emails, which runs outside any request and needs
-    _push_circle_context) - no fake context pushed here."""
+    email-content preview route. Never sends anything.
+
+    Reachable via routes/admin.py's CIRCLE_CONSOLE_ENDPOINTS from any host, so the
+    ambient request's own g.circle may be a different circle than circle_slug (or
+    None) - org_vars/branding/dashboard URL must come from circle_slug explicitly
+    via a pushed context (same _push_circle_context() the real, scheduler-triggered
+    generate_team_update_emails() needs), not any of these helpers' ambient lookup,
+    or this could preview circle_slug's content dressed in another circle's
+    identity/URLs."""
+    import app as app_module
+
     db = get_db_session()
-    org_vars = get_organization_variables()
-    current_time, display_timezone = convert_to_display_timezone(datetime.now(timezone.utc))
+    ctx = app_module.push_circle_context(circle_slug)
+    try:
+        org_vars = get_organization_variables()
+        current_time, display_timezone = convert_to_display_timezone(datetime.now(timezone.utc))
+        leader_dashboard_url = get_leader_dashboard_url()
+        branding = get_email_branding()
+    finally:
+        ctx.pop()
 
     content_blocks = EmailContentModel(db).resolve_all(circle_slug, 'team_update')
     subject, greeting_intro_text, next_steps_text = _substitute_team_update_content(
@@ -834,9 +843,9 @@ def build_team_update_preview(circle_slug):
         'current_team': [sample],
         'current_date': current_time,
         'display_timezone': display_timezone,
-        'leader_dashboard_url': get_leader_dashboard_url(),
+        'leader_dashboard_url': leader_dashboard_url,
         'test_mode': is_test_server(),
-        'branding': get_email_branding(),
+        'branding': branding,
         'count_event_name': org_vars['count_event_name'],
         'greeting_intro_text': greeting_intro_text,
         'next_steps_text': next_steps_text,
@@ -849,9 +858,17 @@ def build_team_update_preview(circle_slug):
 
 def build_weekly_summary_preview(circle_slug):
     """Same as build_team_update_preview, for weekly_summary."""
+    import app as app_module
+
     db = get_db_session()
-    org_vars = get_organization_variables()
-    current_time, display_timezone = convert_to_display_timezone(datetime.now(timezone.utc))
+    ctx = app_module.push_circle_context(circle_slug)
+    try:
+        org_vars = get_organization_variables()
+        current_time, display_timezone = convert_to_display_timezone(datetime.now(timezone.utc))
+        leader_dashboard_url = get_leader_dashboard_url()
+        branding = get_email_branding()
+    finally:
+        ctx.pop()
 
     content_blocks = EmailContentModel(db).resolve_all(circle_slug, 'weekly_summary')
     subject, next_steps_text = _substitute_weekly_summary_content(
@@ -876,9 +893,9 @@ def build_weekly_summary_preview(circle_slug):
         'leadership_interest_count': 0,
         'current_date': current_time,
         'display_timezone': display_timezone,
-        'leader_dashboard_url': get_leader_dashboard_url(),
+        'leader_dashboard_url': leader_dashboard_url,
         'test_mode': is_test_server(),
-        'branding': get_email_branding(),
+        'branding': branding,
         'count_event_name': org_vars['count_event_name'],
         'next_steps_text': next_steps_text,
     }
@@ -890,9 +907,17 @@ def build_weekly_summary_preview(circle_slug):
 
 def build_admin_digest_preview(circle_slug):
     """Same as build_team_update_preview, for admin_digest."""
+    import app as app_module
+
     db = get_db_session()
-    org_vars = get_organization_variables()
-    current_time, display_timezone = convert_to_display_timezone(datetime.now(timezone.utc))
+    ctx = app_module.push_circle_context(circle_slug)
+    try:
+        org_vars = get_organization_variables()
+        current_time, display_timezone = convert_to_display_timezone(datetime.now(timezone.utc))
+        admin_unassigned_url = get_admin_unassigned_url()
+        branding = get_email_branding()
+    finally:
+        ctx.pop()
 
     content_blocks = EmailContentModel(db).resolve_all(circle_slug, 'admin_digest')
     subject, greeting_salutation_text, recommended_actions_text = _substitute_admin_digest_content(
@@ -906,9 +931,9 @@ def build_admin_digest_preview(circle_slug):
         'average_wait_days': 3,
         'current_date': current_time,
         'display_timezone': display_timezone,
-        'admin_unassigned_url': get_admin_unassigned_url(),
+        'admin_unassigned_url': admin_unassigned_url,
         'test_mode': is_test_server(),
-        'branding': get_email_branding(),
+        'branding': branding,
         'count_event_name': org_vars['count_event_name'],
         'count_experience_label': org_vars['count_experience_label'],
         'greeting_salutation_text': greeting_salutation_text,

@@ -3,7 +3,7 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session, g, send_file, abort
 from flask_wtf.csrf import CSRFProtect
 from config.database import get_db_session, teardown_db_session
-from config.organization import get_organization_variables
+from config.organization import get_organization_variables, get_registration_url, get_admin_url, get_leader_url, DISPLAY_TIMEZONE
 from config.fields import get_skill_level_label
 from services.limiter import limiter
 from services.ip_blocker import IPBlockerService, get_client_ip
@@ -156,7 +156,24 @@ def nl2br(text):
 # Make area boundaries and common data available to templates
 @app.context_processor
 def inject_common_data():
-    org_vars = get_organization_variables()
+    """Templates rendered while g.circle is None (the landing host, or one of
+    routes/admin.py's CIRCLE_CONSOLE_ENDPOINTS reached from a non-circle host)
+    have no single organization to describe - get_organization_variables() would
+    raise there (no cross-circle default, by design). Every template reachable
+    in that state already branches around these values (see base.html's navbar
+    and landing.html), so a blank placeholder dict is safe; only the URL helpers,
+    which don't depend on any one circle, are real.
+    """
+    if getattr(g, 'circle', None) is not None:
+        org_vars = get_organization_variables()
+    else:
+        org_vars = {
+            'organization_name': None, 'organization_website': None, 'organization_contact': None,
+            'count_contact': None, 'count_event_name': None, 'count_info_url': None,
+            'from_email': None, 'logo_url': None, 'display_timezone': DISPLAY_TIMEZONE,
+            'registration_url': get_registration_url(), 'admin_url': get_admin_url(),
+            'leader_url': get_leader_url(),
+        }
     return {
         'areas': load_area_boundaries(),
         'current_year': datetime.now().year,
@@ -270,6 +287,35 @@ def resolve_circle():
     g.circle = circle
     g.circle_slug = slug
     return None
+
+
+def push_circle_context(circle_slug):
+    """Push (and return, already-entered) a request context resolved to the given
+    circle. Caller must pop it (e.g. in a finally block).
+
+    For code that has an explicit circle_slug but no real request resolved to it -
+    the scheduler's digest generators (see test/email_generator.py, the original
+    home of this helper), and the admin email-content preview builders
+    (services/email_service.py's build_registration_confirmation_preview()/
+    build_withdrawal_confirmation_preview(), reachable via routes/admin.py's
+    CIRCLE_CONSOLE_ENDPOINTS from any host - trusting ambient g.circle there would
+    mean previewing circle B's content while showing circle A's (or no circle's)
+    organization name/timezone/etc., the exact cross-circle mixup this platform
+    must not allow). Pushing a fake request context for the circle's own host and
+    running resolve_circle() against it makes every per-circle helper (get_
+    organization_variables(), config/areas.py, ParticipantModel's circle_slug
+    default) resolve exactly as it would for a genuine request to that circle.
+    """
+    db = get_db_session()
+    circle = CircleModel(db).get_by_slug(circle_slug)
+    if not circle:
+        raise ValueError(f"Unknown circle: {circle_slug}")
+
+    host = circle_host(circle_slug, circle['is_cbc'])
+    ctx = app.test_request_context(path='/', base_url=f'https://{host}')
+    ctx.push()
+    resolve_circle()
+    return ctx
 
 # Before request handler for authentication context
 @app.before_request

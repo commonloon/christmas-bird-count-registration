@@ -256,9 +256,13 @@ class ParticipantModel:
 
     def get_areas_without_leaders(self) -> List[str]:
         """Get list of area codes that don't have assigned leaders."""
-        from config.areas import get_all_areas
+        # Deliberately not config/areas.py's get_all_areas() - that reads the
+        # *ambient* Flask g.circle_slug (raises without one), which may not even
+        # be running inside a request at all, let alone one resolved to this
+        # model's own self.circle_slug. Query this circle's areas directly instead.
+        from models.circle import CircleAreaModel
 
-        all_areas = set(get_all_areas())
+        all_areas = {a['code'] for a in CircleAreaModel(self.db).get_areas_for_circle(self.circle_slug)}
         assigned_areas = {
             leader.get('assigned_area_leader')
             for leader in self.get_leaders()
