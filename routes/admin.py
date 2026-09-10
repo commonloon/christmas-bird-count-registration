@@ -77,6 +77,36 @@ def load_db():
         return redirect(url_for('admin.list_circles'))
 
 
+def _is_historical_year(year):
+    """True if year is before the current calendar year - CLAUDE.md documents
+    historical years as read-only, but until now that was UI-enforced only
+    (hidden/disabled controls) with no corresponding server-side check on any
+    write route - a crafted request with an arbitrary `year` field could
+    mutate historical data. Every write route below that takes `year` from
+    the request must check this before touching the database."""
+    return year < datetime.now().year
+
+
+def _reject_if_historical_year_form(selected_year, redirect_endpoint):
+    """For classic form-POST routes: flash + redirect back to the given
+    endpoint (with the same year preserved, so the admin lands back on the
+    historical view they were on). Returns a response to return immediately
+    if the year is historical, else None."""
+    if _is_historical_year(selected_year):
+        flash('This year is historical and read-only - no changes can be saved.', 'error')
+        return redirect(url_for(redirect_endpoint, year=selected_year))
+    return None
+
+
+def _reject_if_historical_year_json(selected_year):
+    """For JSON API routes. Returns a response to return immediately if the
+    year is historical, else None - matches this file's existing
+    {'success': False, 'message': ...} JSON error shape."""
+    if _is_historical_year(selected_year):
+        return jsonify({'success': False, 'message': 'This year is historical and read-only.'})
+    return None
+
+
 @admin_bp.route('/')
 @require_admin
 @limiter.limit(RATE_LIMITS['admin_general'])
@@ -348,7 +378,11 @@ def assign_participant():
     participant_id = request.form.get('participant_id', '').strip()
     area_code = request.form.get('area_code', '').strip().upper()
     selected_year = int(request.form.get('year', datetime.now().year))
-    
+
+    denied = _reject_if_historical_year_form(selected_year, 'admin.unassigned')
+    if denied:
+        return denied
+
     # Security checks
     user = get_current_user()
     if is_suspicious_input(participant_id) or is_suspicious_input(area_code):
@@ -498,7 +532,11 @@ def add_leader():
         return redirect(url_for('admin.leaders'))
 
     selected_year = int(request.form.get('year', datetime.now().year))
-    
+
+    denied = _reject_if_historical_year_form(selected_year, 'admin.leaders')
+    if denied:
+        return denied
+
     # Get and sanitize form data
     first_name = sanitize_name(request.form.get('first_name', ''))
     last_name = sanitize_name(request.form.get('last_name', ''))
@@ -621,6 +659,10 @@ def assign_leader():
     area_code = request.form.get('area_code', '').strip().upper()
     selected_year = int(request.form.get('year', datetime.now().year))
 
+    denied = _reject_if_historical_year_form(selected_year, 'admin.leaders')
+    if denied:
+        return denied
+
     # Validate required fields
     if not participant_id or not area_code:
         flash('Participant ID and area code are required.', 'error')
@@ -675,6 +717,11 @@ def delete_participant(participant_id):
         return redirect(url_for('admin.participants'))
 
     selected_year = int(request.form.get('year', datetime.now().year))
+
+    denied = _reject_if_historical_year_form(selected_year, 'admin.participants')
+    if denied:
+        return denied
+
     participant_model = ParticipantModel(g.db, selected_year)
     removal_model = RemovalLogModel(g.db, selected_year)
     user = get_current_user()
@@ -691,35 +738,47 @@ def delete_participant(participant_id):
 
     # Check if participant is also a leader (needs synchronization)
     is_leader = participant.get('is_leader', False)
+    first_name = participant.get('first_name', '')
+    last_name = participant.get('last_name', '')
+    email = participant.get('email', '')
 
-    # Delete participant
-    if participant_model.delete_participant(participant_id):
-        # Log the removal
+    # Delete + log_removal + leader-deactivation as one transaction, not three
+    # separately-committed steps - a crash partway through must not leave a
+    # deleted participant with no removal-log entry, or an orphaned
+    # is_leader=True row for a person who no longer exists (CLAUDE.md's
+    # bidirectional-synchronization requirement). Any failure here rolls back
+    # everything, including the delete itself - see the individual model
+    # methods' commit=False docstrings.
+    leader_cleanup_skipped = is_leader and not (first_name and last_name and email)
+    try:
+        if not participant_model.delete_participant(participant_id, commit=False):
+            raise RuntimeError(f'delete_participant({participant_id}) returned False')
+
         removal_model.log_removal(
             participant_name=participant_name,
             area_code=area_code,
             removed_by=user['email'],
             reason=reason,
-            participant_email=participant.get('email', '')
+            participant_email=email,
+            commit=False,
         )
 
-        # If participant was also a leader, deactivate corresponding leader records
-        if is_leader:
-            first_name = participant.get('first_name', '')
-            last_name = participant.get('last_name', '')
-            email = participant.get('email', '')
+        if is_leader and not leader_cleanup_skipped:
+            if not participant_model.deactivate_leaders_by_identity(
+                    first_name, last_name, email, user['email'], commit=False):
+                raise RuntimeError(f'deactivate_leaders_by_identity failed for {first_name} {last_name}')
 
-            if first_name and last_name and email:
-                if participant_model.deactivate_leaders_by_identity(first_name, last_name, email, user['email']):
-                    flash(f'Participant {participant_name} and corresponding leader records removed successfully.', 'success')
-                else:
-                    flash(f'Participant {participant_name} removed, but failed to deactivate leader records. Please check leader management.', 'warning')
-            else:
-                flash(f'Participant {participant_name} removed, but leader cleanup skipped due to missing identity information.', 'warning')
-        else:
-            flash(f'Participant {participant_name} removed successfully.', 'success')
+        g.db.commit()
+    except Exception as e:
+        g.db.rollback()
+        logging.error(f"Error removing participant {participant_id}: {e}")
+        flash('Failed to remove participant - no changes were made.', 'error')
+        return redirect(url_for('admin.participants', year=selected_year))
+
+    if leader_cleanup_skipped:
+        flash(f'Participant {participant_name} removed, but leader cleanup skipped due to missing identity information.', 'warning')
     else:
-        flash('Failed to remove participant.', 'error')
+        flash(f'Participant {participant_name} removed successfully.', 'success')
 
     return redirect(url_for('admin.participants', year=selected_year))
 
@@ -733,6 +792,11 @@ def withdraw_participant(participant_id):
         return redirect(url_for('admin.participants'))
 
     selected_year = int(request.form.get('year', datetime.now().year))
+
+    denied = _reject_if_historical_year_form(selected_year, 'admin.participants')
+    if denied:
+        return denied
+
     participant_model = ParticipantModel(g.db, selected_year)
     withdrawal_log_model = WithdrawalLogModel(g.db, selected_year)
     user = get_current_user()
@@ -747,36 +811,47 @@ def withdraw_participant(participant_id):
     area_code = participant.get('preferred_area', 'UNASSIGNED')
     withdrawal_reason = request.form.get('reason', 'Withdrawn by administrator')
 
-    # Withdraw participant
-    if participant_model.withdraw_participant(participant_id):
-        # Log the withdrawal
-        if withdrawal_log_model.log_withdrawal(
+    # Withdraw + log_withdrawal as one transaction (the participant-status/
+    # leadership-removal part was already atomic - both on the same row, one
+    # commit - only the separate log entry wasn't). Email send stays outside
+    # this transaction and its own try/except on purpose: a failed send
+    # shouldn't roll back a withdrawal that otherwise succeeded.
+    try:
+        if not participant_model.withdraw_participant(participant_id, commit=False):
+            raise RuntimeError(f'withdraw_participant({participant_id}) returned False')
+
+        if not withdrawal_log_model.log_withdrawal(
             participant_id=participant_id,
             first_name=participant.get('first_name', ''),
             last_name=participant.get('last_name', ''),
             email=participant.get('email', ''),
             area_code=area_code,
             withdrawal_reason=withdrawal_reason,
-            recorded_by=user['email']
+            recorded_by=user['email'],
+            commit=False,
         ):
-            # Send withdrawal confirmation email to participant
-            try:
-                from services.email_service import email_service
-                email_service.send_withdrawal_confirmation(
-                    participant_email=participant.get('email', ''),
-                    first_name=participant.get('first_name', ''),
-                    last_name=participant.get('last_name', ''),
-                    withdrawal_reason=withdrawal_reason
-                )
-            except Exception as e:
-                logger.error(f"Failed to send withdrawal confirmation email: {e}")
+            raise RuntimeError(f'log_withdrawal failed for participant {participant_id}')
 
-            flash(f'Participant {participant_name} has been withdrawn.', 'success')
-        else:
-            flash(f'Participant {participant_name} withdrawn but failed to log withdrawal. Please review.', 'warning')
-    else:
-        flash('Failed to withdraw participant.', 'error')
+        g.db.commit()
+    except Exception as e:
+        g.db.rollback()
+        logger.error(f"Error withdrawing participant {participant_id}: {e}")
+        flash('Failed to withdraw participant - no changes were made.', 'error')
+        return redirect(url_for('admin.participants', year=selected_year))
 
+    # Send withdrawal confirmation email to participant
+    try:
+        from services.email_service import email_service
+        email_service.send_withdrawal_confirmation(
+            participant_email=participant.get('email', ''),
+            first_name=participant.get('first_name', ''),
+            last_name=participant.get('last_name', ''),
+            withdrawal_reason=withdrawal_reason
+        )
+    except Exception as e:
+        logger.error(f"Failed to send withdrawal confirmation email: {e}")
+
+    flash(f'Participant {participant_name} has been withdrawn.', 'success')
     return redirect(url_for('admin.participants', year=selected_year))
 
 
@@ -789,6 +864,11 @@ def reactivate_participant(participant_id):
         return redirect(url_for('admin.participants'))
 
     selected_year = int(request.form.get('year', datetime.now().year))
+
+    denied = _reject_if_historical_year_form(selected_year, 'admin.participants')
+    if denied:
+        return denied
+
     participant_model = ParticipantModel(g.db, selected_year)
     withdrawal_log_model = WithdrawalLogModel(g.db, selected_year)
     user = get_current_user()
@@ -807,23 +887,30 @@ def reactivate_participant(participant_id):
         flash(f'Participant {participant_name} is not withdrawn.', 'warning')
         return redirect(url_for('admin.participants', year=selected_year))
 
-    # Reactivate participant
-    if participant_model.reactivate_participant(participant_id):
-        # Log the reactivation
-        if withdrawal_log_model.log_reactivation(
+    # Reactivate + log_reactivation as one transaction.
+    try:
+        if not participant_model.reactivate_participant(participant_id, commit=False):
+            raise RuntimeError(f'reactivate_participant({participant_id}) returned False')
+
+        if not withdrawal_log_model.log_reactivation(
             participant_id=participant_id,
             first_name=participant.get('first_name', ''),
             last_name=participant.get('last_name', ''),
             email=participant.get('email', ''),
             area_code=area_code,
-            recorded_by=user['email']
+            recorded_by=user['email'],
+            commit=False,
         ):
-            flash(f'Participant {participant_name} has been reactivated.', 'success')
-        else:
-            flash(f'Participant {participant_name} reactivated but failed to log reactivation. Please review.', 'warning')
-    else:
-        flash('Failed to reactivate participant.', 'error')
+            raise RuntimeError(f'log_reactivation failed for participant {participant_id}')
 
+        g.db.commit()
+    except Exception as e:
+        g.db.rollback()
+        logging.error(f"Error reactivating participant {participant_id}: {e}")
+        flash('Failed to reactivate participant - no changes were made.', 'error')
+        return redirect(url_for('admin.participants', year=selected_year))
+
+    flash(f'Participant {participant_name} has been reactivated.', 'success')
     return redirect(url_for('admin.participants', year=selected_year))
 
 
@@ -937,7 +1024,11 @@ def edit_leader():
         phone = sanitize_phone(data.get('phone', ''))
         phone2 = sanitize_phone(data.get('phone2', ''))
         selected_year = int(data.get('year', datetime.now().year))
-        
+
+        denied = _reject_if_historical_year_json(selected_year)
+        if denied:
+            return denied
+
         # Security checks
         user = get_current_user()
         all_text_inputs = [first_name, last_name, phone, phone2]
@@ -1034,6 +1125,10 @@ def delete_leader():
         leader_id = data.get('leader_id')
         selected_year = int(data.get('year', datetime.now().year))
 
+        denied = _reject_if_historical_year_json(selected_year)
+        if denied:
+            return denied
+
         if not leader_id:
             return jsonify({'success': False, 'message': 'Leader ID is required'})
 
@@ -1089,6 +1184,10 @@ def edit_participant():
         interested_in_leadership = bool(data.get('interested_in_leadership', False))
         preferred_area = data.get('preferred_area', '').strip().upper() if data.get('preferred_area') else None
         selected_year = int(data.get('year', datetime.now().year))
+
+        denied = _reject_if_historical_year_json(selected_year)
+        if denied:
+            return denied
 
         # Security checks
         user = get_current_user()

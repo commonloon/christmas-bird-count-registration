@@ -19,9 +19,11 @@ class WithdrawalLogModel:
 
     def log_withdrawal(self, participant_id, first_name: str, last_name: str,
                       email: str, area_code: str, withdrawal_reason: str,
-                      recorded_by: str) -> bool:
-        """Log a participant withdrawal."""
-        try:
+                      recorded_by: str, commit=True) -> bool:
+        """Log a participant withdrawal. commit=False composes into a larger
+        atomic operation (e.g. withdraw_participant + log_withdrawal as one
+        transaction) - see ParticipantModel.delete_participant's docstring."""
+        def _do():
             entry = WithdrawalLog(
                 year=self.year,
                 circle_slug=self.circle_slug,
@@ -36,18 +38,27 @@ class WithdrawalLogModel:
                 recorded_at=datetime.now(timezone.utc),
             )
             self.db.add(entry)
-            self.db.commit()
+            if commit:
+                self.db.commit()
+            else:
+                self.db.flush()
             self.logger.info(f"Logged withdrawal for {first_name} {last_name} <{email}> from area {area_code}")
             return True
+
+        if not commit:
+            return _do()
+        try:
+            return _do()
         except Exception as e:
             self.db.rollback()
             self.logger.error(f"Failed to log withdrawal: {e}")
             return False
 
     def log_reactivation(self, participant_id, first_name: str, last_name: str,
-                        email: str, area_code: str, recorded_by: str) -> bool:
-        """Log a participant reactivation."""
-        try:
+                        email: str, area_code: str, recorded_by: str, commit=True) -> bool:
+        """Log a participant reactivation. commit=False composes into a larger
+        atomic operation - see ParticipantModel.delete_participant's docstring."""
+        def _do():
             entry = WithdrawalLog(
                 year=self.year,
                 circle_slug=self.circle_slug,
@@ -62,9 +73,17 @@ class WithdrawalLogModel:
                 recorded_at=datetime.now(timezone.utc),
             )
             self.db.add(entry)
-            self.db.commit()
+            if commit:
+                self.db.commit()
+            else:
+                self.db.flush()
             self.logger.info(f"Logged reactivation for {first_name} {last_name} <{email}> in area {area_code}")
             return True
+
+        if not commit:
+            return _do()
+        try:
+            return _do()
         except Exception as e:
             self.db.rollback()
             self.logger.error(f"Failed to log reactivation: {e}")

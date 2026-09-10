@@ -155,17 +155,33 @@ class ParticipantModel:
             self.logger.error(f"Failed to update participant {participant_id}: {e}")
             return False
 
-    def delete_participant(self, participant_id) -> bool:
-        """Delete a participant (single table - no synchronization needed)."""
-        try:
+    def delete_participant(self, participant_id, commit=True) -> bool:
+        """Delete a participant (single table - no synchronization needed).
+
+        commit=False lets a caller compose this into a larger atomic
+        operation (e.g. delete + log_removal + deactivate_leaders_by_identity
+        as one transaction - see routes/admin.py's delete_participant route)
+        - flushes instead of committing, and lets an exception propagate to
+        the caller's own try/except+rollback rather than catching and rolling
+        back here, which would also discard the caller's other
+        not-yet-committed work in the same transaction."""
+        def _do():
             participant = self._base_query().filter_by(id=int(participant_id)).first()
             if not participant:
                 self.logger.error(f"Participant {participant_id} not found for deletion")
                 return False
             self.db.delete(participant)
-            self.db.commit()
+            if commit:
+                self.db.commit()
+            else:
+                self.db.flush()
             self.logger.info(f"Deleted participant {participant_id} from year {self.year}")
             return True
+
+        if not commit:
+            return _do()
+        try:
+            return _do()
         except Exception as e:
             self.db.rollback()
             self.logger.error(f"Failed to delete participant {participant_id}: {e}")
@@ -271,9 +287,10 @@ class ParticipantModel:
             self.logger.error(f"Failed to assign area leadership: {e}")
             return False
 
-    def remove_area_leadership(self, participant_id, removed_by: str) -> bool:
-        """Remove area leadership from a participant."""
-        try:
+    def remove_area_leadership(self, participant_id, removed_by: str, commit=True) -> bool:
+        """Remove area leadership from a participant. commit=False composes
+        into a larger atomic operation - see delete_participant's docstring."""
+        def _do():
             participant = self._base_query().filter_by(id=int(participant_id)).first()
             if not participant:
                 return False
@@ -283,35 +300,55 @@ class ParticipantModel:
             participant.leadership_removed_by = removed_by
             participant.leadership_removed_at = now
             participant.updated_at = now
-            self.db.commit()
+            if commit:
+                self.db.commit()
+            else:
+                self.db.flush()
             self.logger.info(f"Removed area leadership from participant {participant_id}")
             return True
+
+        if not commit:
+            return _do()
+        try:
+            return _do()
         except Exception as e:
             self.db.rollback()
             self.logger.error(f"Failed to remove area leadership: {e}")
             return False
 
-    def deactivate_leaders_by_identity(self, first_name: str, last_name: str, email: str, removed_by: str) -> bool:
-        """Deactivate all leaders matching exact identity (first_name, last_name, email)."""
-        try:
+    def deactivate_leaders_by_identity(self, first_name: str, last_name: str, email: str, removed_by: str,
+                                        commit=True) -> bool:
+        """Deactivate all leaders matching exact identity (first_name, last_name, email).
+        commit=False composes into a larger atomic operation - see
+        delete_participant's docstring. With commit=False, an exception from
+        remove_area_leadership propagates rather than being caught here, so
+        the composite caller's own rollback covers this step too."""
+        def _do():
             matching_leaders = self.get_leaders_by_identity(first_name, last_name, email)
             if not matching_leaders:
                 self.logger.info(f"No active leaders found for identity: {first_name} {last_name} <{email}>")
                 return True
 
-            deactivated_count = 0
             for leader in matching_leaders:
-                if self.remove_area_leadership(leader['id'], removed_by):
-                    deactivated_count += 1
-                else:
-                    self.logger.error(f"Failed to deactivate leader {leader['id']} for {first_name} {last_name}")
+                if not self.remove_area_leadership(leader['id'], removed_by, commit=commit):
+                    if commit:
+                        self.logger.error(f"Failed to deactivate leader {leader['id']} for {first_name} {last_name}")
+                        return False
+                    # commit=False: a False return (not an exception) here means
+                    # the leader row genuinely wasn't found - already an
+                    # inconsistent identity snapshot, not something a retry
+                    # would fix, so surface it the same way instead of silently
+                    # continuing.
+                    raise RuntimeError(
+                        f"Failed to deactivate leader {leader['id']} for {first_name} {last_name} - row not found")
 
-            success = deactivated_count == len(matching_leaders)
-            if success:
-                self.logger.info(f"Successfully deactivated {deactivated_count} leader(s) for {first_name} {last_name} <{email}>")
-            else:
-                self.logger.error(f"Only deactivated {deactivated_count}/{len(matching_leaders)} leader(s) for {first_name} {last_name} <{email}>")
-            return success
+            self.logger.info(f"Successfully deactivated {len(matching_leaders)} leader(s) for {first_name} {last_name} <{email}>")
+            return True
+
+        if not commit:
+            return _do()
+        try:
+            return _do()
         except Exception as e:
             self.logger.error(f"Failed to deactivate leaders by identity {first_name} {last_name} <{email}>: {e}")
             return False
@@ -350,13 +387,17 @@ class ParticipantModel:
         }
         return self.add_participant(participant_data)
 
-    def remove_leader(self, participant_id, removed_by: str) -> bool:
+    def remove_leader(self, participant_id, removed_by: str, commit=True) -> bool:
         """Remove leadership from a participant (wrapper for remove_area_leadership)."""
-        return self.remove_area_leadership(participant_id, removed_by)
+        return self.remove_area_leadership(participant_id, removed_by, commit=commit)
 
-    def withdraw_participant(self, participant_id) -> bool:
-        """Withdraw a participant from the count, removing leadership if applicable."""
-        try:
+    def withdraw_participant(self, participant_id, commit=True) -> bool:
+        """Withdraw a participant from the count, removing leadership if applicable
+        (both on the same row, so already atomic with each other regardless of
+        commit). commit=False composes into a larger atomic operation (e.g.
+        withdraw + log_withdrawal as one transaction) - see
+        delete_participant's docstring."""
+        def _do():
             participant = self._base_query().filter_by(id=int(participant_id)).first()
             if not participant:
                 self.logger.error(f"Participant {participant_id} not found for withdrawal")
@@ -371,17 +412,26 @@ class ParticipantModel:
                 participant.leadership_removed_by = 'system-withdrawal'
                 participant.leadership_removed_at = datetime.now(timezone.utc)
 
-            self.db.commit()
+            if commit:
+                self.db.commit()
+            else:
+                self.db.flush()
             self.logger.info(f"Withdrew participant {participant_id} from year {self.year}")
             return True
+
+        if not commit:
+            return _do()
+        try:
+            return _do()
         except Exception as e:
             self.db.rollback()
             self.logger.error(f"Failed to withdraw participant {participant_id}: {e}")
             return False
 
-    def reactivate_participant(self, participant_id) -> bool:
-        """Reactivate a withdrawn participant."""
-        try:
+    def reactivate_participant(self, participant_id, commit=True) -> bool:
+        """Reactivate a withdrawn participant. commit=False composes into a
+        larger atomic operation - see delete_participant's docstring."""
+        def _do():
             participant = self._base_query().filter_by(id=int(participant_id)).first()
             if not participant:
                 self.logger.error(f"Participant {participant_id} not found for reactivation")
@@ -392,9 +442,17 @@ class ParticipantModel:
 
             participant.status = 'active'
             participant.updated_at = datetime.now(timezone.utc)
-            self.db.commit()
+            if commit:
+                self.db.commit()
+            else:
+                self.db.flush()
             self.logger.info(f"Reactivated participant {participant_id} in year {self.year}")
             return True
+
+        if not commit:
+            return _do()
+        try:
+            return _do()
         except Exception as e:
             self.db.rollback()
             self.logger.error(f"Failed to reactivate participant {participant_id}: {e}")

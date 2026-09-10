@@ -744,17 +744,15 @@ document.addEventListener('DOMContentLoaded', function() {
             method: 'POST',
             body: formData
         })
-        .then(response => {
-            if (response.redirected) {
-                // Flask redirected - means success with flash message
-                window.location.reload();
-            } else {
-                // Check if it's an error
-                return response.text().then(text => {
-                    alert('Error reassigning leader. Please check the error message on the page after reload.');
-                    window.location.reload();
-                });
-            }
+        .then(() => {
+            // admin.assign_leader always redirects with a flash message,
+            // on both the success path and every error path (including a
+            // rejected historical-year attempt) - fetch() follows that
+            // redirect transparently, so response.redirected can't be used
+            // to tell them apart (it's true either way). Reload and let the
+            // server-rendered flash banner on the reloaded page communicate
+            // the actual outcome, instead of guessing from the Response.
+            window.location.reload();
         })
         .catch(error => {
             console.error('Error:', error);

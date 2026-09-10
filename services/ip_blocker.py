@@ -52,35 +52,46 @@ class IPBlockerService:
     def add_block(self, ip_address: str, reason: str,
                   trigger_count: int = 0, user_agent: str = '',
                   violation_url: str = '', violation_history: List[Dict] = None) -> str:
-        """Add IP to block list with PostgreSQL persistence."""
+        """Add IP to block list with PostgreSQL persistence.
+
+        Uses an atomic upsert (INSERT ... ON CONFLICT), matching track_404()'s
+        pattern, rather than a plain read-then-branch-then-write - two
+        concurrent first-time block triggers for the same brand-new IP (e.g.
+        a 404-threshold trigger and a honeypot trigger firing in the same
+        instant) would otherwise both SELECT and see no existing row, then
+        both attempt INSERT, and the second would raise an uncaught
+        IntegrityError on the primary key.
+        """
         now = datetime.now(timezone.utc)
         expires = now + timedelta(hours=BLOCK_DURATION_HOURS)
+        history = violation_history or []
 
-        row = self.db.query(BlockedIP).filter_by(ip_address=ip_address).first()
-        if row:
-            row.blocked_at = now
-            row.expires_at = expires
-            row.reason = reason
-            row.trigger_count = trigger_count
-            row.user_agent = user_agent
-            row.last_violation_url = violation_url
-            row.violation_history = violation_history or []
-            row.total_violations = trigger_count
-            row.auto_unblocked = False
-        else:
-            row = BlockedIP(
-                ip_address=ip_address,
-                blocked_at=now,
-                expires_at=expires,
-                reason=reason,
-                trigger_count=trigger_count,
-                user_agent=user_agent,
-                last_violation_url=violation_url,
-                violation_history=violation_history or [],
-                total_violations=trigger_count,
-                auto_unblocked=False,
-            )
-            self.db.add(row)
+        stmt = pg_insert(BlockedIP).values(
+            ip_address=ip_address,
+            blocked_at=now,
+            expires_at=expires,
+            reason=reason,
+            trigger_count=trigger_count,
+            user_agent=user_agent,
+            last_violation_url=violation_url,
+            violation_history=history,
+            total_violations=trigger_count,
+            auto_unblocked=False,
+        ).on_conflict_do_update(
+            index_elements=['ip_address'],
+            set_={
+                'blocked_at': now,
+                'expires_at': expires,
+                'reason': reason,
+                'trigger_count': trigger_count,
+                'user_agent': user_agent,
+                'last_violation_url': violation_url,
+                'violation_history': history,
+                'total_violations': trigger_count,
+                'auto_unblocked': False,
+            },
+        )
+        self.db.execute(stmt)
         self.db.commit()
 
         with CACHE_LOCK:

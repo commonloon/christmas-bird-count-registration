@@ -18,8 +18,13 @@ class RemovalLogModel:
         return self.db.query(RemovalLog).filter_by(year=self.year, circle_slug=self.circle_slug)
 
     def log_removal(self, participant_name: str, area_code: str, removed_by: str,
-                    reason: str = '', participant_email: str = '') -> int:
-        """Log a participant removal."""
+                    reason: str = '', participant_email: str = '', commit=True) -> int:
+        """Log a participant removal. commit=False composes into a larger
+        atomic operation (e.g. delete + log_removal + leader deactivation as
+        one transaction - see ParticipantModel.delete_participant's
+        docstring) - flushes instead of committing, so the id is still
+        available on the returned/flushed row without finalizing the
+        transaction."""
         removal = RemovalLog(
             year=self.year,
             circle_slug=self.circle_slug,
@@ -32,7 +37,10 @@ class RemovalLogModel:
             emailed=False,
         )
         self.db.add(removal)
-        self.db.commit()
+        if commit:
+            self.db.commit()
+        else:
+            self.db.flush()
         self.logger.info(f"Logged removal: {participant_name} from area {area_code}")
         return removal.id
 

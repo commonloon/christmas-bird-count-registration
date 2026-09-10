@@ -344,7 +344,24 @@ def get_engine():
         database_url = os.environ.get('DATABASE_URL')
         if not database_url:
             raise RuntimeError('DATABASE_URL environment variable is not set')
-        _engine = create_engine(database_url, pool_pre_ping=True)
+        # pool_size/max_overflow are configurable (rather than left at
+        # SQLAlchemy's implicit 5/10 defaults, which is what this still
+        # evaluates to if the env vars are unset) because of a real
+        # cross-tenant capacity concern found in a concurrency audit: this
+        # app node runs a single process (see REMINDER.md), so this one pool
+        # is shared by every circle - a registration surge on one circle can
+        # exhaust it and start timing out requests for every OTHER circle
+        # sharing the app. Tune these once the Postgres node's actual
+        # connection ceiling is confirmed (not verified in-repo as of this
+        # writing) - raising them blindly just moves the exhaustion point
+        # from this pool to Postgres's own max_connections instead.
+        _engine = create_engine(
+            database_url,
+            pool_pre_ping=True,
+            pool_size=int(os.environ.get('DB_POOL_SIZE', 5)),
+            max_overflow=int(os.environ.get('DB_MAX_OVERFLOW', 10)),
+            pool_timeout=int(os.environ.get('DB_POOL_TIMEOUT', 30)),
+        )
     return _engine
 
 

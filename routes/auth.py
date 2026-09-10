@@ -245,17 +245,25 @@ def verify(token):
             flash('That login link is invalid. Please request a new one.', 'error')
             return redirect(url_for('auth.login'))
 
-        if record.used_at is not None:
-            flash('That login link has already been used. Please request a new one.', 'error')
-            return redirect(url_for('auth.login'))
-
         if datetime.now(timezone.utc) > record.expires_at:
             flash('That login link has expired. Please request a new one.', 'error')
             return redirect(url_for('auth.login'))
 
-        # Mark used (single-use) before establishing the session
-        record.used_at = datetime.now(timezone.utc)
+        # Atomically mark used (single-use). A plain read-then-write (check
+        # record.used_at, then set it) is a TOCTOU race: two near-simultaneous
+        # requests for the same token (double-click, or the link opened in two
+        # tabs) could both read used_at as None before either commits, and
+        # both would establish a session. This UPDATE re-checks used_at IS
+        # NULL as part of the same statement, under Postgres's row lock, so
+        # only one concurrent request can ever be the one that updates a row.
+        rows_updated = db.query(MagicLinkToken).filter_by(
+            id=record.id, used_at=None,
+        ).update({'used_at': datetime.now(timezone.utc)}, synchronize_session=False)
         db.commit()
+
+        if rows_updated == 0:
+            flash('That login link has already been used. Please request a new one.', 'error')
+            return redirect(url_for('auth.login'))
 
         email = record.email
         user_role = get_user_role(email, db, g.circle_slug)
