@@ -49,6 +49,56 @@ def extract_area_code(name):
     return None
 
 
+def clean_area_name(name, code):
+    """Strip the redundant leading area-code label (e.g. "Area 3A", "3A -",
+    "3A:") that extract_area_code() parses the code from, and normalize KML
+    export whitespace noise (non-breaking spaces, embedded newlines, runs of
+    plain whitespace). Every place this app displays an area already
+    prepends the code itself (see static/js/map.js, templates/index.html,
+    etc.) - leaving the same label baked into the stored name shows it
+    twice, e.g. "Area 3A: Area 3A Courtenay East".
+
+    Falls back to the normalized-but-unstripped text if stripping would
+    leave nothing (a placemark whose whole name IS just the code label,
+    e.g. "Area A" with no further description - there's nothing redundant
+    left to show in that case)."""
+    if not name:
+        return name
+
+    text = name.replace('\xa0', ' ')
+    text = re.sub(r'\s+', ' ', text).strip()
+
+    for pattern in (
+        rf'^Area\s+{re.escape(code)}[\s:.\-–—]*',
+        rf'^{re.escape(code)}[\s:.\-–—]+',
+    ):
+        stripped = re.sub(pattern, '', text, count=1, flags=re.IGNORECASE).strip()
+        if stripped and stripped != text:
+            return stripped
+
+    return text
+
+
+def clean_area_description(description):
+    """Strip a leading "team leader: NAME" style label some KML exports use
+    to record who currently leads an area. Leader identity belongs to the
+    app's own leader-assignment records (it changes year to year), never to
+    static area text - see CLAUDE.md's identity-based leader model.
+
+    This only recognizes that one explicit phrase - it deliberately does NOT
+    try to detect "this description is probably just a bare person's name"
+    in general, since that's indistinguishable from legitimate free-text
+    area notes another circle might genuinely want (confirmed by inspecting
+    real data: Vancouver's descriptions are real boundary notes, while
+    Ladner's are bare leader names with no identifying phrase at all - no
+    automated rule safely tells those apart)."""
+    if not description:
+        return description
+
+    cleaned = re.sub(r'^\s*team\s+leader:?\s*', '', description, flags=re.IGNORECASE).strip()
+    return cleaned
+
+
 def parse_coordinates_to_geojson(coord_string):
     """Convert a KML 'lng,lat,alt lng,lat,alt ...' string to [[lng, lat], ...].
     Raises KmlParseError on a non-numeric or out-of-range coordinate, rather than
@@ -105,6 +155,7 @@ def parse_kml_string(kml_content):
         desc_elem = placemark.find('kml:description', KML_NS)
         description = desc_elem.text if desc_elem is not None and desc_elem.text else ''
         description = re.sub(r'<[^>]*>', '', description).strip()
+        description = clean_area_description(description)
 
         # Normally one <Polygon> per placemark, but a placemark can hold a
         # <MultiGeometry> with several <Polygon> fragments whose rings are meant
@@ -129,7 +180,7 @@ def parse_kml_string(kml_content):
 
         areas.append({
             'letter_code': area_code,
-            'name': name,
+            'name': clean_area_name(name, area_code),
             'description': description,
             'geometry': {'type': 'Polygon', 'coordinates': [coordinates]},
         })
