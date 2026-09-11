@@ -16,7 +16,7 @@
             </div>
             {% endif %}
             <div>
-                <h1 class="mb-2" style="font-size: 1.75rem;">Register for the {{ count_event_name }}</h1>
+                <h1 class="mb-2" style="font-size: 1.75rem;">Register for the {% if count_info_url %}<a href="{{ count_info_url|e }}" target="_blank" rel="noopener">{{ count_event_name|e }}</a>{% else %}{{ count_event_name|e }}{% endif %}</h1>
                 <p class="lead mb-0" style="font-size: 1.1rem;">Join {{ organization_name }}'s annual {{ count_event_name }} and help us track bird populations in the area.</p>
             </div>
         </div>
@@ -100,6 +100,7 @@
                 </select>
             </div>
             
+            {% if is_cbc %}
             <div class="mb-3">
                 <label class="form-label">I would like to: *</label>
                 <div class="form-check">
@@ -111,13 +112,16 @@
                     <label class="form-check-label" for="feeder">{{ feeder_counter_label }}</label>
                 </div>
                 <div class="mt-2">
-                    <a href="https://view.publitas.com/birds-canada-gykxaz9yrrpp/field-counters-guide-to-cbc_cheat-sheet-with-datasheet/page/1" 
+                    <a href="https://view.publitas.com/birds-canada-gykxaz9yrrpp/field-counters-guide-to-cbc_cheat-sheet-with-datasheet/page/1"
                        target="_blank" class="btn btn-sm btn-outline-primary me-2">Guide for Field Counters</a>
-                    <a href="https://view.publitas.com/birds-canada-gykxaz9yrrpp/feeder-counters-guide-to-cbc_cheat-sheet-with-datasheet/page/1" 
+                    <a href="https://view.publitas.com/birds-canada-gykxaz9yrrpp/feeder-counters-guide-to-cbc_cheat-sheet-with-datasheet/page/1"
                        target="_blank" class="btn btn-sm btn-outline-info">Guide for Feeder Counters</a>
                 </div>
             </div>
-            
+            {% else %}
+            <input type="hidden" name="participation_type" value="regular">
+            {% endif %}
+
             <div class="mb-3">
                 <label for="preferred_area" class="form-label">Preferred Count Area *</label>
                 <select class="form-select" id="preferred_area" name="preferred_area" required>

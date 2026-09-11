@@ -49,11 +49,11 @@
         <div class="row">
             <div class="col-md-6 mb-3">
                 <label class="form-label">Organization website</label>
-                <input type="url" name="website" class="form-control" value="{{ src.get('website', '')|e }}">
+                <input type="url" name="website" class="form-control" value="{{ (src.get('website') or '')|e }}">
             </div>
             <div class="col-md-6 mb-3">
                 <label class="form-label">Organization contact email</label>
-                <input type="email" name="contact" class="form-control" value="{{ src.get('contact', '')|e }}">
+                <input type="email" name="contact" class="form-control" value="{{ (src.get('contact') or '')|e }}">
             </div>
         </div>
 
@@ -61,12 +61,12 @@
             <div class="col-md-6 mb-3">
                 <label class="form-label">Count coordinator contact email</label>
                 <input type="email" name="count_contact" class="form-control" required
-                       value="{{ src.get('count_contact', '')|e }}">
+                       value="{{ (src.get('count_contact') or '')|e }}">
             </div>
             <div class="col-md-6 mb-3">
                 <label class="form-label">From email (used to send registration emails)</label>
                 <input type="email" name="from_email" class="form-control{% if errors.from_email %} is-invalid{% endif %}"
-                       required value="{{ src.get('from_email', '')|e }}">
+                       required value="{{ (src.get('from_email') or '')|e }}">
                 {% if errors.from_email %}
                 <div class="invalid-feedback">{{ errors.from_email|e }}</div>
                 {% else %}
@@ -83,13 +83,13 @@
 
         <div class="mb-3">
             <label class="form-label">Count info URL</label>
-            <input type="url" name="count_info_url" class="form-control" value="{{ src.get('count_info_url', '')|e }}">
+            <input type="url" name="count_info_url" class="form-control" value="{{ (src.get('count_info_url') or '')|e }}">
         </div>
 
         <div class="row">
             <div class="col-md-6 mb-3">
                 <label class="form-label">Test-mode recipient email</label>
-                <input type="email" name="test_recipient" class="form-control" value="{{ src.get('test_recipient', '')|e }}">
+                <input type="email" name="test_recipient" class="form-control" value="{{ (src.get('test_recipient') or '')|e }}">
             </div>
         </div>
 
@@ -142,11 +142,11 @@
             </div>
             <div class="col-md-6 mb-3">
                 <label class="form-label">Map latitude (optional)</label>
-                <input type="number" step="any" name="latitude" class="form-control" value="{{ src.get('latitude', '') }}">
+                <input type="number" step="any" name="latitude" class="form-control" value="{{ src.get('latitude') if src.get('latitude') is not none else '' }}">
             </div>
             <div class="col-md-6 mb-3">
                 <label class="form-label">Map longitude (optional)</label>
-                <input type="number" step="any" name="longitude" class="form-control" value="{{ src.get('longitude', '') }}">
+                <input type="number" step="any" name="longitude" class="form-control" value="{{ src.get('longitude') if src.get('longitude') is not none else '' }}">
             </div>
         </div>
 
@@ -154,19 +154,19 @@
             <div class="col-md-4 mb-3">
                 <label class="form-label">Experience field label</label>
                 <input type="text" name="count_experience_label" class="form-control"
-                       value="{{ src.get('count_experience_label', 'CBC Experience')|e }}">
+                       value="{{ (src.get('count_experience_label') or 'CBC Experience')|e }}">
             </div>
             <div class="col-md-8 mb-3">
                 <label class="form-label">Feeder counter option label</label>
                 <input type="text" name="feeder_counter_label" class="form-control"
-                       value="{{ src.get('feeder_counter_label', 'Count birds at my home feeder')|e }}">
+                       value="{{ (src.get('feeder_counter_label') or 'Count birds at my home feeder')|e }}">
             </div>
         </div>
 
         <div class="mb-3">
             <label class="form-label">Notes field placeholder example</label>
             <input type="text" name="notes_placeholder_example" class="form-control"
-                   value="{{ src.get('notes_placeholder_example', '')|e }}">
+                   value="{{ (src.get('notes_placeholder_example') or '')|e }}">
         </div>
 
         <div class="form-check mb-3">
