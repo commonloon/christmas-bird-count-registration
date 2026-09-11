@@ -1,5 +1,5 @@
 // Jest configuration for CBC Registration tests
-// Updated by Claude AI on 2025-10-10
+// Updated by Claude AI on 2026-09-11
 
 module.exports = {
   testEnvironment: 'node',
@@ -23,5 +23,5 @@ module.exports = {
 
   verbose: true,
 
-  testMatch: ['**/email_validation.test.js']
+  testMatch: ['**/email_validation.test.js', '**/participation_type_validation.test.js']
 };

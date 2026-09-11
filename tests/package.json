@@ -6,6 +6,7 @@
   "scripts": {
     "test:email-validation": "jest email_validation.test.js",
     "test:email-validation:verbose": "jest email_validation.test.js --verbose",
+    "test:participation-type": "jest participation_type_validation.test.js",
     "test:coverage": "jest --coverage",
     "test:coverage:email": "jest email_validation.test.js --coverage"
   },

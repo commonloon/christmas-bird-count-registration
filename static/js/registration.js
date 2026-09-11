@@ -1,4 +1,4 @@
-// Updated by Claude AI on 2025-09-30
+// Updated by Claude AI on 2026-09-11
 // Form interactions for Vancouver CBC Registration
 
 // Import shared validation utilities
@@ -112,10 +112,10 @@ function validateForm() {
         }
     });
 
-    // Validate participation type is selected
-    const participationTypeRadios = document.querySelectorAll('input[name="participation_type"]');
-    const participationTypeSelected = Array.from(participationTypeRadios).some(radio => radio.checked);
-    if (!participationTypeSelected) {
+    // Validate participation type is selected (radio inputs when shown, or a
+    // hidden input carrying a fixed value for circles that don't offer a choice)
+    const participationTypeInputs = document.querySelectorAll('input[name="participation_type"]');
+    if (!isParticipationTypeSelected(participationTypeInputs)) {
         errors.push('Please select how you would like to participate');
         isValid = false;
     }

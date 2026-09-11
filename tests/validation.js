@@ -1,4 +1,4 @@
-/* Updated by Claude AI on 2025-09-30 */
+/* Updated by Claude AI on 2026-09-11 */
 /**
  * Shared validation utilities for CBC Registration System
  *
@@ -96,11 +96,35 @@ function validateEmailFormat(email) {
     return true;
 }
 
+/**
+ * Whether a "participation_type" input group has a value.
+ *
+ * Some circles render this as a pair of radio buttons the participant must
+ * choose between; circles that don't offer a choice render a single hidden
+ * input carrying a fixed value instead (see templates/index.html's `is_cbc`
+ * branch). A hidden input's `.checked` is always undefined, so callers must
+ * not test radio-style `.checked` against every input indiscriminately.
+ *
+ * @param {ArrayLike<{type: string, value: string, checked: boolean}>} inputs
+ *   - the `input[name="participation_type"]` elements (or lookalikes)
+ * @returns {boolean} True if a radio is checked, or a hidden input has a value
+ *
+ * @example
+ * isParticipationTypeSelected([{type: 'hidden', value: 'regular'}])  // true
+ * isParticipationTypeSelected([{type: 'radio', checked: false}, {type: 'radio', checked: false}])  // false
+ * isParticipationTypeSelected([{type: 'radio', checked: true}, {type: 'radio', checked: false}])  // true
+ */
+function isParticipationTypeSelected(inputs) {
+    return Array.from(inputs).some(input =>
+        input.type === 'hidden' ? !!input.value : input.checked);
+}
+
 // Export for Node.js (Jest tests)
-// Browser environments will access the function directly from the global scope
+// Browser environments will access the functions directly from the global scope
 if (typeof module !== 'undefined' && typeof module.exports !== 'undefined') {
-    module.exports = { validateEmailFormat };
+    module.exports = { validateEmailFormat, isParticipationTypeSelected };
 } else {
     // Make available globally for browser usage
     window.validateEmailFormat = validateEmailFormat;
+    window.isParticipationTypeSelected = isParticipationTypeSelected;
 }
