@@ -24,7 +24,8 @@
                 </a>
             {% elif request.endpoint in ('admin.list_circles', 'admin.new_circle', 'admin.edit_circle',
                                           'admin.circle_admins', 'admin.circle_areas_manage',
-                                          'admin.circle_areas_import_kml', 'admin.email_content_defaults') %}
+                                          'admin.circle_areas_import_kml', 'admin.email_content_defaults')
+                     and session.get('user_role') == 'super_admin' %}
                 <a class="navbar-brand" href="{{ url_for('admin.list_circles') }}">Count Super-Admin</a>
             {% elif request.endpoint and request.endpoint.startswith('admin.') %}
                 <a class="navbar-brand" href="{{ url_for('admin.dashboard', year=selected_year) }}">{{ count_event_name }} Admin</a>

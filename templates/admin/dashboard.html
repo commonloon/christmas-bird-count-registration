@@ -9,6 +9,7 @@
     <h1>Admin Dashboard</h1>
     <div>
         {% if session.get('user_role') == 'admin' and g.get('circle_slug') %}
+        <a href="{{ url_for('admin.edit_circle', slug=g.circle_slug) }}" class="btn btn-sm btn-outline-secondary">Circle Settings</a>
         <a href="{{ url_for('admin.circle_email_content', slug=g.circle_slug) }}" class="btn btn-sm btn-outline-secondary">Email Content</a>
         {% endif %}
         <span class="badge bg-info">{{ selected_year }}</span>

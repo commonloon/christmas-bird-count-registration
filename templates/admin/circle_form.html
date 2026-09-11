@@ -86,10 +86,14 @@
             <input type="url" name="count_info_url" class="form-control" value="{{ (src.get('count_info_url') or '')|e }}">
         </div>
 
+        {% set is_super_admin = session.get('user_role') == 'super_admin' %}
         <div class="row">
             <div class="col-md-6 mb-3">
-                <label class="form-label">Test-mode recipient email</label>
-                <input type="email" name="test_recipient" class="form-control" value="{{ (src.get('test_recipient') or '')|e }}">
+                <label class="form-label">Test-mode recipient email
+                    {% if not is_super_admin %}<span class="badge bg-secondary">Super-admin only</span>{% endif %}
+                </label>
+                <input type="email" name="test_recipient" class="form-control" value="{{ (src.get('test_recipient') or '')|e }}"
+                       {% if not is_super_admin %}disabled{% endif %}>
             </div>
         </div>
 
@@ -141,12 +145,18 @@
                 </div>
             </div>
             <div class="col-md-6 mb-3">
-                <label class="form-label">Map latitude (optional)</label>
-                <input type="number" step="any" name="latitude" class="form-control" value="{{ src.get('latitude') if src.get('latitude') is not none else '' }}">
+                <label class="form-label">Map latitude (optional)
+                    {% if not is_super_admin %}<span class="badge bg-secondary">Super-admin only</span>{% endif %}
+                </label>
+                <input type="number" step="any" name="latitude" class="form-control" value="{{ src.get('latitude') if src.get('latitude') is not none else '' }}"
+                       {% if not is_super_admin %}disabled{% endif %}>
             </div>
             <div class="col-md-6 mb-3">
-                <label class="form-label">Map longitude (optional)</label>
-                <input type="number" step="any" name="longitude" class="form-control" value="{{ src.get('longitude') if src.get('longitude') is not none else '' }}">
+                <label class="form-label">Map longitude (optional)
+                    {% if not is_super_admin %}<span class="badge bg-secondary">Super-admin only</span>{% endif %}
+                </label>
+                <input type="number" step="any" name="longitude" class="form-control" value="{{ src.get('longitude') if src.get('longitude') is not none else '' }}"
+                       {% if not is_super_admin %}disabled{% endif %}>
             </div>
         </div>
 

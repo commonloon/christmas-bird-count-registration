@@ -1555,6 +1555,13 @@ def _can_manage_circle(slug):
     return user_role == 'admin' and g.circle_slug == slug
 
 
+# Circle-config fields a circle-admin may view but never change - test_recipient
+# controls where TEST_MODE email actually lands (a circle-admin picking their own
+# inbox could hide real recipient-facing bugs), and latitude/longitude place this
+# circle's pin on the cross-circle landing map, which isn't this circle's own concern.
+SUPER_ADMIN_ONLY_CIRCLE_FIELDS = {'test_recipient', 'latitude', 'longitude'}
+
+
 def _require_circle_manage_access(slug):
     """Returns a redirect response if access should be denied, else None."""
     if 'user_email' not in session:
@@ -1662,6 +1669,12 @@ def edit_circle(slug):
                                 allowed_from_email_domains=ALLOWED_FROM_EMAIL_DOMAINS)
 
     data = _circle_form_data(request.form)
+
+    if session.get('user_role') != 'super_admin':
+        # Defense in depth - the form disables these inputs for a circle-admin,
+        # but never trust that a crafted POST honoured it.
+        for field in SUPER_ADMIN_ONLY_CIRCLE_FIELDS:
+            data[field] = circle.get(field)
 
     count_date = request.form.get('count_date', '').strip()
     yearly_dates = dict(circle.get('yearly_count_dates') or {})
