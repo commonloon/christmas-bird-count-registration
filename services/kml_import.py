@@ -121,14 +121,11 @@ def parse_coordinates_to_geojson(coord_string):
     return coordinates
 
 
-def parse_kml_string(kml_content):
-    """
-    Parse KML text and extract area boundary data.
-
-    Returns a list of {'letter_code', 'name', 'description', 'geometry'} dicts,
-    naturally sorted by area code. Raises KmlParseError on malformed XML or a
-    file with no recognizable area placemarks.
-    """
+def _parse_kml_root(kml_content):
+    """Shared XML-safety guard + parse step for both parse_kml_string() and
+    parse_kml_boundary_lines() - they're always called together against the
+    same uploaded content, so the DOCTYPE rejection and parse-error handling
+    live in exactly one place rather than two copies drifting apart."""
     # Reject a DOCTYPE outright rather than parsing it: genuine KML exports
     # (Google My Maps etc.) never include one, and it's the mechanism behind
     # XXE/billion-laughs attacks against xml.etree - cheaper than a new
@@ -137,9 +134,20 @@ def parse_kml_string(kml_content):
         raise KmlParseError('This file has a DOCTYPE declaration, which is not supported.')
 
     try:
-        root = ET.fromstring(kml_content)
+        return ET.fromstring(kml_content)
     except ET.ParseError as e:
         raise KmlParseError(f'Could not parse KML/XML: {e}')
+
+
+def parse_kml_string(kml_content):
+    """
+    Parse KML text and extract area boundary data.
+
+    Returns a list of {'letter_code', 'name', 'description', 'geometry'} dicts,
+    naturally sorted by area code. Raises KmlParseError on malformed XML or a
+    file with no recognizable area placemarks.
+    """
+    root = _parse_kml_root(kml_content)
 
     areas = []
     for placemark in root.findall('.//kml:Placemark', KML_NS):
@@ -197,6 +205,42 @@ def parse_kml_string(kml_content):
 
     areas.sort(key=sort_key)
     return areas
+
+
+def parse_kml_boundary_lines(kml_content):
+    """
+    Extract decorative "major area group" boundary lines from KML: any
+    placemark with a <LineString> geometry, regardless of its name. Real
+    KML exports use these to hand-draw where a traditional, later-subdivided
+    area used to be (e.g. Comox's areas 3A/3B/3C all sit inside one such
+    line for old area "3") - purely a visual orientation aid layered over
+    the real area polygons (see static/js/map.js's displayBoundaries()),
+    with no identity of their own (no code, no name/description shown
+    anywhere) and no programmatic link to which area codes they enclose.
+
+    Returns a list of {'type': 'LineString', 'coordinates': [[lng, lat], ...]}
+    dicts, in document order. Never raises for a file with zero such lines -
+    that's the normal case for almost every circle - only for malformed XML.
+    """
+    root = _parse_kml_root(kml_content)
+
+    lines = []
+    for placemark in root.findall('.//kml:Placemark', KML_NS):
+        linestring = placemark.find('kml:LineString', KML_NS)
+        if linestring is None:
+            continue
+
+        coords_elem = linestring.find('kml:coordinates', KML_NS)
+        if coords_elem is None or not coords_elem.text:
+            continue
+
+        coordinates = parse_coordinates_to_geojson(coords_elem.text.strip())
+        if len(coordinates) < 2:
+            continue
+
+        lines.append({'type': 'LineString', 'coordinates': coordinates})
+
+    return lines
 
 
 def filter_main_areas(areas):

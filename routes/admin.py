@@ -19,7 +19,9 @@ from models.circle import CircleModel, CircleAreaModel, CircleAdminModel
 from models.email_content import EmailContentModel
 from config.email_content_blocks import get_email_types, get_blocks
 from services.email_content_service import extract_placeholders
-from services.kml_import import parse_kml_string, filter_main_areas, calculate_map_center_and_bounds, KmlParseError
+from services.kml_import import (
+    parse_kml_string, parse_kml_boundary_lines, filter_main_areas, calculate_map_center_and_bounds, KmlParseError,
+)
 from services.email_service import email_service
 from services.ip_blocker import IPBlockerService
 from test.email_generator import (
@@ -1984,6 +1986,7 @@ def circle_areas_import_kml(slug):
 
     try:
         all_areas = parse_kml_string(kml_content)
+        boundary_lines = parse_kml_boundary_lines(kml_content)
     except KmlParseError as e:
         flash(f'Could not import KML: {e}', 'error')
         return redirect(url_for('admin.circle_areas_manage', slug=slug))
@@ -2001,14 +2004,17 @@ def circle_areas_import_kml(slug):
                 commit=False,
             )
 
+        # This KML is the full source of truth for this circle's decorative
+        # boundary-group lines each time - always replaced wholesale
+        # (including cleared to empty when this file has none), never merged
+        # with whatever a previous import set, since the lines have no
+        # individual identity to merge by.
+        circle_updates = {'major_area_boundaries': boundary_lines}
         map_config = calculate_map_center_and_bounds(areas)
         if map_config:
-            CircleModel(g.db).update(slug, {
-                'latitude': map_config['center'][0],
-                'longitude': map_config['center'][1],
-            })
-        else:
-            g.db.commit()
+            circle_updates['latitude'] = map_config['center'][0]
+            circle_updates['longitude'] = map_config['center'][1]
+        CircleModel(g.db).update(slug, circle_updates)
     except Exception:
         g.db.rollback()
         logging.exception(f'KML import failed for circle {slug}')
@@ -2019,6 +2025,8 @@ def circle_areas_import_kml(slug):
     message = f'Imported {len(areas)} area boundaries for {circle["circle_name"]}.'
     if skipped:
         message += f' Skipped {skipped} sub-area placemark(s).'
+    if boundary_lines:
+        message += f' Also imported {len(boundary_lines)} major-area boundary line(s).'
     flash(message, 'success')
     return redirect(url_for('admin.circle_areas_manage', slug=slug))
 

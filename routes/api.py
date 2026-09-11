@@ -73,9 +73,10 @@ def get_areas():
         if not circle_slug:
             return jsonify({'areas': [], 'map_config': {}})
         db = get_db_session()
-        boundary_data = CircleAreaModel(db).get_boundary_data(circle_slug)
+        boundary_data = CircleAreaModel(db).get_boundary_data(circle_slug, circle=getattr(g, 'circle', None))
         areas = boundary_data['areas']
         map_config = boundary_data['map_config']
+        boundaries = boundary_data['boundaries']
 
         participant_model = ParticipantModel(db)
         signup_type_model = AreaSignupTypeModel(db)
@@ -116,7 +117,7 @@ def get_areas():
             else:
                 area['availability'] = 'low'
 
-        return jsonify({'areas': areas, 'map_config': map_config})
+        return jsonify({'areas': areas, 'map_config': map_config, 'boundaries': boundaries})
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -143,9 +144,10 @@ def get_areas_needing_leaders():
         circle_slug = getattr(g, 'circle_slug', None)
         if not circle_slug:
             return jsonify({'areas': [], 'map_config': {}})
-        boundary_data = CircleAreaModel(get_db_session()).get_boundary_data(circle_slug)
+        boundary_data = CircleAreaModel(get_db_session()).get_boundary_data(circle_slug, circle=getattr(g, 'circle', None))
         areas = boundary_data['areas']
         map_config = boundary_data['map_config']
+        boundaries = boundary_data['boundaries']
 
         # Get areas without leaders from current year
         from datetime import datetime
@@ -162,6 +164,7 @@ def get_areas_needing_leaders():
             'areas': areas,
             'areas_without_leaders': areas_without_leaders,
             'map_config': map_config,
+            'boundaries': boundaries,
         })
 
     except Exception as e:

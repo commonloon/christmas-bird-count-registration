@@ -162,18 +162,21 @@ class CircleAreaModel:
             if row.boundary_geojson
         ]
 
+        if circle is None:
+            circle_row = self.db.query(Circle).filter_by(slug=circle_slug).first()
+            circle = circle_row.to_dict() if circle_row else None
+
         map_config = calculate_map_center_and_bounds(areas)
         if map_config is None:
-            if circle is None:
-                circle_row = self.db.query(Circle).filter_by(slug=circle_slug).first()
-                circle = circle_row.to_dict() if circle_row else None
             if circle and circle.get('latitude') is not None and circle.get('longitude') is not None:
                 map_config = {'center': [circle['latitude'], circle['longitude']], 'bounds': None, 'zoom': 10}
             else:
                 # Last-resort fallback (new circle, no areas imported yet, no lat/lng set).
                 map_config = {'center': [49.2827, -123.1207], 'bounds': None, 'zoom': 4}
 
-        return {'areas': areas, 'map_config': map_config}
+        boundaries = (circle.get('major_area_boundaries') if circle else None) or []
+
+        return {'areas': areas, 'map_config': map_config, 'boundaries': boundaries}
 
 
 class CircleAdminModel:

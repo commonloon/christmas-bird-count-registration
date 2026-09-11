@@ -99,6 +99,13 @@ function loadAreaData() {
             const areas = data.areas || data;  // Support both new and old format
             displayAreas(areas);
 
+            // Display decorative major-area-group boundary lines, if this
+            // circle has any (most don't - see services/kml_import.py's
+            // parse_kml_boundary_lines())
+            if (data.boundaries && data.boundaries.length > 0) {
+                displayBoundaries(data.boundaries);
+            }
+
             // Display count circle boundary if available
             if (data.count_circle) {
                 displayCountCircle(data.count_circle);
@@ -148,6 +155,26 @@ function displayAreas(areas) {
             polygon: polygon,
             data: area
         };
+    });
+}
+
+function displayBoundaries(boundaries) {
+    // Draw decorative "major area group" lines as bold blue polylines, on
+    // top of the real (possibly subdivided) area polygons - a visual
+    // orientation aid only, no click/hover behavior, no text (these carry
+    // no name/code of their own - see services/kml_import.py's
+    // parse_kml_boundary_lines()).
+    const boundaryStyle = {
+        color: '#0055CC',
+        weight: 4,
+        opacity: 0.85,
+        interactive: false,
+        className: 'area-group-boundary'
+    };
+
+    boundaries.forEach(function(boundary) {
+        const leafletCoords = boundary.coordinates.map(coord => [coord[1], coord[0]]);
+        L.polyline(leafletCoords, boundaryStyle).addTo(map);
     });
 }
 

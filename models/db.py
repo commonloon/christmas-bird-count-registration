@@ -236,6 +236,11 @@ class Circle(Base, DictMixin):
     registration_closes_days = Column(Integer, nullable=False, default=1)
     latitude = Column(Float)
     longitude = Column(Float)
+    # Decorative "major area group" boundary lines, KML-imported alongside
+    # the real area polygons - see services/kml_import.py's
+    # parse_kml_boundary_lines() and migration 0011. NULL/empty for every
+    # circle whose KML never had any.
+    major_area_boundaries = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False)
     updated_at = Column(DateTime(timezone=True), nullable=False)
 
