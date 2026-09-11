@@ -3,9 +3,9 @@
 Tests for circle-admin self-service editing of their own circle's config
 (admin.edit_circle): access control (a circle-admin may only reach their own
 circle, a super-admin any circle), field-level locking of
-test_recipient/latitude/longitude (super-admin only, both in the rendered
-form and enforced server-side against a crafted POST), and that every other
-field remains genuinely editable by a circle-admin.
+test_recipient/latitude/longitude/from_email (super-admin only, both in the
+rendered form and enforced server-side against a crafted POST), and that
+every other field remains genuinely editable by a circle-admin.
 """
 
 import re
@@ -21,7 +21,7 @@ from tests.test_config import TEST_CIRCLE_SLUG
 # their own - same pattern/circle as tests/unit/test_email_content.py.
 OTHER_CIRCLE_SLUG = 'nanaimo'
 
-LOCKED_FIELDS = ['test_recipient', 'latitude', 'longitude']
+LOCKED_FIELDS = ['test_recipient', 'latitude', 'longitude', 'from_email']
 EDIT_URL = f'/bigbird/circles/{TEST_CIRCLE_SLUG}/edit'
 
 
@@ -35,9 +35,12 @@ def _input_tag(html, field_name):
 
 def _full_form(overrides=None):
     """A complete, valid admin.edit_circle form submission - every field the
-    template renders, including deliberately attempted changes to the three
-    locked fields (test_recipient/latitude/longitude), so tests can confirm
-    those attempted changes are accepted or ignored depending on role."""
+    template renders, including deliberately attempted changes to the four
+    locked fields (test_recipient/latitude/longitude/from_email), so tests
+    can confirm those attempted changes are accepted or ignored depending on
+    role. from_email is deliberately set to a value that differs from the
+    'test' circle's real one but is still on an allowed domain, so a rejected
+    change is distinguishable from an accepted one."""
     form = {
         'circle_name': 'Test Circle Updated',
         'name': 'Nature Vancouver',
@@ -46,7 +49,7 @@ def _full_form(overrides=None):
         'count_contact': 'birdcount@naturevancouver.ca',
         'count_event_name': 'Test Circle used for automated testing of the website code',
         'count_info_url': 'https://naturevancouver.ca',
-        'from_email': 'birdcount@naturevancouver.ca',
+        'from_email': 'attempted-change@naturevancouver.ca',
         'test_recipient': 'attempted-change@naturevancouver.ca',
         'display_timezone': 'America/Vancouver',
         'registration_opens_months': '4',
@@ -120,7 +123,7 @@ class TestEditCircleFieldLockingUI:
         resp = admin_client.get(EDIT_URL)
         html = resp.get_data(as_text=True)
         for field in ['circle_name', 'name', 'website', 'contact', 'count_contact',
-                      'count_event_name', 'count_info_url', 'from_email',
+                      'count_event_name', 'count_info_url',
                       'display_timezone', 'registration_opens_months',
                       'registration_closes_days', 'count_experience_label',
                       'feeder_counter_label', 'notes_placeholder_example']:
@@ -151,12 +154,14 @@ class TestEditCircleFieldUpdatePermissions:
         assert updated['test_recipient'] == original['test_recipient']
         assert updated['latitude'] == original['latitude']
         assert updated['longitude'] == original['longitude']
+        assert updated['from_email'] == original['from_email']
 
     def test_super_admin_can_change_locked_fields(self, super_admin_client, restore_test_circle):
         form = _full_form({
             'test_recipient': 'super-admin-changed@naturevancouver.ca',
             'latitude': '10.5',
             'longitude': '-20.5',
+            'from_email': 'super-admin-changed@naturevancouver.ca',
         })
         resp = super_admin_client.post(EDIT_URL, data=form)
         assert resp.status_code == 302
@@ -165,6 +170,7 @@ class TestEditCircleFieldUpdatePermissions:
         assert updated['test_recipient'] == 'super-admin-changed@naturevancouver.ca'
         assert updated['latitude'] == 10.5
         assert updated['longitude'] == -20.5
+        assert updated['from_email'] == 'super-admin-changed@naturevancouver.ca'
 
     def test_circle_admin_cannot_change_other_circle_by_posting_directly(self, admin_client, restore_test_circle):
         """Belt-and-suspenders: even a POST (not just a GET) to a different

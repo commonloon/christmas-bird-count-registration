@@ -13,6 +13,7 @@
 
 {% set src = form_data or circle or {} %}
 {% set errors = field_errors or {} %}
+{% set is_super_admin = session.get('user_role') == 'super_admin' %}
 <form method="POST" class="card">
     <div class="card-body">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -64,9 +65,12 @@
                        value="{{ (src.get('count_contact') or '')|e }}">
             </div>
             <div class="col-md-6 mb-3">
-                <label class="form-label">From email (used to send registration emails)</label>
+                <label class="form-label">From email (used to send registration emails)
+                    {% if not is_super_admin %}<span class="badge bg-secondary">Super-admin only</span>{% endif %}
+                </label>
                 <input type="email" name="from_email" class="form-control{% if errors.from_email %} is-invalid{% endif %}"
-                       required value="{{ (src.get('from_email') or '')|e }}">
+                       required value="{{ (src.get('from_email') or '')|e }}"
+                       {% if not is_super_admin %}disabled{% endif %}>
                 {% if errors.from_email %}
                 <div class="invalid-feedback">{{ errors.from_email|e }}</div>
                 {% else %}
@@ -86,7 +90,6 @@
             <input type="url" name="count_info_url" class="form-control" value="{{ (src.get('count_info_url') or '')|e }}">
         </div>
 
-        {% set is_super_admin = session.get('user_role') == 'super_admin' %}
         <div class="row">
             <div class="col-md-6 mb-3">
                 <label class="form-label">Test-mode recipient email

@@ -1557,9 +1557,11 @@ def _can_manage_circle(slug):
 
 # Circle-config fields a circle-admin may view but never change - test_recipient
 # controls where TEST_MODE email actually lands (a circle-admin picking their own
-# inbox could hide real recipient-facing bugs), and latitude/longitude place this
-# circle's pin on the cross-circle landing map, which isn't this circle's own concern.
-SUPER_ADMIN_ONLY_CIRCLE_FIELDS = {'test_recipient', 'latitude', 'longitude'}
+# inbox could hide real recipient-facing bugs), latitude/longitude place this
+# circle's pin on the cross-circle landing map (not this circle's own concern),
+# and from_email is constrained to ALLOWED_FROM_EMAIL_DOMAINS platform-wide - a
+# circle-admin shouldn't be choosing/changing what domain the app sends mail from.
+SUPER_ADMIN_ONLY_CIRCLE_FIELDS = {'test_recipient', 'latitude', 'longitude', 'from_email'}
 
 
 def _require_circle_manage_access(slug):
