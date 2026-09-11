@@ -1,4 +1,4 @@
-{# Updated by Claude AI on 2026-01-12 #}
+{# Updated by Claude AI on 2026-09-11 #}
 {% extends "base.html" %}
 
 {% block content %}
@@ -17,7 +17,7 @@
             {% endif %}
             <div>
                 <h1 class="mb-2" style="font-size: 1.75rem;">Register for the {% if count_info_url %}<a href="{{ count_info_url|e }}" target="_blank" rel="noopener">{{ count_event_name|e }}</a>{% else %}{{ count_event_name|e }}{% endif %}</h1>
-                <p class="lead mb-0" style="font-size: 1.1rem;">Join {{ organization_name }}'s annual {{ count_event_name }} and help us track bird populations in the area.</p>
+                <p class="lead mb-0" style="font-size: 1.1rem;">Join {% if organization_website %}<a href="{{ organization_website|e }}" target="_blank" rel="noopener">{{ organization_name|e }}</a>{% else %}{{ organization_name|e }}{% endif %}'s annual {{ count_event_name }} and help us track bird populations in the area.</p>
             </div>
         </div>
         <div class="alert alert-info" role="alert">
