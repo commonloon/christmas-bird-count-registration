@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Signing in - {{ count_event_name }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h4 class="mb-0">Finishing sign-in</h4>
+            </div>
+            <div class="card-body">
+                <p>Click below to complete your sign-in.</p>
+                <form id="verify-form" method="POST" action="{{ url_for('auth.verify', token=token) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="next" value="{{ next_url|e }}">
+                    <button type="submit" class="btn btn-primary">Continue signing in</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    document.getElementById('verify-form').submit();
+</script>
+{% endblock %}

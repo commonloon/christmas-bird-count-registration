@@ -236,11 +236,25 @@ def request_magic_link():
     return render_template('auth/login.html', link_sent=True, next_url=next_url)
 
 
-@auth_bp.route('/verify/<token>')
+@auth_bp.route('/verify/<token>', methods=['GET', 'POST'])
 @limiter.limit(RATE_LIMITS['auth'])
 def verify(token):
-    """Verify a magic link token and log the user in."""
-    next_url = request.args.get('next') or '/'
+    """Verify a magic link token and log the user in.
+
+    GET renders a confirmation interstitial and does NOT consume the token -
+    email security gateways (Trend Micro Email Security, Microsoft Defender
+    for Office 365 Safe Links, and similar) fetch every link in an incoming
+    email server-side to scan it for phishing before/as the message is
+    delivered, which is otherwise indistinguishable from the recipient's own
+    click and burns the single-use token before they ever see it (confirmed
+    via production access logs - a scanner's GET, identifiable by a
+    urlprotect.trendmicro.com referer or a generic no-referer/outdated-UA
+    request, consistently arrives seconds before the real user's own click).
+    Only a POST - submitted by the interstitial page's auto-submitting form,
+    which a plain HTTP fetch never triggers since it doesn't execute JS -
+    actually consumes the token and logs the user in.
+    """
+    next_url = request.args.get('next') or request.form.get('next') or '/'
 
     try:
         db = get_db_session()
@@ -255,6 +269,12 @@ def verify(token):
         if datetime.now(timezone.utc) > record.expires_at:
             flash('That login link has expired. Please request a new one.', 'error')
             return redirect(url_for('auth.login'))
+
+        if request.method == 'GET':
+            if record.used_at is not None:
+                flash('That login link has already been used. Please request a new one.', 'error')
+                return redirect(url_for('auth.login'))
+            return render_template('auth/verify_confirm.html', token=token, next_url=next_url)
 
         # Atomically mark used (single-use). A plain read-then-write (check
         # record.used_at, then set it) is a TOCTOU race: two near-simultaneous

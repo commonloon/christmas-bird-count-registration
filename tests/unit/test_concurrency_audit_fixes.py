@@ -167,13 +167,25 @@ class TestMagicLinkSingleUse:
         db_session.query(MagicLinkToken).filter_by(token_hash=token_hash).delete()
         db_session.commit()
 
-    def test_first_redemption_succeeds(self, client, magic_link_token):
+    def test_get_renders_confirmation_without_consuming_token(self, client, db_session, magic_link_token):
+        """GET must not burn the token - an email-security scanner fetching
+        the link server-side (see routes/auth.py's verify() docstring) should
+        leave it usable for the real recipient's subsequent click."""
         resp = client.get(f'/auth/verify/{magic_link_token}')
+        assert resp.status_code == 200
+        assert b'verify-form' in resp.data
+
+        token_hash = hashlib.sha256(magic_link_token.encode('utf-8')).hexdigest()
+        record = db_session.query(MagicLinkToken).filter_by(token_hash=token_hash).first()
+        assert record.used_at is None
+
+    def test_first_redemption_succeeds(self, client, magic_link_token):
+        resp = client.post(f'/auth/verify/{magic_link_token}')
         assert resp.status_code == 302
         assert '/auth/login' not in resp.headers['Location']
 
     def test_second_redemption_of_the_same_token_is_rejected(self, client, magic_link_token):
-        first = client.get(f'/auth/verify/{magic_link_token}')
+        first = client.post(f'/auth/verify/{magic_link_token}')
         assert first.status_code == 302
         assert '/auth/login' not in first.headers['Location']
 
