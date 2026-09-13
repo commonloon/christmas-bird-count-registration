@@ -1,6 +1,7 @@
 from flask import Blueprint, session, request, redirect, url_for, flash, render_template, g
 from functools import wraps
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse
 import hashlib
 import hmac
 import logging
@@ -8,6 +9,7 @@ import secrets
 
 from config.admins import is_admin
 from config.database import get_db_session
+from config.link_scanners import matched_known_link_scanner
 from models.db import MagicLinkToken
 from models.participant import ParticipantModel
 from models.circle import CircleAdminModel, CircleModel
@@ -149,11 +151,44 @@ def _hash_token(raw_token: str) -> str:
     return hashlib.sha256(raw_token.encode('utf-8')).hexdigest()
 
 
+def _safe_next(url):
+    """Restrict a post-login redirect target to this same site.
+
+    `next` round-trips through the emailed magic link as a plain, unsigned
+    query parameter - anyone can send a victim a real /auth/login link with
+    next=https://evil.example set, and once the victim requests and clicks
+    their own genuine magic link, the app would otherwise redirect their
+    freshly-authenticated browser straight to that external URL (an
+    unvalidated-redirect/open-redirect issue, independent of the token itself
+    ever being exposed).
+
+    Same-origin *absolute* URLs are allowed, not just relative paths - the
+    require_*_auth decorators below build next=request.url (e.g.
+    "https://thiscircle.birdcount.ca/bigbird/foo") so a user lands back on
+    the exact admin page they wanted after logging in.
+    """
+    if not url:
+        return '/'
+    url = url.strip()
+    # Normalize backslashes before parsing - some browsers treat a leading
+    # "/\" or "\\" like "//", so "/\evil.example" would otherwise slip past
+    # a naive startswith('/') check as a scheme-relative URL.
+    normalized = url.replace('\\', '/')
+    parsed = urlparse(normalized)
+    if parsed.scheme and parsed.scheme not in ('http', 'https'):
+        return '/'
+    if parsed.netloc and parsed.netloc != request.host:
+        return '/'
+    if not parsed.netloc and (not normalized.startswith('/') or normalized.startswith('//')):
+        return '/'
+    return url
+
+
 @auth_bp.route('/login', methods=['GET'])
 @limiter.limit(RATE_LIMITS['auth'])
 def login():
     """Show the email-entry form to request a magic link."""
-    return render_template('auth/login.html', next_url=request.args.get('next', '/'))
+    return render_template('auth/login.html', next_url=_safe_next(request.args.get('next')))
 
 
 @auth_bp.route('/login', methods=['POST'])
@@ -165,7 +200,7 @@ def request_magic_link():
     admin/leader, so this endpoint can't be used to probe which addresses have access.
     """
     email = (request.form.get('email') or '').strip().lower()
-    next_url = request.form.get('next') or '/'
+    next_url = _safe_next(request.form.get('next'))
 
     if email:
         try:
@@ -250,11 +285,39 @@ def verify(token):
     via production access logs - a scanner's GET, identifiable by a
     urlprotect.trendmicro.com referer or a generic no-referer/outdated-UA
     request, consistently arrives seconds before the real user's own click).
-    Only a POST - submitted by the interstitial page's auto-submitting form,
-    which a plain HTTP fetch never triggers since it doesn't execute JS -
-    actually consumes the token and logs the user in.
+    Only a POST - submitted by the interstitial page's "Continue signing in"
+    button - actually consumes the token and logs the user in.
+
+    That button requires a real click, not an auto-submitting script: an
+    earlier version auto-submitted the form on page load, on the assumption
+    that a plain HTTP fetch never runs JS. Production logs then showed a
+    birdscanada.org login (2026-09-12) still failing - that recipient's mail
+    security infrastructure (Microsoft-hosted IPs, consistent with Defender
+    for Office 365 Safe Links) fully renders linked pages including running
+    their JavaScript, so it executed the auto-submit script itself about a
+    second after fetching the page, burning the token roughly two minutes
+    before the recipient's own click. Requiring an actual button click closes
+    that gap, since link-scanners generally execute on-load scripts (for
+    passive analysis) but don't simulate real user clicks.
+
+    A request (either method) whose Referer matches config/link_scanners.py's
+    KNOWN_LINK_SCANNERS is handled before any of the above: it gets back
+    bland, token-state-independent content and never reaches the token/
+    session logic at all, for either GET or POST. This is deliberately NOT
+    "log in as normal but don't mark the token used" - Referer is a plain
+    client-supplied header, unverifiable proof of anything, so treating a
+    match as "safe to log in" would let anyone who later obtains a copy of an
+    already-used token revive it just by adding that one well-known header.
+    Making the match instead incapable of ever producing a session closes
+    that off entirely: it doesn't matter that the token is left unconsumed,
+    since there is nothing on this path to steal or replay.
     """
-    next_url = request.args.get('next') or request.form.get('next') or '/'
+    scanner_name = matched_known_link_scanner(request.referrer)
+    if scanner_name:
+        logger.info(f"Known link-scanner {request.method} ({scanner_name}) to /auth/verify - no session issued, token untouched")
+        return 'Form submitted.', 200
+
+    next_url = _safe_next(request.args.get('next') or request.form.get('next'))
 
     try:
         db = get_db_session()

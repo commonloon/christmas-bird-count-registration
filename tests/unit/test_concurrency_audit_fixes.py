@@ -191,3 +191,101 @@ class TestMagicLinkSingleUse:
 
         second = client.get(f'/auth/verify/{magic_link_token}', follow_redirects=True)
         assert b'already been used' in second.data
+
+
+class TestSafeNextRedirect:
+    """routes/auth.py's _safe_next() restricts the unsigned `next` query
+    param - round-tripped through the emailed magic link - to this same
+    site, closing an open-redirect (next=https://evil.example would
+    otherwise send a freshly-authenticated user's browser off-site)."""
+
+    @pytest.fixture
+    def magic_link_token(self, db_session):
+        raw_token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(raw_token.encode('utf-8')).hexdigest()
+        row = MagicLinkToken(
+            email='cbc-test-admin1@naturevancouver.ca',
+            token_hash=token_hash,
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
+            created_at=datetime.now(timezone.utc),
+        )
+        db_session.add(row)
+        db_session.commit()
+        yield raw_token
+        db_session.query(MagicLinkToken).filter_by(token_hash=token_hash).delete()
+        db_session.commit()
+
+    def test_login_page_strips_external_next(self, client):
+        resp = client.get('/auth/login?next=https://evil.example/phish')
+        assert b'evil.example' not in resp.data
+
+    def test_login_page_keeps_relative_next(self, client):
+        resp = client.get('/auth/login?next=/bigbird/recent-registrations')
+        assert b'/bigbird/recent-registrations' in resp.data
+
+    def test_verify_interstitial_strips_external_next(self, client, magic_link_token):
+        resp = client.get(f'/auth/verify/{magic_link_token}?next=https://evil.example/phish')
+        assert resp.status_code == 200
+        assert b'evil.example' not in resp.data
+
+    def test_verify_post_does_not_redirect_off_site(self, client, magic_link_token):
+        resp = client.post(f'/auth/verify/{magic_link_token}?next=https://evil.example/phish')
+        assert resp.status_code == 302
+        assert 'evil.example' not in resp.headers['Location']
+
+    def test_verify_post_keeps_relative_next(self, client, magic_link_token):
+        resp = client.post(f'/auth/verify/{magic_link_token}?next=/bigbird/recent-registrations')
+        assert resp.status_code == 302
+        assert resp.headers['Location'].endswith('/bigbird/recent-registrations')
+
+
+class TestKnownLinkScannerCannotObtainSession:
+    """A request whose Referer matches config/link_scanners.py's
+    KNOWN_LINK_SCANNERS must never be able to obtain a session, regardless of
+    the token's real state - see routes/auth.py's verify() docstring for why
+    this is deliberately NOT "log in as normal but leave the token unused"."""
+
+    SCANNER_REFERER = 'https://cas5-0-urlprotect.trendmicro.com/'
+
+    @pytest.fixture
+    def magic_link_token(self, db_session):
+        raw_token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(raw_token.encode('utf-8')).hexdigest()
+        row = MagicLinkToken(
+            email='cbc-test-admin1@naturevancouver.ca',
+            token_hash=token_hash,
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
+            created_at=datetime.now(timezone.utc),
+        )
+        db_session.add(row)
+        db_session.commit()
+        yield raw_token
+        db_session.query(MagicLinkToken).filter_by(token_hash=token_hash).delete()
+        db_session.commit()
+
+    def test_scanner_get_gets_bland_content_and_no_session(self, client, magic_link_token):
+        resp = client.get(f'/auth/verify/{magic_link_token}', headers={'Referer': self.SCANNER_REFERER})
+        assert resp.status_code == 200
+        assert b'verify-form' not in resp.data
+        assert 'Set-Cookie' not in resp.headers
+
+    def test_scanner_post_does_not_consume_token_or_log_in(self, client, db_session, magic_link_token):
+        resp = client.post(f'/auth/verify/{magic_link_token}', headers={'Referer': self.SCANNER_REFERER})
+        assert resp.status_code == 200
+        assert 'Set-Cookie' not in resp.headers
+
+        token_hash = hashlib.sha256(magic_link_token.encode('utf-8')).hexdigest()
+        record = db_session.query(MagicLinkToken).filter_by(token_hash=token_hash).first()
+        assert record.used_at is None
+
+        # The token must still be fully usable for the real recipient's own click.
+        real = client.post(f'/auth/verify/{magic_link_token}')
+        assert real.status_code == 302
+        assert '/auth/login' not in real.headers['Location']
+
+    def test_scanner_referer_response_does_not_depend_on_token_validity(self, client):
+        """Same bland response for a nonexistent token - no DB lookup, so no
+        validity oracle is exposed to a request bearing this Referer."""
+        resp = client.get('/auth/verify/not-a-real-token', headers={'Referer': self.SCANNER_REFERER})
+        assert resp.status_code == 200
+        assert b'verify-form' not in resp.data
