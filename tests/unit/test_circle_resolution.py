@@ -9,10 +9,40 @@ plan (resolution itself); tests/unit/test_multi_circle_isolation.py covers
 items 3+ (data isolation once two circles are both resolvable).
 """
 
-# Uses tests/unit/conftest.py's shared app/client fixtures. Their SERVER_NAME
-# ('test.cbc.test') is irrelevant here since every test in this file passes
-# an explicit Host header per request - that's the whole point
-# (resolve_circle() reads request.host, not SERVER_NAME).
+# Every test in this file passes an explicit Host header per request - that's
+# the whole point (resolve_circle() reads request.host, not SERVER_NAME) - so
+# the local app/client fixtures below override tests/unit/conftest.py's
+# shared ones (same names, per that module's own documented override
+# mechanism). The shared fixtures' SERVER_NAME='test.cbc.test' is NOT just
+# irrelevant here - it's actively wrong: Flask always compares every
+# request's Host against that fixed value regardless of what a given request
+# actually sends, and a mismatch makes Werkzeug fail to match ANY route at
+# all (see conftest.py's app_any_host docstring for the full mechanism),
+# which is exactly what every test below other than the
+# 'test.cbc.test'/'test.test' ones would hit. This reimplements the same
+# "clear SERVER_NAME" fix as app_any_host/client_any_host directly, rather
+# than depending on those fixtures, since depending on a conftest fixture
+# that itself takes a parameter named `app` from a module that also defines
+# a local `app` fixture creates a self-referential cycle (both resolve to
+# this module's override).
+import pytest
+
+
+@pytest.fixture
+def app():
+    import app as app_module
+    flask_app = app_module.app
+    flask_app.config['TESTING'] = True
+    flask_app.config['WTF_CSRF_ENABLED'] = False
+    original = flask_app.config['SERVER_NAME']
+    flask_app.config['SERVER_NAME'] = None
+    yield flask_app
+    flask_app.config['SERVER_NAME'] = original
+
+
+@pytest.fixture
+def client(app):
+    return app.test_client()
 
 
 def _get(client, host, path='/'):

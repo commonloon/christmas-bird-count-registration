@@ -119,8 +119,12 @@ class TestCsvExportIsolation:
         assert 'IsolationOne' in body
         assert 'IsolationTwo' not in body
 
-    def test_csv_export_for_test2_circle_excludes_test_participant(self, client, two_circles_with_participants):
-        c = _admin_client_for_host(client, 'test2.cbc.test')
+    def test_csv_export_for_test2_circle_excludes_test_participant(self, client_any_host, two_circles_with_participants):
+        # client_any_host, not client: 'test2.cbc.test' doesn't match the
+        # shared client fixture's SERVER_NAME ('test.cbc.test'), which would
+        # make Werkzeug fail to match any route at all for this host - see
+        # conftest.py's app_any_host docstring.
+        c = _admin_client_for_host(client_any_host, 'test2.cbc.test')
         resp = c.get(f'/bigbird/export_csv?year={CURRENT_YEAR}', headers={'Host': 'test2.cbc.test'})
         assert resp.status_code == 200
         body = resp.data.decode('utf-8')

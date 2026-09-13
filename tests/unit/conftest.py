@@ -46,6 +46,45 @@ def app():
 
 
 @pytest.fixture
+def app_any_host(app):
+    """Same app, with SERVER_NAME temporarily cleared - for tests that need
+    Werkzeug to honor an arbitrary/varying Host header for real routing,
+    rather than compare it against one fixed configured value.
+
+    Flask always passes app.config['SERVER_NAME'] (never a request's own
+    Host/base_url) into Werkzeug's router on every request (see Flask's own
+    create_url_adapter()). When the incoming Host's trailing labels don't
+    match that fixed value, Werkzeug can't compute a subdomain and fails to
+    match ANY route for that request at all - not a 404 from our app code,
+    one Werkzeug queues internally before app code runs. request.endpoint
+    stays None for the whole request, which even defeats logic keyed on it
+    (e.g. app.py's resolve_circle() exempting CIRCLE_CONSOLE_ENDPOINTS).
+    Confirmed via direct reproduction, not version-specific - this is how
+    Werkzeug's SERVER_NAME mismatch handling has worked since ~0.8 (it
+    deliberately avoids raising, opting for a silent invalid-subdomain 404
+    instead - see werkzeug.routing.map's bind_to_environ()).
+
+    Clearing SERVER_NAME makes Werkzeug bind to whatever Host each request
+    actually carries, so real routing/circle-resolution can be exercised for
+    hosts other than the 'test' circle's default. The underlying Flask `app`
+    is a session-lifetime singleton (imported from app.py), so this mutates
+    and restores the same object other tests' `app`/`client` fixtures use -
+    safe because pytest tears this down (restoring SERVER_NAME) before the
+    next test's fixtures run.
+    """
+    original = app.config['SERVER_NAME']
+    app.config['SERVER_NAME'] = None
+    yield app
+    app.config['SERVER_NAME'] = original
+
+
+@pytest.fixture
+def client_any_host(app_any_host):
+    """Test client backed by app_any_host - see that fixture's docstring."""
+    return app_any_host.test_client()
+
+
+@pytest.fixture
 def client(app):
     """Test client with no session (anonymous/public)."""
     return app.test_client()
