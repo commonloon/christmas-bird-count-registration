@@ -1,51 +1,89 @@
-{# Updated by Claude AI on 2026-08-31 #}
+{# Updated by Claude AI on 2026-09-14 #}
 {% extends "base.html" %}
 
 {% block title %}Areas for {{ circle.circle_name|e }}{% endblock %}
 
 {% block content %}
 <h1 class="mb-4">Areas for {{ circle.circle_name|e }}</h1>
-<p class="text-muted">Boundary (the map shape) comes from the KML import below; the other fields can be edited by hand.</p>
+<p class="text-muted">Boundary (the map shape) and new areas come from the KML import below. Code can't be changed here - other records (participant assignments, leader assignments) reference it by value. Click the pencil to edit a row's other labels.</p>
 
 <div class="card mb-4">
     <div class="card-body">
-        <table class="table">
-            <thead>
-                <tr><th>Code</th><th>Name</th><th>Description</th><th>Difficulty</th><th>Terrain</th><th>Boundary</th></tr>
-            </thead>
-            <tbody>
-                {% for area in areas %}
-                <tr>
-                    <td><code>{{ area.code|e }}</code></td>
-                    <td>{{ area.name|e }}</td>
-                    <td>{{ area.description|e }}</td>
-                    <td>{{ area.difficulty|e }}</td>
-                    <td>{{ area.terrain|e }}</td>
-                    <td>
-                        {% if area.boundary_geojson %}
-                        <span class="badge bg-success">Imported</span>
-                        {% else %}
-                        <span class="badge bg-secondary">None</span>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% else %}
-                <tr><td colspan="6" class="text-muted">No areas defined yet.</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <div class="table-responsive">
+            <table class="table" id="areas-table">
+                <thead>
+                    <tr><th>Code</th><th>Name</th><th>Description</th><th>Difficulty</th><th>Terrain</th><th>Boundary</th><th></th></tr>
+                </thead>
+                <tbody>
+                    {% for area in areas %}
+                    <tr data-code="{{ area.code|e }}">
+                        <td><code>{{ area.code|e }}</code></td>
+                        <td>
+                            <div class="name-display">{{ area.name|e }}</div>
+                            <div class="name-edit" style="display: none;">
+                                <input type="text" class="form-control form-control-sm name-input" value="{{ area.name|e }}" maxlength="200">
+                            </div>
+                        </td>
+                        <td>
+                            <div class="description-display">{{ area.description|e }}</div>
+                            <div class="description-edit" style="display: none;">
+                                <textarea class="form-control form-control-sm description-input" rows="2" maxlength="1000">{{ area.description or '' }}</textarea>
+                            </div>
+                        </td>
+                        <td>
+                            <div class="difficulty-display">{{ area.difficulty|e }}</div>
+                            <div class="difficulty-edit" style="display: none;">
+                                <input type="text" class="form-control form-control-sm difficulty-input" value="{{ area.difficulty or '' }}" maxlength="50">
+                            </div>
+                        </td>
+                        <td>
+                            <div class="terrain-display">{{ area.terrain|e }}</div>
+                            <div class="terrain-edit" style="display: none;">
+                                <input type="text" class="form-control form-control-sm terrain-input" value="{{ area.terrain or '' }}" maxlength="200">
+                            </div>
+                        </td>
+                        <td>
+                            {% if area.boundary_geojson %}
+                            <span class="badge bg-success">Imported</span>
+                            {% else %}
+                            <span class="badge bg-secondary">None</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="btn-group btn-group-sm action-buttons" role="group">
+                                <button type="button" class="btn btn-outline-primary btn-edit" title="Edit">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                            </div>
+                            <div class="btn-group btn-group-sm edit-buttons" style="display: none;" role="group">
+                                <button type="button" class="btn btn-success btn-save" title="Save">
+                                    <i class="bi bi-check"></i>
+                                </button>
+                                <button type="button" class="btn btn-secondary btn-cancel" title="Cancel">
+                                    <i class="bi bi-x"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="7" class="text-muted">No areas defined yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 
-<div class="card mb-4">
+<div class="card">
     <div class="card-body">
         <h5 class="card-title">Import boundaries from KML</h5>
         <p class="text-muted small">
             Upload a KML export from Google My Maps. Each placemark whose name contains an area
             code (e.g. "Area A", "1 - Name") is matched to that area's code, and its name,
             description, and boundary shape are updated - existing difficulty/terrain labels are
-            left alone. Areas not mentioned in the file are untouched. The circle's map center is
-            also refreshed from the imported shapes.
+            left alone. Areas not mentioned in the file are untouched; areas mentioned but not
+            already defined are created. The circle's map center is also refreshed from the
+            imported shapes.
         </p>
         <form method="POST" action="{{ url_for('admin.circle_areas_import_kml', slug=circle.slug) }}"
               enctype="multipart/form-data" class="row g-2 align-items-center">
@@ -60,33 +98,100 @@
     </div>
 </div>
 
-<div class="card">
-    <div class="card-body">
-        <h5 class="card-title">Add or update an area's labels</h5>
-        <p class="text-muted small">Using an existing area's code updates its labels instead of creating a duplicate. Does not touch the boundary shape.</p>
-        <form method="POST" class="row g-2">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <div class="col-md-2">
-                <input type="text" name="code" class="form-control" placeholder="Code (e.g. A)" required>
-            </div>
-            <div class="col-md-3">
-                <input type="text" name="name" class="form-control" placeholder="Name" required>
-            </div>
-            <div class="col-md-3">
-                <input type="text" name="description" class="form-control" placeholder="Description">
-            </div>
-            <div class="col-md-2">
-                <input type="text" name="difficulty" class="form-control" placeholder="Difficulty">
-            </div>
-            <div class="col-md-2">
-                <input type="text" name="terrain" class="form-control" placeholder="Terrain">
-            </div>
-            <div class="col-12">
-                <button type="submit" class="btn btn-primary">Save Area</button>
-            </div>
-        </form>
-    </div>
-</div>
-
 <a href="{{ url_for('admin.list_circles') }}" class="btn btn-outline-secondary mt-3">Back to Circles</a>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const FIELD_CLASSES = ['name', 'description', 'difficulty', 'terrain'];
+
+    document.querySelectorAll('#areas-table .btn-edit').forEach(button => {
+        button.addEventListener('click', function() {
+            enableEditMode(this.closest('tr'));
+        });
+    });
+
+    document.querySelectorAll('#areas-table .btn-cancel').forEach(button => {
+        button.addEventListener('click', function() {
+            disableEditMode(this.closest('tr'));
+        });
+    });
+
+    document.querySelectorAll('#areas-table .btn-save').forEach(button => {
+        button.addEventListener('click', function() {
+            saveAreaChanges(this.closest('tr'));
+        });
+    });
+
+    function enableEditMode(row) {
+        FIELD_CLASSES.forEach(field => {
+            row.querySelector('.' + field + '-display').style.display = 'none';
+            row.querySelector('.' + field + '-edit').style.display = 'block';
+        });
+        row.querySelector('.action-buttons').style.display = 'none';
+        row.querySelector('.edit-buttons').style.display = 'block';
+    }
+
+    function disableEditMode(row) {
+        FIELD_CLASSES.forEach(field => {
+            row.querySelector('.' + field + '-display').style.display = 'block';
+            row.querySelector('.' + field + '-edit').style.display = 'none';
+        });
+        row.querySelector('.action-buttons').style.display = 'block';
+        row.querySelector('.edit-buttons').style.display = 'none';
+    }
+
+    function saveAreaChanges(row) {
+        const code = row.dataset.code;
+        const payload = {
+            code: code,
+            name: row.querySelector('.name-input').value.trim(),
+            description: row.querySelector('.description-input').value.trim(),
+            difficulty: row.querySelector('.difficulty-input').value.trim(),
+            terrain: row.querySelector('.terrain-input').value.trim(),
+            csrf_token: '{{ csrf_token() }}'
+        };
+
+        if (!payload.name) {
+            alert('Area name is required.');
+            return;
+        }
+
+        const saveButton = row.querySelector('.btn-save');
+        const originalHtml = saveButton.innerHTML;
+        saveButton.innerHTML = '<i class="bi bi-hourglass-split"></i>';
+        saveButton.disabled = true;
+
+        fetch('{{ url_for("admin.circle_areas_edit", slug=circle.slug) }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': payload.csrf_token
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                row.querySelector('.name-display').textContent = payload.name;
+                row.querySelector('.description-display').textContent = payload.description;
+                row.querySelector('.difficulty-display').textContent = payload.difficulty;
+                row.querySelector('.terrain-display').textContent = payload.terrain;
+                disableEditMode(row);
+            } else {
+                alert('Error updating area: ' + (data.message || 'Unknown error'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error updating area. Please try again.');
+        })
+        .finally(() => {
+            saveButton.innerHTML = originalHtml;
+            saveButton.disabled = false;
+        });
+    }
+});
+</script>
 {% endblock %}

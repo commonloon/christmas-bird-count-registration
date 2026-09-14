@@ -58,7 +58,7 @@ admin_bp = Blueprint('admin', __name__)
 # a resolved circle at all, just the explicit slug in their own URL.
 CIRCLE_CONSOLE_ENDPOINTS = {
     'admin.list_circles', 'admin.new_circle', 'admin.edit_circle',
-    'admin.circle_admins', 'admin.circle_areas_manage', 'admin.circle_areas_import_kml',
+    'admin.circle_admins', 'admin.circle_areas_manage', 'admin.circle_areas_edit', 'admin.circle_areas_import_kml',
     'admin.circle_logo_upload', 'admin.circle_logo_delete',
     'admin.email_content_defaults', 'admin.circle_email_content', 'admin.circle_email_content_preview',
 }
@@ -1906,12 +1906,15 @@ def circle_email_content_preview(slug, email_type):
         return redirect(url_for('admin.circle_email_content', slug=slug))
 
 
-@admin_bp.route('/circles/<slug>/areas', methods=['GET', 'POST'])
+@admin_bp.route('/circles/<slug>/areas', methods=['GET'])
 def circle_areas_manage(slug):
-    """Manage areas for a circle - super-admin (any circle) or that circle's own
-    admin. Labels (name/description/difficulty/terrain) can be added/edited by
-    hand below; boundaries (the map shape) are imported in bulk from a KML file
-    via circle_areas_import_kml."""
+    """View a circle's areas - super-admin (any circle) or that circle's own
+    admin. Labels (name/description/difficulty/terrain) are inline-edited from
+    this page via circle_areas_edit (AJAX); boundaries (the map shape) and new
+    areas are only ever created in bulk from a KML file, via
+    circle_areas_import_kml - there is deliberately no manual "add area" path,
+    since a hand-added area has no boundary and code is otherwise immutable
+    (see circle_areas_edit's docstring)."""
     denied = _require_circle_manage_access(slug)
     if denied:
         return denied
@@ -1922,26 +1925,55 @@ def circle_areas_manage(slug):
         return redirect(url_for('main.index'))
 
     area_model = CircleAreaModel(g.db)
-
-    if request.method == 'POST':
-        code = sanitize_text_input(request.form.get('code', ''), max_length=10).upper()
-        name = sanitize_text_input(request.form.get('name', ''), max_length=200)
-        description = sanitize_notes(request.form.get('description', ''))
-        difficulty = sanitize_text_input(request.form.get('difficulty', ''), max_length=50)
-        terrain = sanitize_text_input(request.form.get('terrain', ''), max_length=200)
-
-        if not code or not name:
-            flash('Area code and name are required.', 'error')
-        elif area_model.get_area(slug, code):
-            area_model.update_area(slug, code, name=name, description=description, difficulty=difficulty, terrain=terrain)
-            flash(f'Area {code} updated.', 'success')
-        else:
-            area_model.add_area(slug, code, name, description=description, difficulty=difficulty, terrain=terrain)
-            flash(f'Area {code} added.', 'success')
-        return redirect(url_for('admin.circle_areas_manage', slug=slug))
-
     areas = area_model.get_areas_for_circle(slug)
     return render_template('admin/circle_areas.html', circle=circle, areas=areas, current_user=get_current_user())
+
+
+@admin_bp.route('/circles/<slug>/areas/edit', methods=['POST'])
+@limiter.limit(RATE_LIMITS['admin_modify'], error_message=get_rate_limit_message('admin_modify'))
+def circle_areas_edit(slug):
+    """AJAX inline-edit of one existing area's labels (name/description/
+    difficulty/terrain) - the circle_areas.html table's per-row edit icon.
+    Deliberately does NOT accept a new/changed code: code is a plain string
+    that participants' preferred_area, leaders' assigned_area_leader, and KML
+    re-import matching all reference by value, with no rename cascade - this
+    endpoint only ever updates the row whose existing code is given, never
+    creates one or changes a code. JSON (not the redirect-based
+    _require_circle_manage_access) so a denied/expired-session response can
+    be read by the calling fetch()."""
+    if 'user_email' not in session:
+        return jsonify({'success': False, 'message': 'Please log in again.'}), 401
+    if not _can_manage_circle(slug):
+        return jsonify({'success': False, 'message': 'You do not have permission to manage this circle.'}), 403
+
+    circle = CircleModel(g.db).get_by_slug(slug)
+    if not circle:
+        return jsonify({'success': False, 'message': 'Circle not found.'}), 404
+
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({'success': False, 'message': 'No data provided.'}), 400
+
+    code = (data.get('code') or '').strip().upper()
+    name = sanitize_text_input(data.get('name', ''), max_length=200)
+    description = sanitize_notes(data.get('description', ''))
+    difficulty = sanitize_text_input(data.get('difficulty', ''), max_length=50)
+    terrain = sanitize_text_input(data.get('terrain', ''), max_length=200)
+
+    if not code or not name:
+        return jsonify({'success': False, 'message': 'Area name is required.'}), 400
+
+    for text_input in (name, description, difficulty, terrain):
+        if is_suspicious_input(text_input):
+            log_security_event('Suspicious admin input', 'Edit circle area attempt with suspicious input', get_current_user().get('email'))
+            return jsonify({'success': False, 'message': 'Invalid input detected.'}), 400
+
+    area_model = CircleAreaModel(g.db)
+    if not area_model.get_area(slug, code):
+        return jsonify({'success': False, 'message': f'No such area: {code}'}), 404
+
+    updated = area_model.update_area(slug, code, name=name, description=description, difficulty=difficulty, terrain=terrain)
+    return jsonify({'success': True, 'area': updated})
 
 
 MAX_KML_UPLOAD_BYTES = 5 * 1024 * 1024  # generous - real CBC-circle KML exports run well under 1MB
