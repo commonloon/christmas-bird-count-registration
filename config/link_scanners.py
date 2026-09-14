@@ -1,7 +1,11 @@
-# Updated by Claude AI on 2026-09-12
+# Updated by Claude AI on 2026-09-14
 """Known email/link-security scanners that should never be able to obtain an
-authenticated session from a magic-link token - see routes/auth.py's
-verify() for how this is used.
+authenticated session from a magic-link token via POST - see routes/auth.py's
+verify() for how this is used. Deliberately NOT checked on GET (see verify()'s
+docstring) - Trend Micro Email Security's URL Protect is a click-through
+proxy, so this Referer appears on the recipient's own real click, not just
+its automated pre-scan, and blocking GET on it broke real logins entirely
+(birdscanada.org, 2026-09-14).
 
 Matched by Referer, not by IP/host: this class of vendor runs distributed,
 load-balanced scanning infrastructure with no stable IP range worth

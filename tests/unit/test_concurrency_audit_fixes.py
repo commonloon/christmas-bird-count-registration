@@ -240,10 +240,13 @@ class TestSafeNextRedirect:
 
 
 class TestKnownLinkScannerCannotObtainSession:
-    """A request whose Referer matches config/link_scanners.py's
+    """A POST whose Referer matches config/link_scanners.py's
     KNOWN_LINK_SCANNERS must never be able to obtain a session, regardless of
     the token's real state - see routes/auth.py's verify() docstring for why
-    this is deliberately NOT "log in as normal but leave the token unused"."""
+    this is deliberately NOT "log in as normal but leave the token unused".
+    GET is deliberately NOT gated on this Referer - see that same docstring
+    for why (Trend Micro's proxy also carries this Referer on a recipient's
+    own real click, not just its automated pre-scan)."""
 
     SCANNER_REFERER = 'https://cas5-0-urlprotect.trendmicro.com/'
 
@@ -263,11 +266,17 @@ class TestKnownLinkScannerCannotObtainSession:
         db_session.query(MagicLinkToken).filter_by(token_hash=token_hash).delete()
         db_session.commit()
 
-    def test_scanner_get_gets_bland_content_and_no_session(self, client, magic_link_token):
+    def test_scanner_get_still_renders_interstitial_and_no_session(self, client, magic_link_token):
+        """GET is not gated on this Referer - a real Trend Micro-routed
+        click must still reach the "Continue signing in" button. It still
+        doesn't consume the token or issue a login session (GET never does -
+        the CSRF-token cookie the form itself needs is expected and is not
+        a login session)."""
         resp = client.get(f'/auth/verify/{magic_link_token}', headers={'Referer': self.SCANNER_REFERER})
         assert resp.status_code == 200
-        assert b'verify-form' not in resp.data
-        assert 'Set-Cookie' not in resp.headers
+        assert b'verify-form' in resp.data
+        with client.session_transaction() as sess:
+            assert 'user_email' not in sess
 
     def test_scanner_post_does_not_consume_token_or_log_in(self, client, db_session, magic_link_token):
         resp = client.post(f'/auth/verify/{magic_link_token}', headers={'Referer': self.SCANNER_REFERER})
@@ -283,9 +292,9 @@ class TestKnownLinkScannerCannotObtainSession:
         assert real.status_code == 302
         assert '/auth/login' not in real.headers['Location']
 
-    def test_scanner_referer_response_does_not_depend_on_token_validity(self, client):
+    def test_scanner_referer_post_response_does_not_depend_on_token_validity(self, client):
         """Same bland response for a nonexistent token - no DB lookup, so no
-        validity oracle is exposed to a request bearing this Referer."""
-        resp = client.get('/auth/verify/not-a-real-token', headers={'Referer': self.SCANNER_REFERER})
+        validity oracle is exposed to a POST bearing this Referer."""
+        resp = client.post('/auth/verify/not-a-real-token', headers={'Referer': self.SCANNER_REFERER})
         assert resp.status_code == 200
         assert b'verify-form' not in resp.data

@@ -300,22 +300,40 @@ def verify(token):
     that gap, since link-scanners generally execute on-load scripts (for
     passive analysis) but don't simulate real user clicks.
 
-    A request (either method) whose Referer matches config/link_scanners.py's
-    KNOWN_LINK_SCANNERS is handled before any of the above: it gets back
-    bland, token-state-independent content and never reaches the token/
-    session logic at all, for either GET or POST. This is deliberately NOT
-    "log in as normal but don't mark the token used" - Referer is a plain
-    client-supplied header, unverifiable proof of anything, so treating a
-    match as "safe to log in" would let anyone who later obtains a copy of an
-    already-used token revive it just by adding that one well-known header.
-    Making the match instead incapable of ever producing a session closes
-    that off entirely: it doesn't matter that the token is left unconsumed,
-    since there is nothing on this path to steal or replay.
+    A POST whose Referer matches config/link_scanners.py's
+    KNOWN_LINK_SCANNERS is handled before any token/session logic: it gets
+    back bland, token-state-independent content and never reaches that logic
+    at all. This is deliberately NOT "log in as normal but don't mark the
+    token used" - Referer is a plain client-supplied header, unverifiable
+    proof of anything, so treating a match as "safe to log in" would let
+    anyone who later obtains a copy of an already-used token revive it just
+    by adding that one well-known header. Making the match instead incapable
+    of ever producing a session closes that off entirely: it doesn't matter
+    that the token is left unconsumed, since there is nothing on this path
+    to steal or replay.
+
+    This check does NOT apply to GET. It originally did (both methods), but
+    that broke real logins: a birdscanada.org user reported (2026-09-14)
+    being shown the scanner's bland page on their own click and never
+    reaching the interstitial at all. Trend Micro Email Security's URL
+    Protect is a click-through proxy, not just an async pre-fetcher - it
+    rewrites the link in the email, and BOTH its automated pre-scan and the
+    recipient's own real click route through urlprotect.trendmicro.com
+    before landing here, so the two are indistinguishable by Referer on GET.
+    That's fine to drop, since GET already never consumes the token
+    regardless of Referer - the click-only design above is what actually
+    protects it. A real user's subsequent POST (submitted by the
+    interstitial's own same-origin form) carries our own confirm-page URL as
+    Referer, not trendmicro.com, so gating POST on this Referer should never
+    affect a genuine login - it's a residual guard in case a scanner's
+    sandbox ever simulates the button click itself with the original Referer
+    preserved.
     """
-    scanner_name = matched_known_link_scanner(request.referrer)
-    if scanner_name:
-        logger.info(f"Known link-scanner {request.method} ({scanner_name}) to /auth/verify - no session issued, token untouched")
-        return 'Form submitted.', 200
+    if request.method == 'POST':
+        scanner_name = matched_known_link_scanner(request.referrer)
+        if scanner_name:
+            logger.info(f"Known link-scanner POST ({scanner_name}) to /auth/verify - no session issued, token untouched")
+            return 'Form submitted.', 200
 
     next_url = _safe_next(request.args.get('next') or request.form.get('next'))
 
