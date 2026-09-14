@@ -1,6 +1,6 @@
 # app.py - Flask application entry point
 # Updated by Claude AI on 2025-12-09
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session, g, send_file, abort
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session, g, send_file, abort, has_request_context
 from flask_wtf.csrf import CSRFProtect
 from config.database import get_db_session, teardown_db_session
 from config.organization import get_organization_variables, get_registration_url, get_admin_url, get_leader_url, DISPLAY_TIMEZONE
@@ -33,12 +33,71 @@ CIRCLE_SUBDOMAIN_PATTERNS = (
 LANDING_HOST = 'cbc.birdcount.ca'
 APEX_LANDING_HOST = 'birdcount.ca'
 
+# .test equivalents of the two landing hosts above, mirrored the same way
+# CIRCLE_SUBDOMAIN_PATTERNS mirrors circle hosts (birdcount.ca replaced by the
+# .test TLD): cbc.birdcount.ca -> cbc.test, birdcount.ca (bare apex) -> test
+# (bare). Deliberately NOT reachable via a real hosts-file entry pointed at
+# the real production domain names - added 2026-09-15 because that approach
+# meant re-editing the hosts file to switch between testing the dev server
+# and reaching the real production site. 'cbc.test' also happens to match
+# CIRCLE_SUBDOMAIN_PATTERNS' generic <slug>.test pattern (as if it were a
+# circle literally slugged "cbc"), but the exact-match check below runs
+# before that pattern loop and returns first, so there's no runtime
+# ambiguity - only a real circle ever slugged "cbc" (vanishingly unlikely)
+# would become unreachable at cbc.test locally.
+TEST_LANDING_HOST = 'cbc.test'
+TEST_APEX_LANDING_HOST = 'test'
+
+
+def is_test_dev_host():
+    """True if the CURRENT request (if any) arrived on the .test dev mirror
+    (TEST_LANDING_HOST/TEST_APEX_LANDING_HOST, or any circle's own *.test
+    subdomain) rather than a real birdcount.ca host. False with no active
+    request context (e.g. a standalone utils/ script), which keeps
+    circle_host()/request_scheme() defaulting to real-domain behavior there,
+    same as before either existed."""
+    if not has_request_context():
+        return False
+    host = request.host.split(':', 1)[0].lower()
+    return host == TEST_APEX_LANDING_HOST or host.endswith('.test')
+
+
+def request_scheme():
+    """'http' under the .test dev mirror (no TLS locally), else 'https' - for
+    building an absolute URL to another circle/landing host, where url_for's
+    own scheme detection doesn't apply (that host isn't this request's own)."""
+    return 'http' if is_test_dev_host() else 'https'
+
+
+def request_port_suffix():
+    """':<port>' under the .test dev mirror if the current request itself
+    carries a non-default port (dev_server.sh runs on 8080, not 80/443), else
+    ''. Real production has no port to carry over - LANDING_HOST/
+    circle_host()'s real-domain branch never needs this. Without it, a link
+    built from circle_host()/TEST_LANDING_HOST/TEST_APEX_LANDING_HOST would
+    point at port 80 (browsers' default for a bare http:// URL), which
+    nothing is listening on locally, instead of back at the dev server."""
+    if not is_test_dev_host():
+        return ''
+    host = request.host
+    return ':' + host.split(':', 1)[1] if ':' in host else ''
+
 
 def circle_host(slug, is_cbc):
     """The subdomain a given circle is actually reachable at - mirrors
     CIRCLE_SUBDOMAIN_PATTERNS above. Used wherever a circle's own login/registration
     URL is built explicitly (e.g. the landing host's multi-circle magic-link email),
-    rather than derived from the current request's Host header."""
+    rather than derived from the current request's Host header.
+
+    Test-mode-aware (see is_test_dev_host()): a request that itself arrived on
+    the .test dev mirror gets a .test-mirrored circle host back too (port
+    included, via request_port_suffix()), so a locally-viewed landing page's
+    circle links (and a locally-triggered landing-host magic-link email's
+    verify_url) stay on the dev server instead of pointing out at the real
+    production site - or at port 80, where nothing is listening."""
+    if is_test_dev_host():
+        base = f"{slug}.cbc.test" if is_cbc else f"{slug}.test"
+        return base + request_port_suffix()
     return f"{slug}.cbc.birdcount.ca" if is_cbc else f"{slug}.birdcount.ca"
 
 # Initialize coverage if enabled (test server only)
@@ -239,18 +298,21 @@ def resolve_circle():
 
     host = request.host.split(':', 1)[0].lower()
 
-    if host in (LANDING_HOST, APEX_LANDING_HOST):
-        # Two landing hosts, not any one circle's registration site: cbc.birdcount.ca
-        # lists CBC circles, birdcount.ca (the bare apex, one level up) lists non-CBC
-        # circles and links across to the CBC listing - see routes/main.py's index().
-        # Not an unmatched circle subdomain, so no 404 - g.circle stays None and
-        # callers already fall back gracefully (see config/organization.py's
-        # _circle_value) to Vancouver's static module constants for anything that
-        # isn't landing-page-aware yet.
+    if host in (LANDING_HOST, APEX_LANDING_HOST, TEST_LANDING_HOST, TEST_APEX_LANDING_HOST):
+        # Two landing hosts (plus their .test dev-mode equivalents - see
+        # TEST_LANDING_HOST/TEST_APEX_LANDING_HOST above), not any one circle's
+        # registration site: cbc.birdcount.ca lists CBC circles, birdcount.ca
+        # (the bare apex, one level up) lists non-CBC circles and links across
+        # to the CBC listing - see routes/main.py's index(). Not an unmatched
+        # circle subdomain, so no 404 - g.circle stays None; callers that need
+        # circle-specific data with no circle resolved (e.g. a landing-host
+        # magic-link login) must handle that explicitly - see
+        # config/organization.py's _circle_value(), which raises rather than
+        # substituting any one circle's data here.
         g.circle = None
         g.circle_slug = None
         g.is_landing_host = True
-        g.is_apex_landing_host = (host == APEX_LANDING_HOST)
+        g.is_apex_landing_host = host in (APEX_LANDING_HOST, TEST_APEX_LANDING_HOST)
         return None
 
     g.is_landing_host = False

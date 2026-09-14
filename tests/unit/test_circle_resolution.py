@@ -123,6 +123,95 @@ class TestLandingHosts:
             assert g.is_landing_host is True
             assert g.is_apex_landing_host is True
 
+    # --- .test dev-mirror equivalents (app.py's TEST_LANDING_HOST/
+    # TEST_APEX_LANDING_HOST) - added 2026-09-15 so the landing pages are
+    # reachable locally without a hosts-file entry for the real domain names.
+
+    def test_test_landing_host_resolves_with_no_circle(self, client):
+        resp = _get(client, 'cbc.test')
+        assert resp.status_code == 200
+
+    def test_test_apex_landing_host_resolves_with_no_circle(self, client):
+        resp = _get(client, 'test')
+        assert resp.status_code == 200
+
+    def test_test_landing_host_sets_g_state_correctly(self, app):
+        from flask import g
+        with app.test_request_context('/', headers={'Host': 'cbc.test'}):
+            app.preprocess_request()
+            assert g.circle_slug is None
+            assert g.is_landing_host is True
+            assert g.is_apex_landing_host is False
+
+    def test_test_apex_landing_host_sets_g_state_correctly(self, app):
+        from flask import g
+        with app.test_request_context('/', headers={'Host': 'test'}):
+            app.preprocess_request()
+            assert g.circle_slug is None
+            assert g.is_landing_host is True
+            assert g.is_apex_landing_host is True
+
+
+class TestLandingHostLinksStayOnCurrentHost:
+    """The landing page's per-circle links and its cross-listing link
+    (app.py's circle_host()/request_scheme()/is_test_dev_host()) must stay on
+    whichever host it's currently viewed from - otherwise a locally-viewed
+    .test landing page would bounce every link out to the real production
+    site. Uses two real local circles fixed by is_cbc: 'test' (is_cbc=True,
+    listed on the CBC/cbc.* host) and 'fraser-estuary-kba' (is_cbc=False,
+    listed on the bare apex host) - see tests/test_config.py / local dev DB."""
+
+    def test_production_cbc_host_links_use_https_and_real_domain(self, client):
+        resp = _get(client, 'cbc.birdcount.ca')
+        html = resp.get_data(as_text=True)
+        assert 'href="https://test.cbc.birdcount.ca/"' in html
+        assert 'href="https://birdcount.ca/"' in html  # cross-listing link
+
+    def test_test_dev_cbc_host_links_use_http_and_test_domain(self, client):
+        resp = _get(client, 'cbc.test')
+        html = resp.get_data(as_text=True)
+        assert 'href="http://test.cbc.test/"' in html
+        assert 'href="http://test/"' in html  # cross-listing link (bare apex mirror)
+        assert 'birdcount.ca' not in html
+
+    def test_production_apex_host_links_use_https_and_real_domain(self, client):
+        resp = _get(client, 'birdcount.ca')
+        html = resp.get_data(as_text=True)
+        assert 'href="https://fraser-estuary-kba.birdcount.ca/"' in html
+        assert 'href="https://cbc.birdcount.ca/"' in html  # cross-listing link
+
+    def test_test_dev_apex_host_links_use_http_and_test_domain(self, client):
+        resp = _get(client, 'test')
+        html = resp.get_data(as_text=True)
+        assert 'href="http://fraser-estuary-kba.test/"' in html
+        assert 'href="http://cbc.test/"' in html  # cross-listing link
+        assert 'birdcount.ca' not in html
+
+    # --- Port propagation (added 2026-09-15: dev_server.sh runs on 8080, not
+    # 80 - a link missing that port sends a browser to port 80, where nothing
+    # locally is listening, instead of back to the dev server) ------------
+
+    def test_test_dev_cbc_host_links_carry_the_requests_own_port(self, client):
+        resp = _get(client, 'cbc.test:8080')
+        html = resp.get_data(as_text=True)
+        assert 'href="http://test.cbc.test:8080/"' in html
+        assert 'href="http://test:8080/"' in html  # cross-listing link
+
+    def test_test_dev_apex_host_links_carry_the_requests_own_port(self, client):
+        resp = _get(client, 'test:8080')
+        html = resp.get_data(as_text=True)
+        assert 'href="http://fraser-estuary-kba.test:8080/"' in html
+        assert 'href="http://cbc.test:8080/"' in html  # cross-listing link
+
+    def test_production_host_links_never_carry_a_port(self, client):
+        """Real production has no dev-server port to carry over - confirms
+        request_port_suffix() is genuinely gated on is_test_dev_host(), not
+        just on the request happening to include a port."""
+        resp = _get(client, 'cbc.birdcount.ca:8080')
+        html = resp.get_data(as_text=True)
+        assert 'href="https://test.cbc.birdcount.ca/"' in html
+        assert ':8080' not in html
+
 
 def _super_admin_client_for_host(client, host):
     """A logged-in-as-super-admin session scoped to `host` specifically - the

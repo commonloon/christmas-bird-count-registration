@@ -33,10 +33,14 @@ def load_db():
 def index():
     """Main registration page."""
     if getattr(g, 'is_landing_host', False):
-        from app import LANDING_HOST, APEX_LANDING_HOST, circle_host
+        from app import (
+            LANDING_HOST, APEX_LANDING_HOST, TEST_LANDING_HOST, TEST_APEX_LANDING_HOST,
+            circle_host, is_test_dev_host, request_scheme, request_port_suffix,
+        )
         from models.circle import CircleModel
 
         is_apex = getattr(g, 'is_apex_landing_host', False)
+        scheme = request_scheme()
         all_circles = CircleModel(g.db).get_all() if g.db else []
         # cbc.birdcount.ca lists CBC circles; the bare apex (birdcount.ca) lists
         # everything else, one subdomain level up - see app.py's resolve_circle().
@@ -51,12 +55,20 @@ def index():
                 'organization_name': c['name'],
                 'latitude': c['latitude'],
                 'longitude': c['longitude'],
-                'url': f"https://{circle_host(c['slug'], c['is_cbc'])}/",
+                'url': f"{scheme}://{circle_host(c['slug'], c['is_cbc'])}/",
             }
             for c in all_circles
             if c['is_cbc'] != is_apex
         ]
-        other_listing_url = f"https://{LANDING_HOST}/" if is_apex else f"https://{APEX_LANDING_HOST}/"
+        # circle_host() mirrors per-circle hosts onto .test automatically when
+        # is_test_dev_host() - the landing hosts themselves need the same
+        # mirroring done explicitly here, so the cross-listing link also stays
+        # on the dev server when viewed there instead of pointing at production.
+        if is_test_dev_host():
+            port = request_port_suffix()
+            other_listing_url = f"{scheme}://{TEST_LANDING_HOST}{port}/" if is_apex else f"{scheme}://{TEST_APEX_LANDING_HOST}{port}/"
+        else:
+            other_listing_url = f"{scheme}://{LANDING_HOST}/" if is_apex else f"{scheme}://{APEX_LANDING_HOST}/"
         return render_template('landing.html', circles=circles, is_apex=is_apex,
                                 other_listing_url=other_listing_url)
 
