@@ -437,7 +437,7 @@ if (deleteModal) {
         const deleteForm = deleteModal.querySelector('#deleteForm');
 
         modalTitle.textContent = participantName;
-        deleteForm.action = '/admin/delete_participant/' + participantId;
+        deleteForm.action = '{{ url_for("admin.delete_participant", participant_id=0) }}'.replace('/0', '/' + participantId);
     });
 
     // Handle reason input
@@ -461,7 +461,7 @@ if (withdrawalModal) {
         const withdrawalForm = withdrawalModal.querySelector('#withdrawalForm');
 
         modalTitle.textContent = participantName;
-        withdrawalForm.action = '/admin/withdraw_participant/' + participantId;
+        withdrawalForm.action = '{{ url_for("admin.withdraw_participant", participant_id=0) }}'.replace('/0', '/' + participantId);
     });
 
     // Handle reason input

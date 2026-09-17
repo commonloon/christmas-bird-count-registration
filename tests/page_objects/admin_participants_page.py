@@ -164,14 +164,20 @@ class AdminParticipantsPage(BasePage):
         Returns:
             WebElement or None: The participant row element
         """
-        # Try different strategies to find the participant
+        # Try different strategies to find the participant. No CSS '#id'
+        # strategy here - a name/email identifier (this method's actual
+        # common case) contains characters like '@' that make it an invalid
+        # CSS selector outright, which raises InvalidSelectorException
+        # rather than the TimeoutException find_element_safely catches,
+        # aborting this whole method before the working strategies run.
         search_strategies = [
-            # By data attribute
+            # By data attribute (numeric participant ID)
             (By.CSS_SELECTOR, f'tr[data-participant-id="{participant_identifier}"]'),
-            # By ID
-            (By.CSS_SELECTOR, f'#{participant_identifier}'),
-            # By text content (name or email)
-            (By.XPATH, f'//tr[td[contains(text(), "{participant_identifier}")]]')
+            # By text content (name or email) - '.' not 'text()' since the
+            # email cell nests its text inside <div class="email-display">
+            # <a href="mailto:...">, not as a direct child text node of <td>
+            # (templates/admin/participants.html); text() alone never matches.
+            (By.XPATH, f'//tr[td[contains(., "{participant_identifier}")]]')
         ]
 
         for strategy in search_strategies:
@@ -198,12 +204,16 @@ class AdminParticipantsPage(BasePage):
             logger.error(f"Could not find participant: {participant_identifier}")
             return False
 
-        # Find delete button in the row
+        # Find delete button in the row - the real markup is a button with
+        # data-bs-toggle="modal" and a bi-trash icon inside (templates/admin/
+        # participants.html), not text-labeled "Delete" - CSS has no
+        # :contains() (that's XPath-only), so a selector using it never
+        # matches and previously made this whole method silently no-op.
         delete_selectors = [
-            (By.CSS_SELECTOR, 'button:contains("Delete")'),
+            (By.CSS_SELECTOR, 'button[data-bs-target="#deleteModal"]'),
             (By.CSS_SELECTOR, '.delete-participant'),
-            (By.CSS_SELECTOR, 'a:contains("Delete")'),
-            (By.CSS_SELECTOR, 'i.fa-trash')  # If using font awesome icons
+            (By.CSS_SELECTOR, 'button i.bi-trash'),
+            (By.XPATH, './/button[contains(., "Delete")]')
         ]
 
         delete_button = None
@@ -229,15 +239,35 @@ class AdminParticipantsPage(BasePage):
         # Wait for page refresh or update
         time.sleep(2)
 
+        # A failed POST (e.g. a 404/405 from a stale form action) can land on
+        # an error page with no participant table at all, rather than
+        # redirecting back to /bigbird/participants - on that page,
+        # find_participant_row() also finds nothing, which previously read as
+        # "deletion succeeded" (a false positive that would have hidden the
+        # exact regression this page object exists to catch).
+        if '/bigbird/participants' not in self.driver.current_url:
+            logger.error(
+                f"After delete submit, browser is on {self.driver.current_url}, "
+                "not the participants page - treating as a failed deletion"
+            )
+            return False
+
         # Verify participant is no longer visible
         return not bool(self.find_participant_row(participant_identifier))
 
     def _handle_delete_confirmation(self, reason):
         """Handle delete confirmation modal/dialog."""
         try:
-            # Look for confirmation modal
+            # Look for confirmation modal - '#deleteModal' specifically, not
+            # a generic '.modal' class selector: Bootstrap 5 keeps class="modal
+            # fade" on EVERY modal div regardless of open/closed state
+            # (visibility is a separate 'show' class + inline style), and
+            # '#withdrawalModal' appears earlier in the DOM (templates/admin/
+            # participants.html) than '#deleteModal' - a generic '.modal'
+            # match returns that hidden modal first, and interacting with its
+            # non-visible controls is what silently hangs this method.
             modal_selectors = [
-                (By.CSS_SELECTOR, '.modal'),
+                (By.CSS_SELECTOR, '#deleteModal'),
                 (By.CSS_SELECTOR, '.delete-confirmation'),
                 (By.CSS_SELECTOR, '#delete-modal')
             ]
@@ -255,12 +285,15 @@ class AdminParticipantsPage(BasePage):
                     reason_field[0].clear()
                     reason_field[0].send_keys(reason)
 
-                # Click confirm button
+                # Click confirm button - the real markup (templates/admin/
+                # participants.html) is a submit button styled btn-danger
+                # inside the modal's form, not text-matched via CSS
+                # :contains() (XPath-only, never matches as CSS).
                 confirm_selectors = [
-                    (By.CSS_SELECTOR, 'button:contains("Delete")'),
-                    (By.CSS_SELECTOR, 'button:contains("Confirm")'),
+                    (By.CSS_SELECTOR, 'form button[type="submit"].btn-danger'),
                     (By.CSS_SELECTOR, '.confirm-delete'),
-                    (By.CSS_SELECTOR, 'input[type="submit"]')
+                    (By.CSS_SELECTOR, 'input[type="submit"]'),
+                    (By.XPATH, './/button[contains(., "Delete")]')
                 ]
 
                 for selector in confirm_selectors:

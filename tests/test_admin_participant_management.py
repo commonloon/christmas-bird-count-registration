@@ -206,7 +206,7 @@ class TestParticipantOperations:
 
     @pytest.mark.critical
     @pytest.mark.admin
-    def test_participant_deletion_workflow(self, authenticated_browser, admin_participants_page, participant_model):
+    def test_participant_deletion_workflow(self, authenticated_browser, participant_model):
         """Test participant deletion workflow."""
         logger.info("Testing participant deletion workflow")
 
@@ -230,51 +230,54 @@ class TestParticipantOperations:
             'year': datetime.now().year
         }
 
+        participant_id = participant_model.add_participant(participant_record)
+        if not participant_id:
+            pytest.skip("Could not create test participant for deletion")
+
+        participant_email = participant_record['email']
+
         try:
-            participant_id = participant_model.add_participant(participant_record)
-            if not participant_id:
-                pytest.skip("Could not create test participant for deletion")
-
-            participant_name = f"{participant_record['first_name']} {participant_record['last_name']}"
-            participant_email = participant_record['email']
-
             # Navigate to participants page (already authenticated)
             base_url = get_base_url()
 
-            dashboard = AdminParticipantsPage(authenticated_browser, base_url)
             authenticated_browser.get(f"{base_url}/bigbird/participants")
             time.sleep(2)
 
-            # Attempt to delete participant
+            # Build the page object on authenticated_browser itself, not the
+            # separate admin_participants_page fixture - that fixture wraps
+            # the plain 'browser' fixture, a different, unauthenticated
+            # WebDriver instance that never navigates anywhere. Operating on
+            # it here made every row-lookup silently fail regardless of
+            # selector correctness, masking the real 405 regression this
+            # test exists to catch.
+            participants_page = AdminParticipantsPage(authenticated_browser, base_url)
+
+            # Delete via the real UI click/modal/submit flow - this is what
+            # actually catches the 405 regression (deleteForm.action pointed
+            # at a stale pre-/bigbird '/admin/...' path that only the
+            # honeypot route in routes/main.py matched, and only for GET).
             deletion_reason = participant_data.get('deletion_reason', 'Test deletion workflow')
-            deletion_success = admin_participants_page.delete_participant(
+            deletion_success = participants_page.delete_participant(
                 participant_email,  # Use email as identifier
                 deletion_reason
             )
 
-            if deletion_success:
-                logger.info("✓ Participant deletion workflow completed")
+            assert deletion_success, (
+                "Delete workflow did not remove the participant row from the UI - "
+                "check for a 405/404 on the delete form's POST (e.g. a stale hardcoded "
+                "URL prefix in templates/admin/participants.html)"
+            )
 
-                # Verify participant is deleted from database
-                try:
-                    deleted_participant = participant_model.get_participant(participant_id)
-                    if deleted_participant:
-                        logger.warning("Participant still exists in database after deletion")
-                    else:
-                        logger.info("✓ Participant properly removed from database")
-                except:
-                    logger.info("✓ Participant properly removed from database")
+            deleted_participant = participant_model.get_participant(participant_id)
+            assert not deleted_participant, "Participant still exists in database after deletion"
+            logger.info("✓ Participant properly removed from UI and database")
 
-            else:
-                logger.warning("Participant deletion workflow not completed (UI may not support deletion)")
-
-        except Exception as e:
-            logger.error(f"Error in participant deletion test: {e}")
-            # Cleanup
+        finally:
+            # Cleanup in case the assertion above failed and the delete didn't happen
             try:
-                if 'participant_id' in locals() and participant_id:
+                if participant_model.get_participant(participant_id):
                     participant_model.delete_participant(participant_id)
-            except:
+            except Exception:
                 pass
 
     @pytest.mark.admin
