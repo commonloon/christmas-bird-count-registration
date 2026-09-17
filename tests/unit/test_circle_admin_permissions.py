@@ -97,8 +97,13 @@ class TestEditCircleAccessControl:
         resp = admin_client.get(f'/bigbird/circles/{OTHER_CIRCLE_SLUG}/edit')
         assert resp.status_code == 302
 
-    def test_super_admin_can_access_any_circle(self, super_admin_client):
-        resp = super_admin_client.get(f'/bigbird/circles/{OTHER_CIRCLE_SLUG}/edit')
+    def test_super_admin_can_access_any_circle(self, super_admin_client, second_test_circle):
+        # Needs a real circles row at this slug (admin.edit_circle 302s if
+        # CircleModel.get_by_slug() returns None) - OTHER_CIRCLE_SLUG
+        # ('nanaimo') is a real production circle slug that isn't guaranteed
+        # to exist in a fresh local dev DB, so this test specifically uses
+        # second_test_circle's self-contained 'test2' row instead.
+        resp = super_admin_client.get(f'/bigbird/circles/{second_test_circle["slug"]}/edit')
         assert resp.status_code == 200
 
 

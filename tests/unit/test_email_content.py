@@ -218,8 +218,13 @@ class TestCircleEmailContentRouteAccess:
         assert resp.status_code == 302
         assert 'email-content' not in resp.headers['Location']
 
-    def test_super_admin_can_access_any_circle(self, super_admin_client):
-        resp = super_admin_client.get(f'/bigbird/circles/{OTHER_CIRCLE_SLUG}/email-content')
+    def test_super_admin_can_access_any_circle(self, super_admin_client, second_test_circle):
+        # Needs a real circles row at this slug (admin.email_content_settings
+        # 302s if CircleModel.get_by_slug() returns None) - OTHER_CIRCLE_SLUG
+        # ('nanaimo') only has isolation-check rows written elsewhere in this
+        # file, never an actual circles row, so this test specifically needs
+        # second_test_circle's real 'test2' row instead.
+        resp = super_admin_client.get(f'/bigbird/circles/{second_test_circle["slug"]}/email-content')
         assert resp.status_code == 200
 
 

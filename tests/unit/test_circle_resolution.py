@@ -158,32 +158,40 @@ class TestLandingHostLinksStayOnCurrentHost:
     whichever host it's currently viewed from - otherwise a locally-viewed
     .test landing page would bounce every link out to the real production
     site. Uses two real local circles fixed by is_cbc: 'test' (is_cbc=True,
-    listed on the CBC/cbc.* host) and 'fraser-estuary-kba' (is_cbc=False,
-    listed on the bare apex host) - see tests/test_config.py / local dev DB."""
+    listed on the CBC/cbc.* host) and 'test2' (is_cbc=False, listed on the
+    bare apex host - see conftest.py's second_test_circle fixture).
 
-    def test_production_cbc_host_links_use_https_and_real_domain(self, client):
+    Every test method below takes second_test_circle explicitly (even the
+    is_cbc=True/'test'-only ones) - none of this file's app/client fixtures
+    touch the database, so without it these tests silently depend on
+    whatever circles happen to already exist in the local dev DB (this
+    previously assumed a real production circle slug, 'fraser-estuary-kba',
+    existed locally by chance - it won't on a fresh dev setup that only ever
+    created 'test')."""
+
+    def test_production_cbc_host_links_use_https_and_real_domain(self, client, second_test_circle):
         resp = _get(client, 'cbc.birdcount.ca')
         html = resp.get_data(as_text=True)
         assert 'href="https://test.cbc.birdcount.ca/"' in html
         assert 'href="https://birdcount.ca/"' in html  # cross-listing link
 
-    def test_test_dev_cbc_host_links_use_http_and_test_domain(self, client):
+    def test_test_dev_cbc_host_links_use_http_and_test_domain(self, client, second_test_circle):
         resp = _get(client, 'cbc.test')
         html = resp.get_data(as_text=True)
         assert 'href="http://test.cbc.test/"' in html
         assert 'href="http://test/"' in html  # cross-listing link (bare apex mirror)
         assert 'birdcount.ca' not in html
 
-    def test_production_apex_host_links_use_https_and_real_domain(self, client):
+    def test_production_apex_host_links_use_https_and_real_domain(self, client, second_test_circle):
         resp = _get(client, 'birdcount.ca')
         html = resp.get_data(as_text=True)
-        assert 'href="https://fraser-estuary-kba.birdcount.ca/"' in html
+        assert 'href="https://test2.birdcount.ca/"' in html
         assert 'href="https://cbc.birdcount.ca/"' in html  # cross-listing link
 
-    def test_test_dev_apex_host_links_use_http_and_test_domain(self, client):
+    def test_test_dev_apex_host_links_use_http_and_test_domain(self, client, second_test_circle):
         resp = _get(client, 'test')
         html = resp.get_data(as_text=True)
-        assert 'href="http://fraser-estuary-kba.test/"' in html
+        assert 'href="http://test2.test/"' in html
         assert 'href="http://cbc.test/"' in html  # cross-listing link
         assert 'birdcount.ca' not in html
 
@@ -191,19 +199,19 @@ class TestLandingHostLinksStayOnCurrentHost:
     # 80 - a link missing that port sends a browser to port 80, where nothing
     # locally is listening, instead of back to the dev server) ------------
 
-    def test_test_dev_cbc_host_links_carry_the_requests_own_port(self, client):
+    def test_test_dev_cbc_host_links_carry_the_requests_own_port(self, client, second_test_circle):
         resp = _get(client, 'cbc.test:8080')
         html = resp.get_data(as_text=True)
         assert 'href="http://test.cbc.test:8080/"' in html
         assert 'href="http://test:8080/"' in html  # cross-listing link
 
-    def test_test_dev_apex_host_links_carry_the_requests_own_port(self, client):
+    def test_test_dev_apex_host_links_carry_the_requests_own_port(self, client, second_test_circle):
         resp = _get(client, 'test:8080')
         html = resp.get_data(as_text=True)
-        assert 'href="http://fraser-estuary-kba.test:8080/"' in html
+        assert 'href="http://test2.test:8080/"' in html
         assert 'href="http://cbc.test:8080/"' in html  # cross-listing link
 
-    def test_production_host_links_never_carry_a_port(self, client):
+    def test_production_host_links_never_carry_a_port(self, client, second_test_circle):
         """Real production has no dev-server port to carry over - confirms
         request_port_suffix() is genuinely gated on is_test_dev_host(), not
         just on the request happening to include a port."""
