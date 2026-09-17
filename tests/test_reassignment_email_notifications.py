@@ -83,13 +83,23 @@ class EmailCapture:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.captured_emails = []
 
-    def send_email(self, recipients, subject, text_content, html_content):
-        """Capture email instead of sending it."""
+    def send_email(self, recipients, subject, text_content, html_content,
+                    from_email=None, test_recipient=None):
+        """Capture email instead of sending it.
+
+        from_email/test_recipient accepted (and ignored) to match the real
+        services.email_service.send_email() signature - callers like
+        test/email_generator.py pass them as keyword args, and a mock that
+        doesn't accept them raises a TypeError this class swallows/logs
+        internally, silently producing zero captured emails instead of a
+        clear failure.
+        """
         email_data = {
             'recipients': recipients if isinstance(recipients, list) else [recipients],
             'subject': subject,
             'text_content': text_content,
             'html_content': html_content,
+            'from_email': from_email,
             'timestamp': datetime.now(timezone.utc).isoformat()
         }
         self.captured_emails.append(email_data)
@@ -184,6 +194,21 @@ def flask_app_module():
         if os.path.exists(static_folder):
             test_app.static_folder = static_folder
             logger.info(f"Static folder configured: {static_folder}")
+
+        # Register the same custom Jinja filters app.py registers on the real
+        # app - email templates (e.g. team_update.html) use 'nl2br', and this
+        # minimal app never picks it up otherwise, since it's a separate
+        # Flask instance from the one app.py's @app.template_filter targets.
+        from config.fields import get_skill_level_label
+        from markupsafe import Markup, escape
+
+        test_app.jinja_env.filters['skill_label'] = get_skill_level_label
+
+        @test_app.template_filter('nl2br')
+        def nl2br(text):
+            if text is None:
+                return ''
+            return Markup(str(escape(text)).replace('\n', '<br>\n'))
 
         logger.info("Created minimal Flask app for email generation")
         return test_app
