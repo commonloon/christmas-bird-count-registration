@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2026-01-12
+# Updated by Claude AI on 2026-09-24
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g, send_from_directory, abort
 from config.database import get_db_session
 from models.participant import ParticipantModel, DuplicateParticipantError
@@ -326,7 +326,7 @@ def register():
             # Send confirmation email with participant data
             email_service.send_registration_confirmation(participant_data, 'UNASSIGNED')
         else:
-            flash(f'Registration successful! You have been registered for Area {preferred_area}.', 'success')
+            flash(f'Registration successful! You have requested Area {preferred_area}.', 'success')
 
             # Send confirmation email with participant data
             email_service.send_registration_confirmation(participant_data, preferred_area)

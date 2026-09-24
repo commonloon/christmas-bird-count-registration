@@ -1,4 +1,4 @@
-{# Updated by Claude AI on 2026-01-12 #}
+{# Updated by Claude AI on 2026-09-24 #}
 {% extends "base.html" %}
 
 {% block content %}
@@ -9,7 +9,7 @@
             {% if area == 'UNASSIGNED' %}
                 <p class="mb-0">You have been registered for assignment wherever you're needed most.</p>
             {% else %}
-                <p class="mb-0">You have been registered for <strong>{{ area_info.name }}</strong>.</p>
+                <p class="mb-0">You have requested <strong>{{ area_info.name }}</strong>.</p>
             {% endif %}
         </div>
         
@@ -35,7 +35,7 @@
                         <li>You will receive an email when an administrator has assigned you to a count area, probably within the next week.
                         <li>Once assigned, your area leader will be your main contact for information about count day. They will contact you to let you know where to meet, areas you'll survey, etc.
                     {% else %}
-                        <li>Your area leader is your main contact for information about count day. They will contact you to let you know where to meet, areas you'll survey, etc.
+                        <li>Once your placement is confirmed, your area leader will be your main contact for information about count day. They will contact you to let you know where to meet, areas you'll survey, etc.
                     {% endif %}
                     <li>The count typically begins early in the morning, and lasts until dusk. Please let your area leader know if you aren't available for the full day.
                     <li>The {{ count_event_name }} happens rain or shine. Dress to stay warm and dry.

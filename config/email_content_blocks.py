@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2026-09-09
+# Updated by Claude AI on 2026-09-24
 """
 Registry of admin-customizable prose blocks for outgoing emails.
 
@@ -38,7 +38,7 @@ EMAIL_CONTENT_BLOCKS = {
             'allow_newlines': True,
             'max_length': 500,
             'placeholders': ['area_name'],
-            'fallback': "You have been registered for $area_name.",
+            'fallback': "You have requested $area_name.",
         },
         'intro_unassigned': {
             'label': 'Welcome message (participant not yet assigned)',
@@ -53,8 +53,9 @@ EMAIL_CONTENT_BLOCKS = {
             'max_length': 3000,
             'placeholders': ['count_event_name'],
             'fallback': (
-                "Your area leader is your main contact for information about count day and will "
-                "let you know where to meet and what to expect.\n\n"
+                "Once your placement is confirmed, your area leader will be your main contact for "
+                "information about count day and will let you know where to meet and what to "
+                "expect.\n\n"
                 "The count typically begins early in the morning and lasts until dusk - please let "
                 "your area leader know if you aren't available for the full day.\n\n"
                 "The $count_event_name happens rain or shine, so dress to stay warm and dry, and "
