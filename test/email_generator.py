@@ -14,6 +14,7 @@ Implements race condition prevention and change detection logic.
 import os
 import sys
 from datetime import datetime, timedelta, timezone
+from urllib.parse import quote
 from typing import Dict, List, Optional, Tuple, Any
 from flask import render_template, current_app
 from jinja2 import Template
@@ -478,7 +479,10 @@ def generate_team_update_emails(app, circle_slug) -> Dict[str, Any]:
                     'current_team': current_team,
                     'current_date': current_time,
                     'display_timezone': display_timezone,
-                    'leader_dashboard_url': get_leader_dashboard_url(),
+                    # A leader may lead more than one area (separate records, same
+                    # email); deep-link so this area's email opens that area's tab
+                    # directly instead of whichever tab the dashboard defaults to.
+                    'leader_dashboard_url': f"{get_leader_dashboard_url()}?area={quote(area_code)}",
                     'test_mode': is_test_server(),
                     'branding': get_email_branding(),
                     'count_event_name': org_vars['count_event_name'],
@@ -633,7 +637,10 @@ def generate_weekly_summary_emails(app, circle_slug) -> Dict[str, Any]:
                     'leadership_interest_count': leadership_interest_count,
                     'current_date': current_time,
                     'display_timezone': display_timezone,
-                    'leader_dashboard_url': get_leader_dashboard_url(),
+                    # A leader may lead more than one area (separate records, same
+                    # email); deep-link so this area's email opens that area's tab
+                    # directly instead of whichever tab the dashboard defaults to.
+                    'leader_dashboard_url': f"{get_leader_dashboard_url()}?area={quote(area_code)}",
                     'test_mode': is_test_server(),
                     'branding': get_email_branding(),
                     'count_event_name': org_vars['count_event_name'],
@@ -820,7 +827,7 @@ def build_team_update_preview(circle_slug):
     try:
         org_vars = get_organization_variables()
         current_time, display_timezone = convert_to_display_timezone(datetime.now(timezone.utc))
-        leader_dashboard_url = get_leader_dashboard_url()
+        leader_dashboard_url = f"{get_leader_dashboard_url()}?area=A"
         branding = get_email_branding()
     finally:
         ctx.pop()
@@ -865,7 +872,7 @@ def build_weekly_summary_preview(circle_slug):
     try:
         org_vars = get_organization_variables()
         current_time, display_timezone = convert_to_display_timezone(datetime.now(timezone.utc))
-        leader_dashboard_url = get_leader_dashboard_url()
+        leader_dashboard_url = f"{get_leader_dashboard_url()}?area=A"
         branding = get_email_branding()
     finally:
         ctx.pop()

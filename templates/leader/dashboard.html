@@ -18,13 +18,28 @@
     </div>
 </div>
 
+<!-- Area Tabs Navigation (only shown when this email leads more than one area) -->
+{% if led_areas and led_areas|length > 1 %}
+<ul class="nav nav-pills mb-3" role="tablist">
+    {% for led_area in led_areas %}
+    <li class="nav-item" role="presentation">
+        <a class="nav-link {% if led_area.code == area_code %}active{% endif %}"
+           href="{{ url_for('leader.dashboard', area=led_area.code, year=selected_year) }}"
+           role="tab">
+            Area {{ led_area.code }} - {{ led_area.name|e }}
+        </a>
+    </li>
+    {% endfor %}
+</ul>
+{% endif %}
+
 <!-- Year Tabs Navigation -->
 {% if available_years and available_years|length > 1 %}
 <ul class="nav nav-tabs mb-4" role="tablist">
     {% for year in available_years %}
     <li class="nav-item" role="presentation">
         <a class="nav-link {% if year == selected_year %}active{% endif %} {% if year < current_year %}text-warning{% endif %}"
-           href="{{ url_for('leader.dashboard', year=year) }}"
+           href="{{ url_for('leader.dashboard', year=year, area=area_code) }}"
            role="tab">
             {{ year }}
             {% if year < current_year %}<i class="bi bi-archive ms-1" title="Historical data"></i>{% endif %}
