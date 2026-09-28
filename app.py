@@ -1,5 +1,5 @@
 # app.py - Flask application entry point
-# Updated by Claude AI on 2025-12-09
+# Updated by Claude AI on 2026-09-28
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session, g, send_file, abort, has_request_context
 from flask_wtf.csrf import CSRFProtect
 from config.database import get_db_session, teardown_db_session
@@ -148,6 +148,30 @@ root_logger.setLevel(logging.INFO)
 root_logger.addHandler(_root_handler)
 
 logger = logging.getLogger(__name__)
+
+# Suppress the specific "log object has expired" noise mod_wsgi prints when
+# it finalizes a request's wsgi.errors TextIOWrapper after Python's garbage
+# collector (Python 3.13+ needs multiple GC passes for some cyclic garbage,
+# per https://github.com/GrahamDumpleton/mod_wsgi/issues/912) collects it
+# later than mod_wsgi expects - not caused by anything in this app caching
+# wsgi.errors (checked; nothing does), just GC-timing vs. Apache request
+# teardown timing. Harmless (happens during GC, not during actual request
+# handling) but floods the error log every few minutes. sys.unraisablehook
+# is exactly the hook CPython's io module calls to print this message
+# (PEP 578), so filter only this one known-benign case through to it and
+# let every other unraisable-exception report through unchanged, so a real
+# future bug (e.g. a genuinely unclosed file) still gets logged normally.
+_default_unraisablehook = sys.unraisablehook
+
+
+def _suppress_expired_wsgi_log_object(unraisable):
+    if (unraisable.exc_type is RuntimeError
+            and str(unraisable.exc_value) == 'log object has expired'):
+        return
+    _default_unraisablehook(unraisable)
+
+
+sys.unraisablehook = _suppress_expired_wsgi_log_object
 
 # Release the request-scoped DB session at the end of every request
 app.teardown_appcontext(teardown_db_session)
