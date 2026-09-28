@@ -10,6 +10,7 @@ from services.ip_blocker import IPBlockerService, get_client_ip
 from models.circle import CircleModel, CircleAreaModel
 import os
 import re
+import sys
 from datetime import datetime
 import logging
 
@@ -121,8 +122,31 @@ csrf = CSRFProtect(app)
 # Initialize rate limiter with the app
 limiter.init_app(app)
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging. Deliberately NOT logging.basicConfig(): under mod_wsgi
+# that installs a StreamHandler which caches whatever sys.stderr/wsgi.errors
+# object exists at the moment app.py is first imported (i.e. one specific
+# request's log stream), and every logger in the app keeps writing through
+# that same stale stream for the rest of the worker process's life. mod_wsgi
+# then logs "RuntimeError: log object has expired" once Apache destroys that
+# original request. _DynamicStderrHandler re-resolves sys.stderr on every
+# write (like logging.lastResort does) instead of caching it once, so it
+# always targets the current request's stream.
+class _DynamicStderrHandler(logging.StreamHandler):
+    @property
+    def stream(self):
+        return sys.stderr
+
+    @stream.setter
+    def stream(self, value):
+        pass
+
+
+_root_handler = _DynamicStderrHandler()
+_root_handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT))
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+root_logger.addHandler(_root_handler)
+
 logger = logging.getLogger(__name__)
 
 # Release the request-scoped DB session at the end of every request
