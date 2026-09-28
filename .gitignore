@@ -1,5 +1,7 @@
 .idea/
 __pycache__/
+# Session-resume scratch notes - local only, never committed
+PROMPT.md
 client_secret.json
 .env
 .env.*
