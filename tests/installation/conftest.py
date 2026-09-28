@@ -1,11 +1,10 @@
 """
 Pytest fixtures for installation validation tests.
 Updated by Claude AI on 2025-12-02
+Updated by Claude AI on 2026-09-08 (area data is DB-backed per circle now, not a static file)
 """
 
 import pytest
-import json
-import os
 from datetime import datetime
 
 
@@ -17,7 +16,7 @@ def installation_config():
     This fixture dynamically loads all configuration without hardcoding,
     making tests portable across different bird count installations.
     """
-    from config.areas import get_all_areas, AREA_CONFIG
+    from config.areas import AREA_CONFIG
     from config.organization import get_organization_variables
     from config.cloud import (
         TEST_BASE_URL, PRODUCTION_BASE_URL,
@@ -25,22 +24,37 @@ def installation_config():
         GCP_PROJECT_ID, GCP_LOCATION,
         BASE_DOMAIN, TEST_SERVICE, PRODUCTION_SERVICE
     )
-    from config.database import get_firestore_client
+    from config.database import get_db_session
     from models.area_signup_type import AreaSignupTypeModel
+    from models.circle import CircleAreaModel
+    from tests.test_config import TEST_CIRCLE_SLUG
 
-    # Get public areas from model
-    db, _ = get_firestore_client()
-    area_signup_model = AreaSignupTypeModel(db)
+    # config.areas.get_all_areas()/get_organization_variables() both raise when no
+    # circle is resolved (this is a multi-circle platform with no default circle -
+    # see config/areas.py's _get_circle_areas()/config/organization.py's
+    # _circle_value()), which is correct in the real app but means this fixture,
+    # which runs as plain pytest setup with no request in flight, must resolve
+    # the test circle itself first. Areas are queried directly (no request needed);
+    # org_vars needs a real resolved-circle request context, built the same way
+    # test/email_generator.py's _push_circle_context() does for the scheduler.
+    db = get_db_session()
+    area_signup_model = AreaSignupTypeModel(db, circle_slug=TEST_CIRCLE_SLUG)
     public_areas = area_signup_model.get_public_areas()
+    all_areas = [a['code'] for a in CircleAreaModel(db).get_areas_for_circle(TEST_CIRCLE_SLUG)]
+
+    from app import app as flask_app
+    with flask_app.test_request_context('/', headers={'Host': f'{TEST_CIRCLE_SLUG}.cbc.test'}):
+        flask_app.preprocess_request()
+        org_vars = get_organization_variables()
 
     return {
         # Area configuration
-        'all_areas': get_all_areas(),
+        'all_areas': all_areas,
         'public_areas': public_areas,
         'area_config': AREA_CONFIG,
 
         # Organization configuration
-        'org_vars': get_organization_variables(),
+        'org_vars': org_vars,
 
         # Cloud configuration
         'test_url': TEST_BASE_URL,
@@ -61,16 +75,19 @@ def installation_config():
 @pytest.fixture(scope="session")
 def area_boundaries_data():
     """
-    Load area_boundaries.json for validation.
-
-    Returns None if file doesn't exist (tests can handle this).
+    The test circle's area boundaries + map config - replaces the old static
+    static/data/area_boundaries.json file, which nothing in the real app has read
+    since area boundaries moved into the DB-backed circle_areas table (see
+    models/circle.py's CircleAreaModel.get_boundary_data(), also what /api/areas
+    serves). Returns the same {'areas': [...], 'map_config': {...}} shape the old
+    file had, for the dedicated test circle (see tests/test_config.py's
+    TEST_CIRCLE_SLUG and .env.example's hosts-file setup).
     """
-    path = 'static/data/area_boundaries.json'
-    if not os.path.exists(path):
-        return None
+    from config.database import get_db_session
+    from models.circle import CircleAreaModel
+    from tests.test_config import TEST_CIRCLE_SLUG
 
-    with open(path, 'r') as f:
-        return json.load(f)
+    return CircleAreaModel(get_db_session()).get_boundary_data(TEST_CIRCLE_SLUG)
 
 
 @pytest.fixture(scope="session")
@@ -97,13 +114,10 @@ def org_config(installation_config):
 #     Creates browser instance with download directory configured at tests/tmp/downloads
 #     Uses chrome_options/firefox_options from parent conftest
 #
-# - test_credentials (session-scoped):
-#     Retrieves test account credentials from Secret Manager.
-#     Automatically uses values from tests/test_config.py which now imports from config/*.py
-#
-# - authenticated_browser (session-scoped):
-#     Creates browser with OAuth authentication performed once for entire test session.
-#     Uses test_credentials fixture and admin_login_for_test() from tests/utils/auth_utils.py
-#     Download directory: tests/tmp/downloads (configured in parent conftest chrome_options/firefox_options)
+# - authenticated_browser (class-scoped):
+#     Creates browser authenticated via a directly-injected signed session cookie
+#     (see tests/utils/auth_utils.py's login_as_test_user()) - there is no
+#     test_credentials fixture/Secret Manager lookup anymore, since this app's auth
+#     is magic-link based with no password/OAuth credential to store.
 #
 # Installation tests can use these fixtures directly - no need to redefine them here.

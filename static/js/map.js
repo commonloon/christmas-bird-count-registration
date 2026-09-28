@@ -1,9 +1,19 @@
 // Map functionality for CBC Registration
-/* Updated by Claude AI on 2025-11-30 */
+/* Updated by Claude AI on 2026-08-31 */
 let map;
 let areaLayers = {};
 let selectedArea = null;
 let isUpdatingProgrammatically = false;
+
+// area.name/area.letter_code come from the DB (admin-entered, or KML-imported) and
+// aren't guaranteed free of HTML - Leaflet's bindTooltip and plain .innerHTML both
+// render string content as raw markup, so anything interpolated into them must be
+// escaped first (see landing-map.js's comment for the same issue on that page).
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text == null ? '' : String(text);
+    return div.innerHTML;
+}
 
 // Initialize map when page loads
 document.addEventListener('DOMContentLoaded', function() {
@@ -30,6 +40,44 @@ function initializeMap(mapConfig) {
     if (bounds && bounds.length === 2) {
         map.setMaxBounds(bounds);
     }
+
+    // Force an SVG renderer onto the map up front (rather than letting Leaflet
+    // create one lazily on first polygon add) so we have a handle on its <svg>
+    // container to inject the admin-only hatch patterns into.
+    L.svg().addTo(map);
+    createHatchPatterns();
+}
+
+// Diagonal-hatch fill patterns for admin-assignment-only areas, one per count
+// tier so the tier color stays visible - just hatched instead of solid.
+function createHatchPatterns() {
+    const svg = map.getPane('overlayPane').querySelector('svg');
+    if (!svg || document.getElementById('admin-hatch-defs')) return;
+
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const defs = document.createElementNS(svgNS, 'defs');
+    defs.id = 'admin-hatch-defs';
+
+    ['low', 'med', 'high'].forEach(tier => {
+        const pattern = document.createElementNS(svgNS, 'pattern');
+        pattern.setAttribute('id', `admin-hatch-${tier}`);
+        pattern.setAttribute('width', '8');
+        pattern.setAttribute('height', '8');
+        pattern.setAttribute('patternUnits', 'userSpaceOnUse');
+        pattern.setAttribute('patternTransform', 'rotate(45)');
+
+        const line = document.createElementNS(svgNS, 'line');
+        line.setAttribute('x1', '0');
+        line.setAttribute('y1', '0');
+        line.setAttribute('x2', '0');
+        line.setAttribute('y2', '8');
+        line.setAttribute('style', `stroke: var(--map-color-${tier}); stroke-width: 5;`);
+        pattern.appendChild(line);
+
+        defs.appendChild(pattern);
+    });
+
+    svg.insertBefore(defs, svg.firstChild);
 }
 
 function loadAreaData() {
@@ -51,6 +99,13 @@ function loadAreaData() {
             const areas = data.areas || data;  // Support both new and old format
             displayAreas(areas);
 
+            // Display decorative major-area-group boundary lines, if this
+            // circle has any (most don't - see services/kml_import.py's
+            // parse_kml_boundary_lines())
+            if (data.boundaries && data.boundaries.length > 0) {
+                displayBoundaries(data.boundaries);
+            }
+
             // Display count circle boundary if available
             if (data.count_circle) {
                 displayCountCircle(data.count_circle);
@@ -70,13 +125,16 @@ function displayAreas(areas) {
         // Convert coordinates to Leaflet format [lat, lng]
         const leafletCoords = coordinates.map(coord => [coord[1], coord[0]]);
 
-        // Determine style based on registration count
-        const style = getAreaStyle(area.current_count);
+        // Determine style based on registration count (hatched if admin-only)
+        const style = getAreaStyle(area.current_count, area.admin_assignment_only);
+
+        const tooltipText = `Area ${escapeHtml(areaCode)}: ${escapeHtml(area.name)}<br>Current volunteers: ${area.current_count}` +
+            (area.admin_assignment_only ? '<br>🔒 Admin-assignment only' : '');
 
         // Create polygon
         const polygon = L.polygon(leafletCoords, style)
             .addTo(map)
-            .bindTooltip(`Area ${areaCode}: ${area.name}<br>Current volunteers: ${area.current_count}`, {
+            .bindTooltip(tooltipText, {
                 permanent: false,
                 direction: 'center'
             });
@@ -97,6 +155,26 @@ function displayAreas(areas) {
             polygon: polygon,
             data: area
         };
+    });
+}
+
+function displayBoundaries(boundaries) {
+    // Draw decorative "major area group" lines as bold blue polylines, on
+    // top of the real (possibly subdivided) area polygons - a visual
+    // orientation aid only, no click/hover behavior, no text (these carry
+    // no name/code of their own - see services/kml_import.py's
+    // parse_kml_boundary_lines()).
+    const boundaryStyle = {
+        color: '#0055CC',
+        weight: 4,
+        opacity: 0.85,
+        interactive: false,
+        className: 'area-group-boundary'
+    };
+
+    boundaries.forEach(function(boundary) {
+        const leafletCoords = boundary.coordinates.map(coord => [coord[1], coord[0]]);
+        L.polyline(leafletCoords, boundaryStyle).addTo(map);
     });
 }
 
@@ -122,32 +200,39 @@ function displayCountCircle(countCircle) {
     console.log('Count circle boundary displayed');
 }
 
-function getAreaStyle(count) {
+function getAreaStyle(count, isAdminOnly) {
     // Colors from DISTINCT_COLOURS palette (config/colors.py) using CSS variables
     const rootStyles = getComputedStyle(document.documentElement);
     const baseStyle = {
         weight: 2,
         opacity: 0.8,
-        fillOpacity: 0.3
+        // Hatched areas need more fill-opacity than a solid wash to read clearly
+        fillOpacity: isAdminOnly ? 0.6 : 0.3
     };
 
+    let tier;
     if (count <= 3) {
-        const color = rootStyles.getPropertyValue('--map-color-low').trim();
-        return { ...baseStyle, color: color, fillColor: color }; // Orange: 0-3 registered
+        tier = 'low'; // Orange: 0-3 registered
     } else if (count <= 8) {
-        const color = rootStyles.getPropertyValue('--map-color-med').trim();
-        return { ...baseStyle, color: color, fillColor: color }; // Maroon: 4-8 registered
+        tier = 'med'; // Maroon: 4-8 registered
     } else {
-        const color = rootStyles.getPropertyValue('--map-color-high').trim();
-        return { ...baseStyle, color: color, fillColor: color }; // Navy: 8+ registered
+        tier = 'high'; // Navy: 8+ registered
     }
+
+    const color = rootStyles.getPropertyValue(`--map-color-${tier}`).trim();
+    return {
+        ...baseStyle,
+        color: color,
+        fillColor: isAdminOnly ? `url(#admin-hatch-${tier})` : color
+    };
 }
 
 function selectAreaOnMap(areaCode, areaName, polygon) {
     // Clear previous selection
     if (selectedArea && areaLayers[selectedArea]) {
         const prevStyle = getAreaStyle(
-            areaLayers[selectedArea].data.current_count
+            areaLayers[selectedArea].data.current_count,
+            areaLayers[selectedArea].data.admin_assignment_only
         );
         areaLayers[selectedArea].polygon.setStyle(prevStyle);
     }
@@ -222,7 +307,7 @@ function updateSelectionFeedback(areaCode, areaName) {
         feedbackDiv.innerHTML = '🎯 Wherever I\'m needed most selected';
         feedbackDiv.className = 'selection-feedback';
     } else if (areaCode) {
-        feedbackDiv.innerHTML = `✓ Selected: Area ${areaCode} - ${areaName}`;
+        feedbackDiv.innerHTML = `✓ Selected: Area ${escapeHtml(areaCode)} - ${escapeHtml(areaName)}`;
         feedbackDiv.className = 'selection-feedback area-selected';
     } else {
         feedbackDiv.innerHTML = 'No area selected yet';
@@ -248,7 +333,7 @@ function showAdminOnlyMessage(areaCode, areaName) {
     const alertDiv = document.createElement('div');
     alertDiv.className = 'alert alert-warning alert-dismissible fade show';
     alertDiv.innerHTML = `
-        <strong>Area ${areaCode} - ${areaName}</strong><br>
+        <strong>Area ${escapeHtml(areaCode)} - ${escapeHtml(areaName)}</strong><br>
         Only organizers can assign volunteers to this area.<br>
         To request assignment, choose <strong>"Wherever I'm needed most"</strong> and put your request in the
         <strong>Notes to Organizers</strong> field.
@@ -273,7 +358,8 @@ function highlightAreaFromDropdown(areaCode) {
         // Clear any map selection for "anywhere" option
         if (selectedArea && areaLayers[selectedArea]) {
             const prevStyle = getAreaStyle(
-                areaLayers[selectedArea].data.current_count
+                areaLayers[selectedArea].data.current_count,
+                areaLayers[selectedArea].data.admin_assignment_only
             );
             areaLayers[selectedArea].polygon.setStyle(prevStyle);
         }

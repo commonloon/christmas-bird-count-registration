@@ -21,10 +21,6 @@ webdriver-manager>=4.0.0    # Automatic driver management
 requests>=2.31.0
 urllib3>=2.0.0
 
-# Google Cloud services
-google-cloud-firestore>=2.13.0
-google-cloud-secret-manager>=2.16.0
-
 # Data handling and validation
 pandas>=2.1.0               # CSV validation and analysis
 openpyxl>=3.1.0            # Excel file handling (if needed)

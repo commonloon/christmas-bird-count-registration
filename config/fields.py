@@ -28,7 +28,6 @@ PARTICIPANT_FIELDS = OrderedDict([
     ('has_binoculars', {'default': False, 'display_name': 'Has Binoculars', 'csv_order': 10}),
     ('spotting_scope', {'default': False, 'display_name': 'Can Bring Spotting Scope', 'csv_order': 11}),
     ('interested_in_leadership', {'default': False, 'display_name': 'Leadership Interest', 'csv_order': 12}),
-    ('interested_in_scribe', {'default': False, 'display_name': 'Scribe Interest', 'csv_order': 13}),
 
     # Notes
     ('notes_to_organizers', {'default': '', 'display_name': 'Notes to Organizers', 'csv_order': 14}),
@@ -76,6 +75,26 @@ def get_participant_field_default(field_name):
 def get_participant_display_name(field_name):
     """Get display name for a participant field."""
     return PARTICIPANT_FIELDS.get(field_name, {}).get('display_name', field_name.replace('_', ' ').title())
+
+
+# Stored skill_level values are unchanged ('Newbie'/'Beginner'/'Intermediate'/'Expert' - see
+# services/security.py's validate_skill_level()); only the human-facing label for 'Newbie' has
+# been renamed to 'Novice' (Vancouver organizer request, 2026-09), so historical exports/CSVs
+# stay consistent with old and new registrants alike.
+SKILL_LEVEL_OPTIONS = [
+    ('Newbie', 'Novice', "I don't really know many birds yet"),
+    ('Beginner', 'Beginner', 'I know some common birds'),
+    ('Intermediate', 'Intermediate', 'I know most local birds and can ID them without assistance'),
+    ('Expert', 'Expert', 'I am confident in my identification skills'),
+]
+
+
+def get_skill_level_label(value):
+    """Map a stored skill_level value to its current human-facing display label."""
+    for stored_value, label, _ in SKILL_LEVEL_OPTIONS:
+        if stored_value == value:
+            return label
+    return value
 
 
 def normalize_participant_record(record):

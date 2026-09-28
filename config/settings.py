@@ -7,9 +7,6 @@ class Config:
     """Base configuration class."""
     SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-key-change-in-production'
 
-    # Google Cloud settings
-    GOOGLE_CLOUD_PROJECT = os.environ.get('GOOGLE_CLOUD_PROJECT')
-
     # Application settings
     REGISTRATION_OPEN = True
     CURRENT_COUNT_YEAR = datetime.now().year

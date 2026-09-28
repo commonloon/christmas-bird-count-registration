@@ -25,26 +25,26 @@ sys.path.insert(0, project_root)
 
 # Import test utilities
 from tests.utils.database_utils import create_database_manager
-from tests.test_config import get_base_url
+from tests.test_config import get_base_url, TEST_CIRCLE_SLUG
 from tests.page_objects.admin_participants_page import AdminParticipantsPage
 from models.participant import ParticipantModel
 
 
 @pytest.fixture
-def participant_model(firestore_client):
+def participant_model(db_session):
     """Create participant model for current year."""
     current_year = datetime.now().year
-    return ParticipantModel(firestore_client, current_year)
+    return ParticipantModel(db_session, current_year, TEST_CIRCLE_SLUG)
 
 
 class TestAdminCoreFunctionality:
     """Minimal functional tests for critical admin operations."""
 
     @pytest.fixture(autouse=True)
-    def setup_and_cleanup(self, firestore_client):
+    def setup_and_cleanup(self, db_session):
         """Clean up test data before and after each test."""
         # Create database manager for cleanup
-        db_manager = create_database_manager(firestore_client)
+        db_manager = create_database_manager(db_session)
 
         # Clean up before test
         db_manager.clear_test_collections()
@@ -57,20 +57,21 @@ class TestAdminCoreFunctionality:
         base_url = get_base_url()
 
         # Navigate to admin dashboard (already authenticated)
-        authenticated_browser.get(f"{base_url}/admin")
+        authenticated_browser.get(f"{base_url}/bigbird")
 
         # Verify we're on the admin dashboard
         wait = WebDriverWait(authenticated_browser, 5)
         wait.until(EC.presence_of_element_located((By.TAG_NAME, "h1")))
 
-        # Check for admin dashboard elements
-        assert "admin" in authenticated_browser.current_url.lower()
+        # Check for admin dashboard elements - the admin blueprint moved from /admin
+        # to /bigbird (the old path is now a bot honeypot).
+        assert "bigbird" in authenticated_browser.current_url.lower()
 
         # Verify key dashboard elements are present
         dashboard_elements = [
             "Vancouver CBC Registration Admin",  # navbar brand
             "Admin Dashboard",  # page title
-            "2025"  # current year
+            str(datetime.now().year)  # current year
         ]
 
         page_text = authenticated_browser.page_source
@@ -108,7 +109,7 @@ class TestAdminCoreFunctionality:
             participant_model.add_participant(participant)
 
         # Navigate to participants page (already authenticated)
-        authenticated_browser.get(f"{base_url}/admin/participants")
+        authenticated_browser.get(f"{base_url}/bigbird/participants")
 
         # Initialize page object
         admin_page = AdminParticipantsPage(authenticated_browser, base_url)
@@ -161,21 +162,20 @@ class TestAdminCoreFunctionality:
             'first_name': 'FieldTest',
             'last_name': 'Preservation',
             'email': 'field.preservation@test.com',
-            'cell_phone': '250-555-0123',
-            'area_preference': 'A',
+            'phone': '250-555-0123',
+            'preferred_area': 'A',
             'participation_type': 'regular',
             'skill_level': 'Intermediate',
             'experience': '5-10 years',
-            'equipment': 'Binoculars, GPS',
-            'notes': 'Original notes here',
-            'leadership_interest': True,
-            'scribe_interest': False
+            'has_binoculars': True,
+            'notes_to_organizers': 'Original notes here',
+            'interested_in_leadership': True
         }
 
         participant_id = participant_model.add_participant(original_participant)
 
         # Navigate to participants page (already authenticated)
-        authenticated_browser.get(f"{base_url}/admin/participants")
+        authenticated_browser.get(f"{base_url}/bigbird/participants")
 
         wait = WebDriverWait(authenticated_browser, 5)
         wait.until(EC.presence_of_element_located((By.TAG_NAME, "table")))
@@ -255,15 +255,15 @@ class TestAdminCoreFunctionality:
                     assert updated_participant['first_name'] == 'FieldTest'
                     assert updated_participant['last_name'] == 'Preservation'
                     assert updated_participant['email'] == 'field.preservation@test.com'
-                    assert updated_participant['area_preference'] == 'A'
-                    assert updated_participant['notes'] == 'Original notes here'
+                    assert updated_participant['preferred_area'] == 'A'
+                    assert updated_participant['notes_to_organizers'] == 'Original notes here'
 
                     # Phone update verification (might indicate editing functionality exists)
-                    phone_was_updated = updated_participant.get('cell_phone') == '250-555-9999'
+                    phone_was_updated = updated_participant.get('phone') == '250-555-9999'
                     if not phone_was_updated:
                         # Edit form might not be fully functional, but field preservation can still be tested
                         # by verifying no other fields were corrupted
-                        assert updated_participant.get('cell_phone') == '250-555-0123'  # Should remain original value
+                        assert updated_participant.get('phone') == '250-555-0123'  # Should remain original value
                 else:
                     # No submit button found - admin editing might not be implemented
                     # This is acceptable for basic field preservation testing
@@ -292,15 +292,15 @@ class TestAdminCoreFunctionality:
             'first_name': 'Leader',
             'last_name': 'Candidate',
             'email': 'leader.candidate@test.com',
-            'area_preference': 'C',
+            'preferred_area': 'C',
             'participation_type': 'regular',
-            'leadership_interest': True
+            'interested_in_leadership': True
         }
 
         participant_id = participant_model.add_participant(test_participant)
 
         # Navigate to leaders page (already authenticated)
-        authenticated_browser.get(f"{base_url}/admin/leaders")
+        authenticated_browser.get(f"{base_url}/bigbird/leaders")
         wait = WebDriverWait(authenticated_browser, 5)
 
         try:
@@ -343,7 +343,7 @@ class TestAdminCoreFunctionality:
 
         except Exception as e:
             # If leaders page doesn't work as expected, just verify participant still exists
-            authenticated_browser.get(f"{base_url}/admin/participants")
+            authenticated_browser.get(f"{base_url}/bigbird/participants")
             wait.until(EC.presence_of_element_located((By.TAG_NAME, "table")))
             page_text = authenticated_browser.page_source
             assert "Leader Candidate" in page_text
@@ -364,7 +364,7 @@ class TestAdminCoreFunctionality:
         participant_id = participant_model.add_participant(test_participant)
 
         # Navigate to participants page (already authenticated)
-        authenticated_browser.get(f"{base_url}/admin/participants")
+        authenticated_browser.get(f"{base_url}/bigbird/participants")
 
         wait = WebDriverWait(authenticated_browser, 5)
         wait.until(EC.presence_of_element_located((By.TAG_NAME, "table")))
@@ -397,14 +397,14 @@ class TestAdminCoreFunctionality:
                 'first_name': 'Export',
                 'last_name': 'Test1',
                 'email': 'export.test1@test.com',
-                'area_preference': 'A',
+                'preferred_area': 'A',
                 'participation_type': 'regular'
             },
             {
                 'first_name': 'Export',
                 'last_name': 'Test2',
                 'email': 'export.test2@test.com',
-                'area_preference': 'B',
+                'preferred_area': 'B',
                 'participation_type': 'FEEDER'
             }
         ]
@@ -413,7 +413,7 @@ class TestAdminCoreFunctionality:
             participant_model.add_participant(participant)
 
         # Navigate to admin dashboard (already authenticated)
-        authenticated_browser.get(f"{base_url}/admin")
+        authenticated_browser.get(f"{base_url}/bigbird")
 
         # Look for CSV export functionality
         export_links = authenticated_browser.find_elements(By.XPATH, "//a[contains(text(), 'Export') or contains(text(), 'CSV') or contains(@href, 'export')]")
@@ -444,14 +444,14 @@ class TestAdminCoreFunctionality:
 
         else:
             # No obvious export functionality found, check if export route exists
-            authenticated_browser.get(f"{base_url}/admin/export")
+            authenticated_browser.get(f"{base_url}/bigbird/export")
 
             # If the page loads without 404, export route exists
             if "404" not in authenticated_browser.page_source and "Not Found" not in authenticated_browser.page_source:
                 assert True  # Export route exists
             else:
                 # Try alternative export URL
-                authenticated_browser.get(f"{base_url}/admin/participants/export")
+                authenticated_browser.get(f"{base_url}/bigbird/participants/export")
                 if "404" not in authenticated_browser.page_source:
                     assert True
                 else:

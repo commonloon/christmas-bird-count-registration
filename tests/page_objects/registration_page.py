@@ -96,7 +96,7 @@ class RegistrationPage(BasePage):
         return success
 
     def set_interest_preferences(self, participant_data):
-        """Set leadership and scribe interest checkboxes."""
+        """Set leadership interest checkbox."""
         interests = participant_data.get('interests', {})
 
         success = True
@@ -106,12 +106,6 @@ class RegistrationPage(BasePage):
         leadership_element = self.find_element_safely('interested_in_leadership')
         if leadership_element and leadership_element.is_selected() != interested_in_leadership:
             success &= self.safe_click('interested_in_leadership')
-
-        # Scribe interest
-        interested_in_scribe = interests.get('scribe', False)
-        scribe_element = self.find_element_safely('interested_in_scribe')
-        if scribe_element and scribe_element.is_selected() != interested_in_scribe:
-            success &= self.safe_click('interested_in_scribe')
 
         return success
 
@@ -235,26 +229,6 @@ class RegistrationPage(BasePage):
 
         return False
 
-    def navigate_to_scribe_info(self):
-        """Navigate to scribe information page."""
-        # Look for scribe info link
-        info_selectors = [
-            (By.PARTIAL_LINK_TEXT, 'Scribe'),
-            (By.LINK_TEXT, 'Scribe Information'),
-            (By.CSS_SELECTOR, 'a[href*="scribe-info"]')
-        ]
-
-        for selector in info_selectors:
-            try:
-                element = self.find_clickable_element(selector)
-                if element:
-                    element.click()
-                    return self.wait_for_url_contains('scribe-info')
-            except:
-                continue
-
-        return False
-
     def get_form_data(self):
         """
         Extract current form data for validation.
@@ -294,7 +268,7 @@ class RegistrationPage(BasePage):
             form_data['participation_type'] = ''
 
         # Checkboxes
-        checkbox_fields = ['has_binoculars', 'spotting_scope', 'interested_in_leadership', 'interested_in_scribe']
+        checkbox_fields = ['has_binoculars', 'spotting_scope', 'interested_in_leadership']
         for field in checkbox_fields:
             element = self.find_element_safely(field)
             if element:

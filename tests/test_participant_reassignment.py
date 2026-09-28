@@ -11,17 +11,17 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 from models.participant import ParticipantModel
-from tests.test_config import get_base_url, get_database_name
+from tests.test_config import get_base_url, get_database_name, TEST_CIRCLE_SLUG
 from tests.utils.auth_utils import admin_login_for_test
 
 logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
-def participant_model(firestore_client):
+def participant_model(db_session):
     """Create participant model for current year."""
     current_year = datetime.now().year
-    return ParticipantModel(firestore_client, current_year)
+    return ParticipantModel(db_session, current_year, TEST_CIRCLE_SLUG)
 
 
 # Note: authenticated_browser fixture is now defined in conftest.py and shared across all test files
@@ -29,94 +29,28 @@ def participant_model(firestore_client):
 
 
 @pytest.fixture(scope="module")
-def populated_test_data(firestore_client):
+def populated_test_data(db_session):
     """Load test participants from CSV fixture once for all tests in this module."""
     import os
-    import sys
 
-    # Add project root to path for imports
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    if project_root not in sys.path:
-        sys.path.insert(0, project_root)
-
-    from tests.utils.load_test_data import load_csv_participants, load_participants_to_firestore
+    from tests.utils.load_test_data import load_csv_participants, load_participants_to_postgres
 
     current_year = datetime.now().year
-    participant_model = ParticipantModel(firestore_client, current_year)
 
-    # Clear existing participants for current year to start fresh
-    logger.info("Clearing existing participants for clean test")
-    try:
-        participants_ref = firestore_client.collection(f'participants_{current_year}')
-        batch_size = 100
-        deleted = 0
-
-        while True:
-            docs = participants_ref.limit(batch_size).stream()
-            batch = firestore_client.batch()
-            count = 0
-
-            for doc in docs:
-                batch.delete(doc.reference)
-                count += 1
-                deleted += 1
-
-            if count == 0:
-                break
-
-            batch.commit()
-
-        logger.info(f"Cleared {deleted} existing participants")
-    except Exception as e:
-        logger.warning(f"Could not clear participants: {e}")
-
-    # Load participants from CSV fixture
     csv_path = os.path.join(os.path.dirname(__file__), 'fixtures', 'test_participants_2025.csv')
     logger.info(f"Loading test participants from {csv_path}")
 
     participants = load_csv_participants(csv_path)
     logger.info(f"Loaded {len(participants)} participants from CSV")
 
-    # Upload to Firestore
-    loaded_count = load_participants_to_firestore(firestore_client, current_year, participants)
-    logger.info(f"Loaded {loaded_count} of {len(participants)} test participants to Firestore")
-
-    # CRITICAL: Fail the test if data didn't load
-    if loaded_count == 0:
-        raise RuntimeError(f"Failed to load any participants to Firestore! Expected {len(participants)}")
-    if loaded_count < len(participants):
-        logger.warning(f"Only loaded {loaded_count}/{len(participants)} participants - some writes failed")
+    loaded_count = load_participants_to_postgres(db_session, current_year, participants, clear_first=True)
+    logger.info(f"Loaded {loaded_count} of {len(participants)} test participants into Postgres")
 
     yield participants
 
-    # Clean up test participants disabled for manual inspection
-    # Cleanup now happens at the START of the next test run (lines 51-75 above)
-    logger.info(f"Skipping cleanup - test data left in database for manual inspection")
-    # # Clean up test participants (runs once after all tests in module complete)
-    # logger.info(f"Cleaning up {len(participants)} CSV test participants")
-    # try:
-    #     participants_ref = firestore_client.collection(f'participants_{current_year}')
-    #     batch_size = 100
-    #     deleted = 0
-    #
-    #     while True:
-    #         docs = participants_ref.limit(batch_size).stream()
-    #         batch = firestore_client.batch()
-    #         count = 0
-    #
-    #         for doc in docs:
-    #             batch.delete(doc.reference)
-    #             count += 1
-    #             deleted += 1
-    #
-    #         if count == 0:
-    #             break
-    #
-    #         batch.commit()
-    #
-    #     logger.info(f"Cleanup complete: deleted {deleted} participants")
-    # except Exception as e:
-    #     logger.warning(f"Cleanup error: {e}")
+    # Cleanup intentionally disabled for manual inspection after a run - the next
+    # run's clear_first=True load above is what actually clears this data.
+    logger.info("Skipping cleanup - test data left in database for manual inspection")
 
 
 @pytest.mark.browser
@@ -142,16 +76,16 @@ class TestParticipantReassignment:
         Uses shorter timeout (5s) since we're already authenticated and
         subsequent page loads are fast.
         """
-        authenticated_browser.get(f"{get_base_url()}/admin/participants")
+        authenticated_browser.get(f"{get_base_url()}/bigbird/participants")
         WebDriverWait(authenticated_browser, 5).until(
             EC.presence_of_element_located((By.TAG_NAME, "table"))
         )
         logger.info("Navigated to participants page")
 
     @pytest.fixture(autouse=True)
-    def setup_test_data(self, firestore_client, populated_test_data):
+    def setup_test_data(self, db_session, populated_test_data):
         """Use populated test data fixture (347 participants with leaders) - select unique participants for each test."""
-        self.db_client = firestore_client
+        self.db_client = db_session
         self.test_participants = populated_test_data
 
         # Select DIFFERENT participants for each test to avoid conflicts

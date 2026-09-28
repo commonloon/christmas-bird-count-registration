@@ -20,12 +20,11 @@ from datetime import datetime
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, project_root)
 
-from tests.test_config import get_base_url, get_database_name
+from tests.test_config import get_base_url, TEST_CIRCLE_SLUG
 from tests.page_objects import AdminDashboardPage, AdminParticipantsPage
 from tests.data import get_test_participant, get_test_dataset, get_test_account, get_test_password
-from tests.utils.auth_utils import login_with_google, admin_login_for_test
+from tests.utils.auth_utils import admin_login_for_test
 from models.participant import ParticipantModel
-from google.cloud import firestore
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -149,21 +148,17 @@ def admin_participants_page(browser):
 
 
 @pytest.fixture
-def db_client():
-    """Create database client."""
-    database_name = get_database_name()
-    if database_name == '(default)':
-        client = firestore.Client()
-    else:
-        client = firestore.Client(database=database_name)
-    yield client
+def db_client(db_session):
+    """Provide the Postgres session (kept as 'db_client' for compatibility with
+    this file's existing test bodies)."""
+    return db_session
 
 
 @pytest.fixture
 def participant_model(db_client):
     """Create participant model for current year."""
     current_year = datetime.now().year
-    return ParticipantModel(db_client, current_year)
+    return ParticipantModel(db_client, current_year, TEST_CIRCLE_SLUG)
 
 
 @pytest.fixture(autouse=True)
@@ -193,7 +188,7 @@ class TestCSVExport:
 
         base_url = get_base_url()
         dashboard = AdminDashboardPage(authenticated_browser, base_url)
-        authenticated_browser.get(f"{base_url}/admin")
+        authenticated_browser.get(f"{base_url}/bigbird")
 
         # Test export from dashboard
         assert dashboard.is_dashboard_loaded(), "Should be on dashboard"
@@ -256,13 +251,13 @@ class TestCSVExport:
         logger.info("=" * 60)
 
         # Navigate back to dashboard first (browser is currently on CSV download URL)
-        authenticated_browser.get(f"{base_url}/admin")
+        authenticated_browser.get(f"{base_url}/bigbird")
         assert dashboard.is_dashboard_loaded(), "Should be back on dashboard before navigating to participants"
 
         # Test export from participants page
         try:
             logger.info("Navigating to participants page")
-            authenticated_browser.get(f"{base_url}/admin/participants")
+            authenticated_browser.get(f"{base_url}/bigbird/participants")
             time.sleep(2)  # Wait for page load
 
             # Find Export CSV link
@@ -296,10 +291,10 @@ class TestCSVExport:
                 logger.info("Validating participants page CSV content...")
 
                 # Get database participants for validation
-                from config.database import get_firestore_client
-                db, _ = get_firestore_client()
+                from config.database import get_db_session
+                db = get_db_session()
                 current_year = datetime.now().year
-                participant_model = ParticipantModel(db, current_year)
+                participant_model = ParticipantModel(db, current_year, TEST_CIRCLE_SLUG)
 
                 db_participants = participant_model.get_all_participants()
 
@@ -324,11 +319,11 @@ class TestCSVExport:
 
         base_url = get_base_url()
         dashboard = AdminDashboardPage(authenticated_browser, base_url)
-        authenticated_browser.get(f"{base_url}/admin")
+        authenticated_browser.get(f"{base_url}/bigbird")
         assert dashboard.is_dashboard_loaded(), "Should be on dashboard"
 
-        # Test the actual CSV export route that exists: /admin/export_csv
-        csv_url = urljoin(base_url, '/admin/export_csv')
+        # Test the actual CSV export route that exists: /bigbird/export_csv
+        csv_url = urljoin(base_url, '/bigbird/export_csv')
         download_dir = get_download_dir()
 
         logger.info(f"Testing CSV export route: {csv_url}")
@@ -387,7 +382,7 @@ class TestCSVExport:
 
         base_url = get_base_url()
         dashboard = AdminDashboardPage(authenticated_browser, base_url)
-        authenticated_browser.get(f"{base_url}/admin")
+        authenticated_browser.get(f"{base_url}/bigbird")
 
         # Get CSV export
         csv_content = self._get_csv_export_content(dashboard, base_url)
@@ -560,7 +555,7 @@ class TestCSVExport:
             'first_name', 'last_name', 'email', 'phone', 'phone2',
             'skill_level', 'experience', 'preferred_area', 'participation_type',
             'has_binoculars', 'spotting_scope',
-            'interested_in_leadership', 'interested_in_scribe',
+            'interested_in_leadership',
             'notes_to_organizers', 'is_leader',
             'created_at', 'year'
         ]
@@ -636,9 +631,9 @@ class TestCSVExport:
         try:
             # Navigate to admin page if not already there
             current_url = dashboard.driver.current_url
-            if '/admin' not in current_url:
+            if '/bigbird' not in current_url:
                 logger.info("Navigating to admin dashboard")
-                dashboard.driver.get(f"{base_url}/admin")
+                dashboard.driver.get(f"{base_url}/bigbird")
                 assert dashboard.is_dashboard_loaded(), "Dashboard should load"
 
             # Find Export CSV link
@@ -744,7 +739,7 @@ class TestCSVExport:
             'first_name', 'last_name', 'email', 'phone', 'phone2',
             'skill_level', 'experience', 'preferred_area', 'participation_type',
             'has_binoculars', 'spotting_scope',
-            'interested_in_leadership', 'interested_in_scribe',
+            'interested_in_leadership',
             'is_leader', 'assigned_area_leader',
             'notes_to_organizers', 'created_at', 'year'
         ]
@@ -920,13 +915,13 @@ class TestCSVExport:
         try:
             # Navigate to leaders page if not already there
             current_url = browser.current_url
-            if '/admin/leaders' not in current_url:
+            if '/bigbird/leaders' not in current_url:
                 logger.info("Navigating to admin leaders page")
-                browser.get(f"{base_url}/admin/leaders")
+                browser.get(f"{base_url}/bigbird/leaders")
                 time.sleep(2)  # Wait for page load
 
             # Build CSV URL with format=csv query parameter
-            csv_url = f"{base_url}/admin/leaders?format=csv"
+            csv_url = f"{base_url}/bigbird/leaders?format=csv"
             logger.info(f"Downloading leaders CSV from: {csv_url}")
 
             # Record existing files
@@ -974,7 +969,7 @@ class TestCSVExport:
         logger.info("Testing leaders page CSV export button availability")
 
         base_url = get_base_url()
-        authenticated_browser.get(f"{base_url}/admin/leaders")
+        authenticated_browser.get(f"{base_url}/bigbird/leaders")
         time.sleep(2)  # Wait for page load
 
         # Find Export CSV link on leaders page
@@ -1049,8 +1044,8 @@ class TestCSVExport:
 
         base_url = get_base_url()
 
-        # Test the leaders CSV export route: /admin/leaders?format=csv
-        csv_url = f"{base_url}/admin/leaders?format=csv"
+        # Test the leaders CSV export route: /bigbird/leaders?format=csv
+        csv_url = f"{base_url}/bigbird/leaders?format=csv"
         download_dir = get_download_dir()
 
         logger.info(f"Testing leaders CSV export route: {csv_url}")
@@ -1103,9 +1098,9 @@ class TestCSVExport:
         current_year = datetime.now().year
 
         # Get database client and participant model
-        from config.database import get_firestore_client
-        db, _ = get_firestore_client()
-        participant_model = ParticipantModel(db, current_year)
+        from config.database import get_db_session
+        db = get_db_session()
+        participant_model = ParticipantModel(db, current_year, TEST_CIRCLE_SLUG)
 
         # Query database for ALL leaders
         db_leaders = participant_model.get_leaders()
@@ -1254,7 +1249,7 @@ class TestCSVExport:
             'first_name', 'last_name', 'email', 'phone', 'phone2',
             'skill_level', 'experience', 'preferred_area', 'participation_type',
             'has_binoculars', 'spotting_scope',
-            'interested_in_leadership', 'interested_in_scribe',
+            'interested_in_leadership',
             'is_leader', 'assigned_area_leader'
         ]
 
@@ -1293,12 +1288,12 @@ class TestCSVExport:
 
         base_url = get_base_url()
         dashboard = AdminDashboardPage(authenticated_browser, base_url)
-        authenticated_browser.get(f"{base_url}/admin")
+        authenticated_browser.get(f"{base_url}/bigbird")
         current_year = datetime.now().year
 
-        from config.database import get_firestore_client
-        db, _ = get_firestore_client()
-        participant_model = ParticipantModel(db, current_year)
+        from config.database import get_db_session
+        db = get_db_session()
+        participant_model = ParticipantModel(db, current_year, TEST_CIRCLE_SLUG)
 
         # Create larger test dataset (if not already present)
         large_dataset = get_test_dataset('large_realistic')
@@ -1340,9 +1335,9 @@ class TestCSVExport:
         try:
             # Navigate to admin page if not already there
             current_url = dashboard.driver.current_url
-            if '/admin' not in current_url:
+            if '/bigbird' not in current_url:
                 logger.info("Navigating to admin dashboard")
-                dashboard.driver.get(f"{base_url}/admin")
+                dashboard.driver.get(f"{base_url}/bigbird")
                 assert dashboard.is_dashboard_loaded(), "Dashboard should load"
 
             # Find Export CSV link
@@ -1409,9 +1404,9 @@ class TestCSVExport:
         current_year = datetime.now().year
 
         # Get database client
-        from config.database import get_firestore_client
-        db, _ = get_firestore_client()
-        participant_model = ParticipantModel(db, current_year)
+        from config.database import get_db_session
+        db = get_db_session()
+        participant_model = ParticipantModel(db, current_year, TEST_CIRCLE_SLUG)
 
         # Create test participants with dangerous formula prefixes
         dangerous_inputs = [
@@ -1439,7 +1434,6 @@ class TestCSVExport:
                     'has_binoculars': False,
                     'spotting_scope': False,
                     'interested_in_leadership': False,
-                    'interested_in_scribe': False,
                     'notes_to_organizers': '=DANGEROUS()'  # Also test in notes field
                 }
 
@@ -1463,7 +1457,7 @@ class TestCSVExport:
         try:
             # Download CSV export
             dashboard = AdminDashboardPage(authenticated_browser, base_url)
-            authenticated_browser.get(f"{base_url}/admin")
+            authenticated_browser.get(f"{base_url}/bigbird")
 
             # Find Export CSV link
             export_link = authenticated_browser.find_element(By.LINK_TEXT, "Export CSV")

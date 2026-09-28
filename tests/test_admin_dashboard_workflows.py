@@ -17,11 +17,10 @@ from datetime import datetime
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, project_root)
 
-from tests.test_config import get_base_url, get_database_name
+from tests.test_config import get_base_url, TEST_CIRCLE_SLUG
 from tests.page_objects import AdminDashboardPage
 from tests.data import get_test_participant
 from models.participant import ParticipantModel
-from google.cloud import firestore
 from selenium import webdriver
 
 logger = logging.getLogger(__name__)
@@ -37,21 +36,17 @@ def admin_dashboard(browser):
 
 
 @pytest.fixture
-def db_client():
-    """Create database client for verification."""
-    database_name = get_database_name()
-    if database_name == '(default)':
-        client = firestore.Client()
-    else:
-        client = firestore.Client(database=database_name)
-    yield client
+def db_client(db_session):
+    """Provide the Postgres session for verification (kept as 'db_client' for
+    compatibility with this file's existing test bodies)."""
+    return db_session
 
 
 @pytest.fixture
 def participant_model(db_client):
     """Create participant model for current year."""
     current_year = datetime.now().year
-    return ParticipantModel(db_client, current_year)
+    return ParticipantModel(db_client, current_year, TEST_CIRCLE_SLUG)
 
 
 
@@ -92,7 +87,7 @@ class TestAdminDashboard:
 
         base_url = get_base_url()
         dashboard = AdminDashboardPage(authenticated_browser, base_url)
-        authenticated_browser.get(f"{base_url}/admin")
+        authenticated_browser.get(f"{base_url}/bigbird")
 
         # Ensure we're on the dashboard
         assert dashboard.is_dashboard_loaded(), "Dashboard should be loaded"
@@ -129,7 +124,7 @@ class TestAdminDashboard:
 
         base_url = get_base_url()
         dashboard = AdminDashboardPage(authenticated_browser, base_url)
-        authenticated_browser.get(f"{base_url}/admin")
+        authenticated_browser.get(f"{base_url}/bigbird")
 
         # Get available years
         years = dashboard.get_year_selector_years()
@@ -165,7 +160,7 @@ class TestAdminDashboard:
 
         base_url = get_base_url()
         dashboard = AdminDashboardPage(authenticated_browser, base_url)
-        authenticated_browser.get(f"{base_url}/admin")
+        authenticated_browser.get(f"{base_url}/bigbird")
 
         # Get recent participants shown on dashboard
         recent_participants = dashboard.get_recent_participants()
@@ -186,7 +181,7 @@ class TestAdminDashboard:
 
         base_url = get_base_url()
         dashboard = AdminDashboardPage(authenticated_browser, base_url)
-        authenticated_browser.get(f"{base_url}/admin")
+        authenticated_browser.get(f"{base_url}/bigbird")
 
         # Verify navigation elements are present
         nav_elements = dashboard.verify_admin_navigation()
@@ -224,7 +219,7 @@ class TestAdminDataAccess:
 
         base_url = get_base_url()
         dashboard = AdminDashboardPage(authenticated_browser, base_url)
-        authenticated_browser.get(f"{base_url}/admin")
+        authenticated_browser.get(f"{base_url}/bigbird")
 
         # Attempt to click export CSV button
         export_clicked = dashboard.click_export_participants_csv()
@@ -243,7 +238,7 @@ class TestAdminDataAccess:
 
         base_url = get_base_url()
         dashboard = AdminDashboardPage(authenticated_browser, base_url)
-        authenticated_browser.get(f"{base_url}/admin")
+        authenticated_browser.get(f"{base_url}/bigbird")
 
         # Create a test participant for dashboard display
         try:
@@ -260,7 +255,6 @@ class TestAdminDataAccess:
                 'has_binoculars': participant_data['equipment']['has_binoculars'],
                 'spotting_scope': participant_data['equipment']['spotting_scope'],
                 'interested_in_leadership': participant_data['interests']['leadership'],
-                'interested_in_scribe': participant_data['interests']['scribe'],
                 'notes_to_organizers': participant_data.get('notes', ''),
                 'is_leader': False,
                 'created_at': datetime.now(),
@@ -297,7 +291,7 @@ class TestAdminWorkflowIntegration:
 
         base_url = get_base_url()
         dashboard = AdminDashboardPage(authenticated_browser, base_url)
-        authenticated_browser.get(f"{base_url}/admin")
+        authenticated_browser.get(f"{base_url}/bigbird")
 
         # Start from dashboard
         assert dashboard.navigate_to_admin(), "Should be on dashboard"
@@ -322,7 +316,7 @@ class TestAdminWorkflowIntegration:
 
         base_url = get_base_url()
         dashboard = AdminDashboardPage(authenticated_browser, base_url)
-        authenticated_browser.get(f"{base_url}/admin")
+        authenticated_browser.get(f"{base_url}/bigbird")
 
         # Select a specific year
         years = dashboard.get_year_selector_years()

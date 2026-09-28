@@ -1,29 +1,22 @@
-# Updated by Claude AI on 2025-10-14
 # Database configuration helper
-import os
-from google.cloud import firestore
-from config.cloud import TEST_DATABASE, PRODUCTION_DATABASE
+from dotenv import load_dotenv
+
+# Load .env explicitly rather than relying on flask run's automatic loading,
+# so this works the same way under gunicorn, pytest, or any other launcher.
+load_dotenv()
+
+from models.db import get_session_factory, remove_session
 
 
-def get_database_config():
-    """Get database configuration based on environment."""
-    flask_env = os.environ.get('FLASK_ENV', 'development')
-    test_mode = os.environ.get('TEST_MODE', 'false').lower() == 'true'
+def get_db_session():
+    """Get the request-scoped SQLAlchemy session.
 
-    # Determine database ID based on environment
-    if flask_env == 'production' and not test_mode:
-        database_id = PRODUCTION_DATABASE
-    else:
-        database_id = TEST_DATABASE
-
-    return database_id
+    Callers pass this session into model constructors, e.g. ParticipantModel(get_db_session(), year),
+    the same way the old Firestore client was passed around.
+    """
+    return get_session_factory()()
 
 
-def get_firestore_client():
-    """Get Firestore client configured for the appropriate database."""
-    database_id = get_database_config()
-
-    # Create client with specific database
-    client = firestore.Client(database=database_id)
-
-    return client, database_id
+def teardown_db_session(exception=None):
+    """Release the session at the end of the request. Wire up via app.teardown_appcontext."""
+    remove_session()

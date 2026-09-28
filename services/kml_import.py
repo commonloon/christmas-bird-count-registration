@@ -1,0 +1,295 @@
+# Updated by Claude AI on 2026-08-31
+"""
+KML boundary parsing, shared by the /bigbird/circles/<slug>/areas KML-upload
+route and the standalone utils/parse_area_boundaries.py CLI script.
+
+Lives in services/ (not utils/) because it's imported by application route
+code at request time - see CLAUDE.md's deployment constraint that utils/ is
+for one-off scripts only, never runtime app code.
+"""
+import re
+import xml.etree.ElementTree as ET
+
+KML_NS = {'kml': 'http://www.opengis.net/kml/2.2'}
+
+
+class KmlParseError(Exception):
+    """Raised for KML content that fails to parse or contains no usable areas."""
+
+
+def extract_area_code(name):
+    """
+    Extract an area code from a placemark name using multiple patterns.
+    Supports "Area A:", "Area A -", "1 - Name", "B-1:", etc.
+    Returns the code as a string, or None if no pattern matched.
+    """
+    if not name:
+        return None
+
+    match = re.search(r'Area\s+([A-Z0-9]+-?[A-Z0-9]*)[\s:]', name, re.IGNORECASE)
+    if match:
+        return match.group(1).upper()
+
+    match = re.match(r'^([A-Z0-9]+-[A-Z0-9]+)[\s:]', name, re.IGNORECASE)
+    if match:
+        return match.group(1).upper()
+
+    match = re.match(r'^(\d+)\s*[-–—]', name)
+    if match:
+        return match.group(1)
+
+    match = re.match(r'^Area\s+([A-Z0-9]+-?[A-Z0-9]*)', name, re.IGNORECASE)
+    if match:
+        return match.group(1).upper()
+
+    match = re.match(r'^([A-Z0-9]{1,3}):', name)
+    if match:
+        return match.group(1).upper()
+
+    return None
+
+
+def clean_area_name(name, code):
+    """Strip the redundant leading area-code label (e.g. "Area 3A", "3A -",
+    "3A:") that extract_area_code() parses the code from, and normalize KML
+    export whitespace noise (non-breaking spaces, embedded newlines, runs of
+    plain whitespace). Every place this app displays an area already
+    prepends the code itself (see static/js/map.js, templates/index.html,
+    etc.) - leaving the same label baked into the stored name shows it
+    twice, e.g. "Area 3A: Area 3A Courtenay East".
+
+    Falls back to the normalized-but-unstripped text if stripping would
+    leave nothing (a placemark whose whole name IS just the code label,
+    e.g. "Area A" with no further description - there's nothing redundant
+    left to show in that case)."""
+    if not name:
+        return name
+
+    text = name.replace('\xa0', ' ')
+    text = re.sub(r'\s+', ' ', text).strip()
+
+    for pattern in (
+        rf'^Area\s+{re.escape(code)}[\s:.\-–—]*',
+        rf'^{re.escape(code)}[\s:.\-–—]+',
+    ):
+        stripped = re.sub(pattern, '', text, count=1, flags=re.IGNORECASE).strip()
+        if stripped and stripped != text:
+            return stripped
+
+    return text
+
+
+def clean_area_description(description):
+    """Strip a leading "team leader: NAME" style label some KML exports use
+    to record who currently leads an area. Leader identity belongs to the
+    app's own leader-assignment records (it changes year to year), never to
+    static area text - see CLAUDE.md's identity-based leader model.
+
+    This only recognizes that one explicit phrase - it deliberately does NOT
+    try to detect "this description is probably just a bare person's name"
+    in general, since that's indistinguishable from legitimate free-text
+    area notes another circle might genuinely want (confirmed by inspecting
+    real data: Vancouver's descriptions are real boundary notes, while
+    Ladner's are bare leader names with no identifying phrase at all - no
+    automated rule safely tells those apart)."""
+    if not description:
+        return description
+
+    cleaned = re.sub(r'^\s*team\s+leader:?\s*', '', description, flags=re.IGNORECASE).strip()
+    return cleaned
+
+
+def parse_coordinates_to_geojson(coord_string):
+    """Convert a KML 'lng,lat,alt lng,lat,alt ...' string to [[lng, lat], ...].
+    Raises KmlParseError on a non-numeric or out-of-range coordinate, rather than
+    letting a ValueError escape and surface as an unhandled 500 to the caller."""
+    coordinates = []
+    for coord in coord_string.split():
+        coord = coord.strip()
+        if not coord:
+            continue
+        parts = coord.split(',')
+        if len(parts) < 2:
+            continue
+        try:
+            lng, lat = float(parts[0]), float(parts[1])
+        except ValueError:
+            raise KmlParseError(f'Could not parse coordinate pair: "{coord}"')
+        if not (-180 <= lng <= 180) or not (-90 <= lat <= 90):
+            raise KmlParseError(f'Coordinate out of range: "{coord}"')
+        coordinates.append([lng, lat])
+    return coordinates
+
+
+def _parse_kml_root(kml_content):
+    """Shared XML-safety guard + parse step for both parse_kml_string() and
+    parse_kml_boundary_lines() - they're always called together against the
+    same uploaded content, so the DOCTYPE rejection and parse-error handling
+    live in exactly one place rather than two copies drifting apart."""
+    # Reject a DOCTYPE outright rather than parsing it: genuine KML exports
+    # (Google My Maps etc.) never include one, and it's the mechanism behind
+    # XXE/billion-laughs attacks against xml.etree - cheaper than a new
+    # dependency (defusedxml isn't installed) given this route is admin-only.
+    if re.search(r'<!DOCTYPE', kml_content, re.IGNORECASE):
+        raise KmlParseError('This file has a DOCTYPE declaration, which is not supported.')
+
+    try:
+        return ET.fromstring(kml_content)
+    except ET.ParseError as e:
+        raise KmlParseError(f'Could not parse KML/XML: {e}')
+
+
+def parse_kml_string(kml_content):
+    """
+    Parse KML text and extract area boundary data.
+
+    Returns a list of {'letter_code', 'name', 'description', 'geometry'} dicts,
+    naturally sorted by area code. Raises KmlParseError on malformed XML or a
+    file with no recognizable area placemarks.
+    """
+    root = _parse_kml_root(kml_content)
+
+    areas = []
+    for placemark in root.findall('.//kml:Placemark', KML_NS):
+        name_elem = placemark.find('kml:name', KML_NS)
+        if name_elem is None or not name_elem.text:
+            continue
+
+        name = name_elem.text
+        area_code = extract_area_code(name)
+        if not area_code:
+            continue
+
+        desc_elem = placemark.find('kml:description', KML_NS)
+        description = desc_elem.text if desc_elem is not None and desc_elem.text else ''
+        description = re.sub(r'<[^>]*>', '', description).strip()
+        description = clean_area_description(description)
+
+        # Normally one <Polygon> per placemark, but a placemark can hold a
+        # <MultiGeometry> with several <Polygon> fragments whose rings are meant
+        # to be joined end-to-end into one boundary (each fragment's last point
+        # matches the next fragment's first point) - an artifact of how some KML
+        # exports split a single hand-drawn boundary into pieces. Concatenating
+        # every fragment's coordinates in document order reconstructs the
+        # original ring; grabbing only the first (the old behavior) silently
+        # produced a tiny, wrong stub for any area exported this way.
+        polygons = placemark.findall('.//kml:Polygon', KML_NS)
+        coord_texts = []
+        for polygon in polygons:
+            coords_elem = polygon.find('.//kml:coordinates', KML_NS)
+            if coords_elem is not None and coords_elem.text:
+                coord_texts.append(coords_elem.text.strip())
+        if not coord_texts:
+            continue
+
+        coordinates = parse_coordinates_to_geojson(' '.join(coord_texts))
+        if len(coordinates) < 3:
+            continue
+
+        areas.append({
+            'letter_code': area_code,
+            'name': clean_area_name(name, area_code),
+            'description': description,
+            'geometry': {'type': 'Polygon', 'coordinates': [coordinates]},
+        })
+
+    if not areas:
+        raise KmlParseError('No placemarks with a recognizable area code were found in this file.')
+
+    def sort_key(area):
+        code = area['letter_code']
+        try:
+            return (0, int(code))
+        except ValueError:
+            return (1, code)
+
+    areas.sort(key=sort_key)
+    return areas
+
+
+def parse_kml_boundary_lines(kml_content):
+    """
+    Extract decorative "major area group" boundary lines from KML: any
+    placemark with a <LineString> geometry, regardless of its name. Real
+    KML exports use these to hand-draw where a traditional, later-subdivided
+    area used to be (e.g. Comox's areas 3A/3B/3C all sit inside one such
+    line for old area "3") - purely a visual orientation aid layered over
+    the real area polygons (see static/js/map.js's displayBoundaries()),
+    with no identity of their own (no code, no name/description shown
+    anywhere) and no programmatic link to which area codes they enclose.
+
+    Returns a list of {'type': 'LineString', 'coordinates': [[lng, lat], ...]}
+    dicts, in document order. Never raises for a file with zero such lines -
+    that's the normal case for almost every circle - only for malformed XML.
+    """
+    root = _parse_kml_root(kml_content)
+
+    lines = []
+    for placemark in root.findall('.//kml:Placemark', KML_NS):
+        linestring = placemark.find('kml:LineString', KML_NS)
+        if linestring is None:
+            continue
+
+        coords_elem = linestring.find('kml:coordinates', KML_NS)
+        if coords_elem is None or not coords_elem.text:
+            continue
+
+        coordinates = parse_coordinates_to_geojson(coords_elem.text.strip())
+        if len(coordinates) < 2:
+            continue
+
+        lines.append({'type': 'LineString', 'coordinates': coordinates})
+
+    return lines
+
+
+def filter_main_areas(areas):
+    """Drop sub-areas (codes containing a hyphen, e.g. B-1, C-2), keeping only
+    the main lettered/numbered areas."""
+    return [area for area in areas if '-' not in area['letter_code']]
+
+
+def calculate_map_center_and_bounds(areas):
+    """
+    Calculate a center point, bounding box, and suggested zoom from a list of
+    areas (as returned by parse_kml_string). Returns None if areas is empty -
+    callers should fall back to the circle's own latitude/longitude instead.
+    """
+    all_lats, all_lngs = [], []
+    for area in areas:
+        for lng, lat in area['geometry']['coordinates'][0]:
+            all_lngs.append(lng)
+            all_lats.append(lat)
+
+    if not all_lats or not all_lngs:
+        return None
+
+    min_lat, max_lat = min(all_lats), max(all_lats)
+    min_lng, max_lng = min(all_lngs), max(all_lngs)
+
+    center_lat = (min_lat + max_lat) / 2
+    center_lng = (min_lng + max_lng) / 2
+
+    lat_padding = (max_lat - min_lat) * 0.10
+    lng_padding = (max_lng - min_lng) * 0.10
+
+    max_span = max(max_lat - min_lat, max_lng - min_lng)
+    if max_span > 2.0:
+        zoom = 8
+    elif max_span > 1.0:
+        zoom = 9
+    elif max_span > 0.5:
+        zoom = 10
+    elif max_span > 0.2:
+        zoom = 11
+    else:
+        zoom = 12
+
+    return {
+        'center': [round(center_lat, 6), round(center_lng, 6)],
+        'bounds': [
+            [round(min_lat - lat_padding, 6), round(min_lng - lng_padding, 6)],
+            [round(max_lat + lat_padding, 6), round(max_lng + lng_padding, 6)],
+        ],
+        'zoom': zoom,
+    }

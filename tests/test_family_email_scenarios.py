@@ -58,14 +58,15 @@ def verify_registration_success(browser, expected_email, expected_first_name=Non
     """
     import urllib.parse
     from models.participant import ParticipantModel
-    from config.database import get_firestore_client
+    from config.database import get_db_session
+    from tests.test_config import TEST_CIRCLE_SLUG
 
     # Wait for page to redirect and database write
     time.sleep(3)
 
     # Check database FIRST - this is the source of truth
-    db, _ = get_firestore_client()
-    participant_model = ParticipantModel(db, datetime.now().year)
+    db = get_db_session()
+    participant_model = ParticipantModel(db, datetime.now().year, TEST_CIRCLE_SLUG)
 
     # If we have specific names to verify, search for that exact identity
     if expected_first_name and expected_last_name:
@@ -190,10 +191,11 @@ class TestFamilyEmailSharing:
 
         # Verify both family members exist in database
         from models.participant import ParticipantModel
-        from config.database import get_firestore_client
+        from config.database import get_db_session
+        from tests.test_config import TEST_CIRCLE_SLUG
 
-        db, _ = get_firestore_client()
-        participant_model = ParticipantModel(db, datetime.now().year)
+        db = get_db_session()
+        participant_model = ParticipantModel(db, datetime.now().year, TEST_CIRCLE_SLUG)
 
         all_participants = participant_model.get_all_participants()
         family_participants = [
@@ -233,10 +235,11 @@ class TestFamilyEmailSharing:
         )
 
         from models.participant import ParticipantModel
-        from config.database import get_firestore_client
+        from config.database import get_db_session
+        from tests.test_config import TEST_CIRCLE_SLUG
 
-        db, _ = get_firestore_client()
-        participant_model = ParticipantModel(db, datetime.now().year)
+        db = get_db_session()
+        participant_model = ParticipantModel(db, datetime.now().year, TEST_CIRCLE_SLUG)
 
         # Record child state before parent operations
         child_before = participant_model.get_participant(child_id)
@@ -275,10 +278,11 @@ class TestFamilyEmailSharing:
         )
 
         from models.participant import ParticipantModel
-        from config.database import get_firestore_client
+        from config.database import get_db_session
+        from tests.test_config import TEST_CIRCLE_SLUG
 
-        db, _ = get_firestore_client()
-        participant_model = ParticipantModel(db, datetime.now().year)
+        db = get_db_session()
+        participant_model = ParticipantModel(db, datetime.now().year, TEST_CIRCLE_SLUG)
 
         # Promote Bob to leader
         bob_promotion = participant_model.assign_area_leadership(bob_id, "E", "test-family-leader@test.ca")
@@ -371,10 +375,11 @@ class TestFamilyEmailSharing:
 
         # Verify final state
         from models.participant import ParticipantModel
-        from config.database import get_firestore_client
+        from config.database import get_db_session
+        from tests.test_config import TEST_CIRCLE_SLUG
 
-        db, _ = get_firestore_client()
-        participant_model = ParticipantModel(db, datetime.now().year)
+        db = get_db_session()
+        participant_model = ParticipantModel(db, datetime.now().year, TEST_CIRCLE_SLUG)
 
         family_participants = [
             p for p in participant_model.get_all_participants()
@@ -415,10 +420,11 @@ class TestFamilyEmailEdgeCases:
             registered_ids.append(member_id)
 
         from models.participant import ParticipantModel
-        from config.database import get_firestore_client
+        from config.database import get_db_session
+        from tests.test_config import TEST_CIRCLE_SLUG
 
-        db, _ = get_firestore_client()
-        participant_model = ParticipantModel(db, datetime.now().year)
+        db = get_db_session()
+        participant_model = ParticipantModel(db, datetime.now().year, TEST_CIRCLE_SLUG)
 
         # Verify all family members exist
         family_participants = [
@@ -455,10 +461,11 @@ class TestFamilyEmailEdgeCases:
         )
 
         from models.participant import ParticipantModel
-        from config.database import get_firestore_client
+        from config.database import get_db_session
+        from tests.test_config import TEST_CIRCLE_SLUG
 
-        db, _ = get_firestore_client()
-        participant_model = ParticipantModel(db, datetime.now().year)
+        db = get_db_session()
+        participant_model = ParticipantModel(db, datetime.now().year, TEST_CIRCLE_SLUG)
 
         # Promote leader candidate to actual leader
         leadership_assigned = participant_model.assign_area_leadership(leader_id, "Q", "test-auth-assignment@test.ca")
@@ -514,10 +521,11 @@ class TestFamilyEmailPerformance:
         verification_start = datetime.now()
 
         from models.participant import ParticipantModel
-        from config.database import get_firestore_client
+        from config.database import get_db_session
+        from tests.test_config import TEST_CIRCLE_SLUG
 
-        db, _ = get_firestore_client()
-        participant_model = ParticipantModel(db, datetime.now().year)
+        db = get_db_session()
+        participant_model = ParticipantModel(db, datetime.now().year, TEST_CIRCLE_SLUG)
 
         all_participants = participant_model.get_all_participants()
 

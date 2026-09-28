@@ -18,7 +18,16 @@
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary" aria-label="Main navigation">
         <div class="container">
-            {% if request.endpoint and request.endpoint.startswith('admin.') %}
+            {% if g.get('is_landing_host') %}
+                <a class="navbar-brand" href="{{ url_for('main.index') }}">
+                    {% if g.get('is_apex_landing_host') %}Bird Counts{% else %}Christmas Bird Count Circles{% endif %}
+                </a>
+            {% elif request.endpoint in ('admin.list_circles', 'admin.new_circle', 'admin.edit_circle',
+                                          'admin.circle_admins', 'admin.circle_areas_manage',
+                                          'admin.circle_areas_import_kml', 'admin.email_content_defaults')
+                     and session.get('user_role') == 'super_admin' %}
+                <a class="navbar-brand" href="{{ url_for('admin.list_circles') }}">Count Super-Admin</a>
+            {% elif request.endpoint and request.endpoint.startswith('admin.') %}
                 <a class="navbar-brand" href="{{ url_for('admin.dashboard', year=selected_year) }}">{{ count_event_name }} Admin</a>
             {% elif request.endpoint and request.endpoint.startswith('leader.') %}
                 <a class="navbar-brand" href="{{ url_for('leader.dashboard') }}">{{ count_event_name }} Area Leader</a>
@@ -26,6 +35,9 @@
                 <a class="navbar-brand" href="{{ url_for('main.index') }}">{{ count_event_name }} Registration</a>
             {% endif %}
             <div class="navbar-nav ms-auto">
+                {% if session.get('user_role') == 'super_admin' %}
+                <a class="nav-link" href="{{ url_for('admin.list_circles') }}">Manage Circles</a>
+                {% endif %}
             </div>
         </div>
     </nav>

@@ -98,7 +98,6 @@
                         <th>Equipment</th>
                         <th>Notes</th>
                         <th>Leader</th>
-                        <th>Scribe</th>
                         <th>Date</th>
                     </tr>
                 </thead>
@@ -133,7 +132,7 @@
                         </td>
                         <td>
                             <span class="badge bg-{% if participant.skill_level == 'Expert' %}success{% elif participant.skill_level == 'Intermediate' %}primary{% elif participant.skill_level == 'Beginner' %}info{% else %}secondary{% endif %}">
-                                {{ participant.skill_level }}
+                                {{ participant.skill_level|skill_label }}
                             </span>
                         </td>
                         <td>{{ participant.experience }}</td>
@@ -152,13 +151,6 @@
                         <td>
                             {% if participant.interested_in_leadership %}
                                 <span class="badge bg-warning">Interested</span>
-                            {% else %}
-                                <span class="text-muted">No</span>
-                            {% endif %}
-                        </td>
-                        <td>
-                            {% if participant.get('interested_in_scribe') %}
-                                <span class="badge bg-info">Interested</span>
                             {% else %}
                                 <span class="text-muted">No</span>
                             {% endif %}

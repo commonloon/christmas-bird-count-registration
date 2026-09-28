@@ -10,12 +10,11 @@ No hardcoded values - all validation is dynamic based on config/*.py files.
 """
 
 import pytest
-import os
 import json
 import re
 from datetime import datetime
 
-from config.areas import get_all_areas, AREA_CONFIG
+from config.areas import AREA_CONFIG
 from config.organization import get_organization_variables
 from config.cloud import (
     TEST_BASE_URL, PRODUCTION_BASE_URL,
@@ -98,26 +97,18 @@ class TestConfigurationFiles:
                 f"Note: admin_assignment_only is managed dynamically in Firestore via AreaSignupTypeModel"
             )
 
-    def test_area_boundaries_json_exists(self):
-        """Verify static/data/area_boundaries.json exists."""
-        path = 'static/data/area_boundaries.json'
-        assert os.path.exists(path), (
-            f"Missing {path}\n"
-            f"Run: python utils/parse_area_boundaries.py <your-kml-file.kml>\n"
-            f"This will generate the area boundaries JSON file for the map."
+    def test_area_boundaries_json_exists(self, area_boundaries_data):
+        """Verify the test circle has boundary data (DB-backed circle_areas, not a
+        static file - see models/circle.py's CircleAreaModel.get_boundary_data())."""
+        assert area_boundaries_data['areas'], (
+            "No area boundaries found for the test circle.\n"
+            "Import a KML file via /bigbird/circles/<slug>/areas (see .env.example)."
         )
 
     def test_area_boundaries_has_map_config(self, area_boundaries_data):
-        """Verify area_boundaries.json contains map_config section."""
-        assert area_boundaries_data is not None, (
-            "area_boundaries.json not loaded (file missing)\n"
-            "Run: python utils/parse_area_boundaries.py <your-kml-file.kml>"
-        )
-
+        """Verify the test circle's boundary data contains a map_config section."""
         assert 'map_config' in area_boundaries_data, (
-            "area_boundaries.json missing 'map_config' section\n"
-            "Re-run: python utils/parse_area_boundaries.py <your-kml-file.kml>\n"
-            "The latest version automatically generates map_config with center and bounds."
+            "Boundary data missing 'map_config' section"
         )
 
         map_config = area_boundaries_data['map_config']
@@ -125,18 +116,18 @@ class TestConfigurationFiles:
 
         for field in required_fields:
             assert field in map_config, (
-                f"map_config missing required field: {field}\n"
-                f"Re-run: python utils/parse_area_boundaries.py <your-kml-file.kml>"
+                f"map_config missing required field: {field}"
             )
 
     def test_area_codes_consistent_with_json(self, installation_config, area_boundaries_data):
-        """Verify area codes match between config/areas.py and area_boundaries.json."""
-        assert area_boundaries_data is not None, "area_boundaries.json not found"
-
-        # Get areas from config
+        """Verify the test circle's configured area codes (circle_areas labels) match
+        its imported boundary data (circle_areas.boundary_geojson) - both live in the
+        same table now, but get_boundary_data() only returns areas with an imported
+        boundary, so a label added without ever importing a KML would show up here."""
+        # Get areas from the circle's area-label config (all configured areas)
         config_areas = set(installation_config['all_areas'])
 
-        # Get areas from JSON
+        # Get areas with actual imported boundary data
         json_areas = set(area['letter_code'] for area in area_boundaries_data['areas'])
 
         # Check for mismatches
@@ -146,17 +137,16 @@ class TestConfigurationFiles:
         error_parts = []
         if missing_in_json:
             error_parts.append(
-                f"Areas in config/areas.py but missing from area_boundaries.json: {sorted(missing_in_json)}"
+                f"Areas configured but missing imported boundary data: {sorted(missing_in_json)}"
             )
         if extra_in_json:
             error_parts.append(
-                f"Areas in area_boundaries.json but not in config/areas.py: {sorted(extra_in_json)}"
+                f"Areas with boundary data but not in the area-label config: {sorted(extra_in_json)}"
             )
 
         if error_parts:
             error_msg = "\n".join(error_parts)
-            error_msg += "\n\nRe-run: python utils/parse_area_boundaries.py <your-kml-file.kml>"
-            error_msg += "\nThen update config/areas.py to match the areas in your KML file."
+            error_msg += "\n\nImport boundaries via /bigbird/circles/<slug>/areas for any missing area."
             assert False, error_msg
 
 
@@ -400,15 +390,16 @@ class TestConfigurationConsistency:
         )
 
     def test_base_domain_in_urls(self, installation_config):
-        """Verify BASE_DOMAIN appears in test and production URLs."""
-        base_domain = installation_config['base_domain']
-        test_url = installation_config['test_url']
-        prod_url = installation_config['prod_url']
+        """Verify BASE_DOMAIN appears in PRODUCTION_BASE_URL.
 
-        assert base_domain in test_url, (
-            f"BASE_DOMAIN '{base_domain}' not found in TEST_BASE_URL '{test_url}'\n"
-            f"Check URL construction in config/cloud.py"
-        )
+        TEST_BASE_URL is deliberately NOT built from BASE_DOMAIN - it points at the
+        local dev server's dedicated test circle (see config/cloud.py, .env.example)
+        so real Selenium traffic never reaches a real external host. PRODUCTION_BASE_URL
+        is never navigated to (see tests/conftest.py's pytest_sessionstart guard) but
+        should still be constructed correctly.
+        """
+        base_domain = installation_config['base_domain']
+        prod_url = installation_config['prod_url']
 
         assert base_domain in prod_url, (
             f"BASE_DOMAIN '{base_domain}' not found in PRODUCTION_BASE_URL '{prod_url}'\n"

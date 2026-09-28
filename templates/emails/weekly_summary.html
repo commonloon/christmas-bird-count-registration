@@ -238,7 +238,7 @@
             {% for participant in new_participants %}
                 <li><strong>{{ participant.first_name|e }} {{ participant.last_name|e }}</strong> ({{ participant.email|e }})
                     {% if participant.participation_type == 'FEEDER' %} - <span class="badge badge-info">FEEDER</span>{% endif %}
-                    - {{ participant.skill_level|e if participant.skill_level else 'Skill level not specified' }}
+                    - {{ (participant.skill_level|skill_label|e) if participant.skill_level else 'Skill level not specified' }}
                 </li>
             {% endfor %}
             </ul>
@@ -313,15 +313,10 @@
         {% endif %}
 
         <h4>📋 Next Steps</h4>
-        <ul>
-            {% if new_participants or arrivals or reactivated_participants %}
-                <li><strong>Welcome new, arriving, and rejoining members to the team.</strong> <ul><li>Ideally they should hear from you within a few days of joining your team, even if it's just a quick greeting and a note to say you'll send details later.</li></ul></li>
-            {% endif %}
-            <li>Confirm count day logistics with your team</li>
-            <li>Share meeting location and time details</li>
-            <li>Coordinate transportation and equipment needs</li>
-            <li>Review count area boundaries and special considerations</li>
-        </ul>
+        {% if new_participants or arrivals or reactivated_participants %}
+        <p><strong>Welcome new, arriving, and rejoining members to the team.</strong> Ideally they should hear from you within a few days of joining your team, even if it's just a quick greeting and a note to say you'll send details later.</p>
+        {% endif %}
+        <div>{{ next_steps_text|nl2br }}</div>
 
         {% if current_team %}
         <h4>👥 Complete List of Team Members ({{ current_team|selectattr('status', 'equalto', 'active')|list|length }} members)</h4>
@@ -336,7 +331,6 @@
                     <th>Experience</th>
                     <th>Equipment</th>
                     <th>Leader</th>
-                    <th>Scribe</th>
                 </tr>
             </thead>
             <tbody>
@@ -365,7 +359,7 @@
                         <br><small>{{ participant.phone2|e }}</small>
                         {% endif %}
                     </td>
-                    <td>{{ participant.skill_level|e if participant.skill_level else 'Not specified' }}</td>
+                    <td>{{ (participant.skill_level|skill_label|e) if participant.skill_level else 'Not specified' }}</td>
                     <td>{{ participant.experience|e if participant.experience else 'Not specified' }}</td>
                     <td>
                         {% if participant.has_binoculars %}Binoculars{% endif %}
@@ -380,17 +374,10 @@
                         No
                         {% endif %}
                     </td>
-                    <td>
-                        {% if participant.get('interested_in_scribe') %}
-                        <span class="badge badge-info">Interested</span>
-                        {% else %}
-                        No
-                        {% endif %}
-                    </td>
                 </tr>
                 {% if participant.notes_to_organizers %}
                 <tr style="{{ row_bg }}">
-                    <td colspan="8" style="padding: 8px 12px; border-left: 3px solid #ffc107;">
+                    <td colspan="7" style="padding: 8px 12px; border-left: 3px solid #ffc107;">
                         <strong>Notes from {{ participant.first_name|e }} {{ participant.last_name|e }}:</strong> {{ participant.notes_to_organizers|e }}
                     </td>
                 </tr>

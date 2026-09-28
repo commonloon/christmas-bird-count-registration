@@ -96,6 +96,18 @@
     background-color: var(--map-color-high);
 }
 
+.color-box.admin-only-box {
+    background-color: transparent;
+    background-image: repeating-linear-gradient(
+        45deg,
+        #6c757d,
+        #6c757d 2px,
+        transparent 2px,
+        transparent 5px
+    );
+    border: 1px solid #6c757d;
+}
+
 /* Selection feedback */
 .selection-feedback {
     margin-top: 1rem;

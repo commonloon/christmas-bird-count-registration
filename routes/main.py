@@ -1,10 +1,10 @@
-# Updated by Claude AI on 2026-01-12
+# Updated by Claude AI on 2026-09-24
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g, send_from_directory, abort
-from config.database import get_firestore_client
-from models.participant import ParticipantModel
+from config.database import get_db_session
+from models.participant import ParticipantModel, DuplicateParticipantError
 from models.area_signup_type import AreaSignupTypeModel
 from config.areas import get_area_info, get_all_areas
-from config.organization import LOGO_PATH, get_count_date, get_registration_status, get_organization_variables
+from config.organization import get_count_date, get_registration_status, get_organization_variables
 from services.email_service import email_service
 from services.security import (
     sanitize_name, sanitize_email, sanitize_phone, sanitize_notes,
@@ -25,17 +25,53 @@ main_bp = Blueprint('main', __name__)
 
 @main_bp.before_request
 def load_db():
-    """Load database client for this request."""
-    try:
-        g.db, _ = get_firestore_client()
-    except Exception as e:
-        g.db = None
-        print(f"Warning: Could not initialize Firestore: {e}")
+    """Load database session for this request."""
+    g.db = get_db_session()
 
 
 @main_bp.route('/')
 def index():
     """Main registration page."""
+    if getattr(g, 'is_landing_host', False):
+        from app import (
+            LANDING_HOST, APEX_LANDING_HOST, TEST_LANDING_HOST, TEST_APEX_LANDING_HOST,
+            circle_host, is_test_dev_host, request_scheme, request_port_suffix,
+        )
+        from models.circle import CircleModel
+
+        is_apex = getattr(g, 'is_apex_landing_host', False)
+        scheme = request_scheme()
+        all_circles = CircleModel(g.db).get_all() if g.db else []
+        # cbc.birdcount.ca lists CBC circles; the bare apex (birdcount.ca) lists
+        # everything else, one subdomain level up - see app.py's resolve_circle().
+        # Deliberately excludes contact email - it's fetched on demand via
+        # /api/circles/<slug>/contact instead, so it never sits in this page's
+        # initial HTML/JSON where a scraper could harvest it for free (bots
+        # scraping this contact address caused a real spam problem previously).
+        circles = [
+            {
+                'slug': c['slug'],
+                'circle_name': c['circle_name'],
+                'organization_name': c['name'],
+                'latitude': c['latitude'],
+                'longitude': c['longitude'],
+                'url': f"{scheme}://{circle_host(c['slug'], c['is_cbc'])}/",
+            }
+            for c in all_circles
+            if c['is_cbc'] != is_apex
+        ]
+        # circle_host() mirrors per-circle hosts onto .test automatically when
+        # is_test_dev_host() - the landing hosts themselves need the same
+        # mirroring done explicitly here, so the cross-listing link also stays
+        # on the dev server when viewed there instead of pointing at production.
+        if is_test_dev_host():
+            port = request_port_suffix()
+            other_listing_url = f"{scheme}://{TEST_LANDING_HOST}{port}/" if is_apex else f"{scheme}://{TEST_APEX_LANDING_HOST}{port}/"
+        else:
+            other_listing_url = f"{scheme}://{LANDING_HOST}/" if is_apex else f"{scheme}://{APEX_LANDING_HOST}/"
+        return render_template('landing.html', circles=circles, is_apex=is_apex,
+                                other_listing_url=other_listing_url)
+
     # Check registration status
     reg_status = get_registration_status()
 
@@ -92,7 +128,6 @@ def index():
                          area_leaders=area_leaders,
                          count_date=count_date,
                          registration_status=reg_status,
-                         logo_path=LOGO_PATH,
                          **org_vars)
 
 
@@ -128,8 +163,7 @@ def register():
     signup_type_model = AreaSignupTypeModel(g.db)
     public_areas = signup_type_model.get_public_areas()
     interested_in_leadership = request.form.get('interested_in_leadership') == 'on'
-    interested_in_scribe = request.form.get('interested_in_scribe') == 'on'
-    
+
     # Get and sanitize new fields
     participation_type = request.form.get('participation_type', '').strip()
     has_binoculars = request.form.get('has_binoculars') == 'on'
@@ -260,7 +294,6 @@ def register():
                              all_areas=all_areas,
                              area_leaders=area_leaders,
                              count_date=count_date,
-                             logo_path=LOGO_PATH,
                              **org_vars)
 
 
@@ -275,7 +308,6 @@ def register():
         'experience': experience,
         'preferred_area': preferred_area,
         'interested_in_leadership': interested_in_leadership,
-        'interested_in_scribe': interested_in_scribe,
         'is_leader': False,  # Only admins can assign leadership
         'assigned_area_leader': None,
         'participation_type': participation_type,
@@ -294,7 +326,7 @@ def register():
             # Send confirmation email with participant data
             email_service.send_registration_confirmation(participant_data, 'UNASSIGNED')
         else:
-            flash(f'Registration successful! You have been registered for Area {preferred_area}.', 'success')
+            flash(f'Registration successful! You have requested Area {preferred_area}.', 'success')
 
             # Send confirmation email with participant data
             email_service.send_registration_confirmation(participant_data, preferred_area)
@@ -303,6 +335,12 @@ def register():
                                 area=preferred_area,
                                 participant_id=participant_id))
 
+    except DuplicateParticipantError:
+        # The email_name_exists() check above normally catches this before we get
+        # here - reaching this instead means two submissions with the same
+        # identity landed in a near-simultaneous race and both passed that check.
+        flash('This name and email combination is already registered for this year', 'error')
+        return redirect(url_for('main.index'))
     except Exception as e:
         print(f"Registration error: {e}")
         flash('Registration failed. Please try again.', 'error')
@@ -336,19 +374,13 @@ def registration_success():
 @main_bp.route('/area-leader-info')
 def area_leader_info():
     """Information about area leader responsibilities."""
-    # Pass all query parameters to template for form restoration links
-    form_data = dict(request.args)
+    # Pass all query parameters to template for form restoration links, except
+    # csrf_token - it must never end up in a URL/browser history/referrer, and
+    # a client-side bug previously leaked it in here (fixed, but this is a
+    # server-side backstop in case any other path ever reintroduces it).
+    form_data = {k: v for k, v in request.args.items() if k != 'csrf_token'}
     org_vars = get_organization_variables()
     return render_template('area_leader_info.html', form_data=form_data, **org_vars)
-
-
-@main_bp.route('/scribe-info')
-def scribe_info():
-    """Information about scribe responsibilities."""
-    # Pass all query parameters to template for form restoration links
-    form_data = dict(request.args)
-    org_vars = get_organization_variables()
-    return render_template('scribe_info.html', form_data=form_data, **org_vars)
 
 
 @main_bp.route('/robots.txt')
@@ -361,11 +393,17 @@ def robots_txt():
 @main_bp.route('/administrator')
 @main_bp.route('/admin.php')
 @main_bp.route('/login.php')
-def honeypot_trap():
+@main_bp.route('/admin')
+@main_bp.route('/admin/<path:_subpath>')
+def honeypot_trap(_subpath=None):
     """
     Honeypot trap - immediate block for bots that ignore robots.txt.
     Good bots respect robots.txt and never access these URLs.
     Bad bots ignore robots.txt and fall into the trap.
+
+    /admin and /admin/* are included here because the real admin blueprint
+    moved to /bigbird - anything still guessing the old, common /admin path
+    is a bot, not a legitimate user (nobody has /admin bookmarked or linked).
     """
     if not HONEYPOT_ENABLED:
         abort(404)

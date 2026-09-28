@@ -1,23 +1,23 @@
 # Unit tests for RemovalLogModel
-# Updated by Claude AI on 2025-10-11
+# Updated by Claude AI on 2026-09-07 (Firestore -> Postgres)
 """
 Fast unit tests for RemovalLogModel that test removal logging and tracking.
-These tests run against the test Firestore database and use year 2000 for isolation.
+These tests run against the real Postgres database (local dev by default)
+and use year 2000 for isolation.
 """
 
 import pytest
 from datetime import datetime, timedelta
 from models.removal_log import RemovalLogModel
-from tests.test_config import get_database_name
-from google.cloud import firestore
+from models.db import RemovalLog
+from config.database import get_db_session
+from tests.test_config import TEST_CIRCLE_SLUG
 
 
 @pytest.fixture(scope="module")
-def firestore_client():
-    """Module-scoped Firestore client for fast test execution."""
-    database_name = get_database_name()
-    client = firestore.Client(database=database_name)
-    yield client
+def db_session():
+    """Module-scoped Postgres session for fast test execution."""
+    return get_db_session()
 
 
 @pytest.fixture(scope="module")
@@ -27,18 +27,17 @@ def test_year():
 
 
 @pytest.fixture(scope="module")
-def removal_log_model(firestore_client, test_year):
+def removal_log_model(db_session, test_year):
     """Module-scoped removal log model."""
-    return RemovalLogModel(firestore_client, test_year)
+    return RemovalLogModel(db_session, test_year, TEST_CIRCLE_SLUG)
 
 
 @pytest.fixture(scope="module", autouse=True)
-def clear_test_data(firestore_client, test_year):
+def clear_test_data(db_session, test_year):
     """Clear test data before running tests."""
-    collection_name = f'removal_log_{test_year}'
-    docs = firestore_client.collection(collection_name).stream()
-    for doc in docs:
-        doc.reference.delete()
+    circle_slug = TEST_CIRCLE_SLUG
+    db_session.query(RemovalLog).filter_by(circle_slug=circle_slug, year=test_year).delete()
+    db_session.commit()
     yield
     # Leave data for inspection after tests
 
@@ -56,8 +55,7 @@ class TestRemovalLogging:
         )
 
         assert removal_id is not None
-        assert isinstance(removal_id, str)
-        assert len(removal_id) > 0
+        assert isinstance(removal_id, int)
 
     def test_log_removal_with_email(self, removal_log_model):
         """Test logging removal with participant email."""
@@ -317,18 +315,18 @@ class TestRemovalDeletion:
         assert deleted is None
 
     def test_delete_nonexistent_removal(self, removal_log_model):
-        """Test deleting a nonexistent removal (Firestore doesn't fail on missing docs)."""
-        # Firestore delete succeeds even if document doesn't exist
+        """Test deleting a nonexistent removal returns False (Postgres: nothing to
+        delete is reported, unlike Firestore's old silently-idempotent delete)."""
         success = removal_log_model.delete_removal_log('nonexistent-12345')
-        assert success is True  # Firestore behavior: delete is idempotent
+        assert success is False
 
 
 class TestStaticMethods:
     """Test static/class methods."""
 
-    def test_get_available_years(self, firestore_client):
+    def test_get_available_years(self, db_session):
         """Test getting available years."""
-        years = RemovalLogModel.get_available_years(firestore_client)
+        years = RemovalLogModel.get_available_years(db_session, TEST_CIRCLE_SLUG)
         assert isinstance(years, list)
         assert 2000 in years  # Our test year
         assert all(isinstance(year, int) for year in years)

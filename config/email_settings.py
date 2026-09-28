@@ -6,6 +6,18 @@ from typing import Dict, Any, Optional
 from config.organization import ORGANIZATION_NAME
 
 
+# Domains a circle's "from" email is allowed to use. Deliberately a code-level
+# constant, not admin-editable through any web form - SMTP2GO (and most
+# transactional email providers) verify sending authorization at the domain
+# level (SPF/DKIM), so any address under an allowed domain will actually
+# deliver, but allowing an admin to self-service add a new domain here would
+# let a site admin make outgoing mail impersonate anyone at that domain.
+# Adding a genuinely new organization's own verified domain means a code
+# change + deploy, which is the right amount of friction for that trust
+# decision.
+ALLOWED_FROM_EMAIL_DOMAINS = ['naturevancouver.ca']
+
+
 # Email provider configurations - provider-agnostic design
 EMAIL_PROVIDERS = {
     'smtp2go': {
@@ -152,10 +164,20 @@ def get_logo_url() -> str:
 
 
 def get_email_branding() -> dict:
-    """Get complete email branding configuration with environment-specific logo URL."""
-    from config.organization import get_logo_url as org_get_logo_url
+    """Get complete email branding configuration for the active circle.
+
+    organization_name/logo_alt/logo_url must come from the resolved circle, not
+    EMAIL_BRANDING's own static values below (which used to be used directly and
+    hardcoded every circle's emails to say "Nature Vancouver" - see
+    get_organization_variables(), which raises if no circle is resolved rather
+    than silently falling back). Colors/layout stay shared across circles for now.
+    """
+    from config.organization import get_organization_variables
+    org_vars = get_organization_variables()
     branding = EMAIL_BRANDING.copy()
-    branding['logo_url'] = org_get_logo_url()
+    branding['organization_name'] = org_vars['organization_name']
+    branding['logo_alt'] = f"{org_vars['organization_name']} Logo"
+    branding['logo_url'] = org_vars['logo_url']
     return branding
 
 
@@ -166,14 +188,8 @@ EMAIL_TEMPLATES = {
     'admin_digest': 'emails/admin_digest.html'
 }
 
-# Email subjects (with date prefix for all emails)
-EMAIL_SUBJECTS = {
-    'team_update': '{date} Vancouver CBC Area {area_code} Update',
-    'weekly_summary': '{date} Vancouver CBC Area {area_code} Weekly Summary',
-    'admin_digest': '{date} Vancouver CBC Unassigned Participants'
-}
-
-# Email branding configuration
+# Email branding configuration. organization_name/logo_url below are placeholders,
+# always overwritten per-circle by get_email_branding() - never read directly.
 EMAIL_BRANDING = {
     'organization_name': ORGANIZATION_NAME,
     'logo_url': None,  # Will be set based on environment

@@ -17,11 +17,10 @@ from datetime import datetime
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, project_root)
 
-from tests.test_config import get_base_url, get_database_name
+from tests.test_config import get_base_url, TEST_CIRCLE_SLUG
 from tests.page_objects import AdminDashboardPage, AdminParticipantsPage
 from tests.data import get_test_participant
 from models.participant import ParticipantModel
-from google.cloud import firestore
 from selenium import webdriver
 
 logger = logging.getLogger(__name__)
@@ -46,21 +45,17 @@ def admin_participants_page(browser):
 
 
 @pytest.fixture
-def db_client():
-    """Create database client."""
-    database_name = get_database_name()
-    if database_name == '(default)':
-        client = firestore.Client()
-    else:
-        client = firestore.Client(database=database_name)
-    yield client
+def db_client(db_session):
+    """Provide the Postgres session (kept as 'db_client' for compatibility with
+    this file's existing test bodies)."""
+    return db_session
 
 
 @pytest.fixture
 def participant_model(db_client):
     """Create participant model for current year."""
     current_year = datetime.now().year
-    return ParticipantModel(db_client, current_year)
+    return ParticipantModel(db_client, current_year, TEST_CIRCLE_SLUG)
 
 
 
@@ -76,7 +71,7 @@ class TestParticipantViewing:
 
         # Navigate to participants page (already authenticated)
         base_url = get_base_url()
-        authenticated_browser.get(f"{base_url}/admin/participants")
+        authenticated_browser.get(f"{base_url}/bigbird/participants")
 
         # Verify we're on the participants page
         assert "participants" in authenticated_browser.current_url, f"Expected participants URL, got: {authenticated_browser.current_url}"
@@ -109,7 +104,6 @@ class TestParticipantViewing:
                 'has_binoculars': participant_data['equipment']['has_binoculars'],
                 'spotting_scope': participant_data['equipment']['spotting_scope'],
                 'interested_in_leadership': participant_data['interests']['leadership'],
-                'interested_in_scribe': participant_data['interests']['scribe'],
                 'notes_to_organizers': participant_data.get('notes', ''),
                 'is_leader': False,
                 'created_at': datetime.now(),
@@ -129,7 +123,7 @@ class TestParticipantViewing:
 
         # Navigate to participants page (already authenticated)
         base_url = get_base_url()
-        authenticated_browser.get(f"{base_url}/admin/participants")
+        authenticated_browser.get(f"{base_url}/bigbird/participants")
 
         # Give page time to load
         time.sleep(2)
@@ -169,7 +163,7 @@ class TestParticipantViewing:
 
         # Navigate to participants page (already authenticated)
         base_url = get_base_url()
-        authenticated_browser.get(f"{base_url}/admin/participants")
+        authenticated_browser.get(f"{base_url}/bigbird/participants")
 
         # Get area headers
         area_headers = admin_participants_page.get_area_headers()
@@ -192,7 +186,7 @@ class TestParticipantViewing:
 
         # Navigate to participants page (already authenticated)
         base_url = get_base_url()
-        authenticated_browser.get(f"{base_url}/admin/participants")
+        authenticated_browser.get(f"{base_url}/bigbird/participants")
 
         # Check FEEDER display
         feeder_display = admin_participants_page.verify_feeder_participant_display()
@@ -212,7 +206,7 @@ class TestParticipantOperations:
 
     @pytest.mark.critical
     @pytest.mark.admin
-    def test_participant_deletion_workflow(self, authenticated_browser, admin_participants_page, participant_model):
+    def test_participant_deletion_workflow(self, authenticated_browser, participant_model):
         """Test participant deletion workflow."""
         logger.info("Testing participant deletion workflow")
 
@@ -230,58 +224,60 @@ class TestParticipantOperations:
             'has_binoculars': participant_data['equipment']['has_binoculars'],
             'spotting_scope': participant_data['equipment']['spotting_scope'],
             'interested_in_leadership': participant_data['interests']['leadership'],
-            'interested_in_scribe': participant_data['interests']['scribe'],
             'notes_to_organizers': participant_data.get('notes', ''),
             'is_leader': False,
             'created_at': datetime.now(),
             'year': datetime.now().year
         }
 
+        participant_id = participant_model.add_participant(participant_record)
+        if not participant_id:
+            pytest.skip("Could not create test participant for deletion")
+
+        participant_email = participant_record['email']
+
         try:
-            participant_id = participant_model.add_participant(participant_record)
-            if not participant_id:
-                pytest.skip("Could not create test participant for deletion")
-
-            participant_name = f"{participant_record['first_name']} {participant_record['last_name']}"
-            participant_email = participant_record['email']
-
             # Navigate to participants page (already authenticated)
             base_url = get_base_url()
 
-            dashboard = AdminParticipantsPage(authenticated_browser, base_url)
-            authenticated_browser.get(f"{base_url}/admin/participants")
+            authenticated_browser.get(f"{base_url}/bigbird/participants")
             time.sleep(2)
 
-            # Attempt to delete participant
+            # Build the page object on authenticated_browser itself, not the
+            # separate admin_participants_page fixture - that fixture wraps
+            # the plain 'browser' fixture, a different, unauthenticated
+            # WebDriver instance that never navigates anywhere. Operating on
+            # it here made every row-lookup silently fail regardless of
+            # selector correctness, masking the real 405 regression this
+            # test exists to catch.
+            participants_page = AdminParticipantsPage(authenticated_browser, base_url)
+
+            # Delete via the real UI click/modal/submit flow - this is what
+            # actually catches the 405 regression (deleteForm.action pointed
+            # at a stale pre-/bigbird '/admin/...' path that only the
+            # honeypot route in routes/main.py matched, and only for GET).
             deletion_reason = participant_data.get('deletion_reason', 'Test deletion workflow')
-            deletion_success = admin_participants_page.delete_participant(
+            deletion_success = participants_page.delete_participant(
                 participant_email,  # Use email as identifier
                 deletion_reason
             )
 
-            if deletion_success:
-                logger.info("✓ Participant deletion workflow completed")
+            assert deletion_success, (
+                "Delete workflow did not remove the participant row from the UI - "
+                "check for a 405/404 on the delete form's POST (e.g. a stale hardcoded "
+                "URL prefix in templates/admin/participants.html)"
+            )
 
-                # Verify participant is deleted from database
-                try:
-                    deleted_participant = participant_model.get_participant(participant_id)
-                    if deleted_participant:
-                        logger.warning("Participant still exists in database after deletion")
-                    else:
-                        logger.info("✓ Participant properly removed from database")
-                except:
-                    logger.info("✓ Participant properly removed from database")
+            deleted_participant = participant_model.get_participant(participant_id)
+            assert not deleted_participant, "Participant still exists in database after deletion"
+            logger.info("✓ Participant properly removed from UI and database")
 
-            else:
-                logger.warning("Participant deletion workflow not completed (UI may not support deletion)")
-
-        except Exception as e:
-            logger.error(f"Error in participant deletion test: {e}")
-            # Cleanup
+        finally:
+            # Cleanup in case the assertion above failed and the delete didn't happen
             try:
-                if 'participant_id' in locals() and participant_id:
+                if participant_model.get_participant(participant_id):
                     participant_model.delete_participant(participant_id)
-            except:
+            except Exception:
                 pass
 
     @pytest.mark.admin
@@ -305,7 +301,6 @@ class TestParticipantOperations:
             'has_binoculars': participant_data['equipment']['has_binoculars'],
             'spotting_scope': participant_data['equipment']['spotting_scope'],
             'interested_in_leadership': participant_data['interests']['leadership'],
-            'interested_in_scribe': participant_data['interests']['scribe'],
             'notes_to_organizers': participant_data.get('notes', ''),
             'is_leader': False,
             'created_at': datetime.now(),
@@ -324,7 +319,7 @@ class TestParticipantOperations:
             base_url = get_base_url()
 
             dashboard = AdminParticipantsPage(authenticated_browser, base_url)
-            authenticated_browser.get(f"{base_url}/admin/participants")
+            authenticated_browser.get(f"{base_url}/bigbird/participants")
             time.sleep(2)
 
             # Attempt to assign participant
@@ -382,7 +377,6 @@ class TestLeadershipManagement:
             'has_binoculars': participant_data['equipment']['has_binoculars'],
             'spotting_scope': participant_data['equipment']['spotting_scope'],
             'interested_in_leadership': True,  # Leadership candidate
-            'interested_in_scribe': participant_data['interests']['scribe'],
             'notes_to_organizers': participant_data.get('notes', ''),
             'is_leader': False,  # Start as regular participant
             'assigned_area_leader': None,
@@ -402,7 +396,7 @@ class TestLeadershipManagement:
             base_url = get_base_url()
 
             dashboard = AdminParticipantsPage(authenticated_browser, base_url)
-            authenticated_browser.get(f"{base_url}/admin/participants")
+            authenticated_browser.get(f"{base_url}/bigbird/participants")
             time.sleep(2)
 
             # Attempt to promote participant to leader
@@ -468,7 +462,6 @@ class TestLeadershipManagement:
             'has_binoculars': participant_data['equipment']['has_binoculars'],
             'spotting_scope': participant_data['equipment']['spotting_scope'],
             'interested_in_leadership': True,
-            'interested_in_scribe': participant_data['interests']['scribe'],
             'notes_to_organizers': participant_data.get('notes', ''),
             'is_leader': True,  # Start as leader
             'assigned_area_leader': participant_data['participation']['area'],
@@ -487,7 +480,7 @@ class TestLeadershipManagement:
             base_url = get_base_url()
 
             dashboard = AdminParticipantsPage(authenticated_browser, base_url)
-            authenticated_browser.get(f"{base_url}/admin/participants")
+            authenticated_browser.get(f"{base_url}/bigbird/participants")
             time.sleep(2)
 
             # Attempt to demote leader
@@ -532,7 +525,7 @@ class TestLeadershipManagement:
                     pass
 
     @pytest.mark.admin
-    def test_leadership_flag_consistency(self, browser, test_credentials, participant_model):
+    def test_leadership_flag_consistency(self, participant_model):
         """Test leadership flag consistency in single-table design."""
         logger.info("Testing leadership flag consistency (single-table)")
 
@@ -550,7 +543,6 @@ class TestLeadershipManagement:
             'has_binoculars': participant_data['equipment']['has_binoculars'],
             'spotting_scope': participant_data['equipment']['spotting_scope'],
             'interested_in_leadership': True,
-            'interested_in_scribe': participant_data['interests']['scribe'],
             'notes_to_organizers': participant_data.get('notes', ''),
             'is_leader': True,
             'assigned_area_leader': 'B',

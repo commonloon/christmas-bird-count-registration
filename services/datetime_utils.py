@@ -66,12 +66,8 @@ def convert_to_display_timezone(utc_datetime: datetime) -> tuple:
         >>> print(f"Registered on {converted_dt.strftime('%B %d, %Y at %H:%M')} {label}")
         Registered on October 22, 2025 at 19:27 Pacific Time
     """
-    try:
-        from config.organization import DISPLAY_TIMEZONE
-        tz_name = DISPLAY_TIMEZONE
-    except ImportError:
-        logger.warning("Could not import DISPLAY_TIMEZONE from config, defaulting to America/Vancouver")
-        tz_name = 'America/Vancouver'
+    from config.organization import _circle_value, DISPLAY_TIMEZONE
+    tz_name = _circle_value('display_timezone', DISPLAY_TIMEZONE)
 
     try:
         # Ensure input is timezone-aware (assume UTC if naive)

@@ -1,0 +1,226 @@
+from datetime import datetime, timezone
+
+from models.db import Circle, CircleArea, CircleAdmin
+from models.area_signup_type import natural_sort_key
+from services.kml_import import calculate_map_center_and_bounds
+
+
+class CircleModel:
+    """Look up count circle configuration (replaces config/organization.py's old
+    single-organization module constants for multi-circle support)."""
+
+    def __init__(self, db_session):
+        self.db = db_session
+
+    def get_by_slug(self, slug):
+        """Get a circle's config by slug, or None if it doesn't exist."""
+        row = self.db.query(Circle).filter_by(slug=slug).first()
+        if not row:
+            return None
+        data = row.to_dict()
+        # JSON object keys are always strings in Postgres; convert back to int years
+        # to match config/organization.py's YEARLY_COUNT_DATES int-keyed dict shape.
+        if data.get('yearly_count_dates'):
+            data['yearly_count_dates'] = {
+                int(year): date_str for year, date_str in data['yearly_count_dates'].items()
+            }
+        return data
+
+    def get_all(self):
+        """Get all circles, ordered by slug."""
+        rows = self.db.query(Circle).order_by(Circle.slug).all()
+        results = []
+        for row in rows:
+            data = row.to_dict()
+            if data.get('yearly_count_dates'):
+                data['yearly_count_dates'] = {
+                    int(year): date_str for year, date_str in data['yearly_count_dates'].items()
+                }
+            results.append(data)
+        return results
+
+    def create(self, circle_data):
+        """Create a new circle. circle_data should match the Circle column names."""
+        now = datetime.now(timezone.utc)
+        row = Circle(
+            created_at=now,
+            updated_at=now,
+            **circle_data,
+        )
+        self.db.add(row)
+        self.db.commit()
+        return row.to_dict()
+
+    def update(self, slug, circle_data):
+        """Update an existing circle's config fields. Returns the updated dict,
+        or None if no such circle exists. slug itself is immutable - not settable
+        via circle_data (it's the primary key and the Host-header routing key)."""
+        row = self.db.query(Circle).filter_by(slug=slug).first()
+        if not row:
+            return None
+        for key, value in circle_data.items():
+            if key in ('slug', 'created_at'):
+                continue
+            setattr(row, key, value)
+        row.updated_at = datetime.now(timezone.utc)
+        self.db.commit()
+        return row.to_dict()
+
+
+class CircleAreaModel:
+    """Manage per-circle area definitions (replaces config/areas.py's static AREA_CONFIG,
+    which only ever described Vancouver's areas)."""
+
+    def __init__(self, db_session):
+        self.db = db_session
+
+    def get_areas_for_circle(self, circle_slug):
+        """Get all area definitions for a circle, naturally sorted by code."""
+        rows = self.db.query(CircleArea).filter_by(circle_slug=circle_slug).all()
+        return sorted((row.to_dict() for row in rows), key=lambda a: natural_sort_key(a['code']))
+
+    def get_area(self, circle_slug, code):
+        """Get a single area's definition, or None if it doesn't exist for this circle."""
+        row = self.db.query(CircleArea).filter_by(circle_slug=circle_slug, code=code.upper()).first()
+        return row.to_dict() if row else None
+
+    def add_area(self, circle_slug, code, name, description=None, difficulty=None, terrain=None):
+        """Add one area definition for a circle."""
+        row = CircleArea(
+            circle_slug=circle_slug,
+            code=code.upper(),
+            name=name,
+            description=description,
+            difficulty=difficulty,
+            terrain=terrain,
+        )
+        self.db.add(row)
+        self.db.commit()
+        return row.to_dict()
+
+    def update_area(self, circle_slug, code, name=None, description=None, difficulty=None, terrain=None):
+        """Update an existing area's label fields. Returns the updated dict, or
+        None if no such area exists for this circle."""
+        row = self.db.query(CircleArea).filter_by(circle_slug=circle_slug, code=code.upper()).first()
+        if not row:
+            return None
+        if name is not None:
+            row.name = name
+        if description is not None:
+            row.description = description
+        if difficulty is not None:
+            row.difficulty = difficulty
+        if terrain is not None:
+            row.terrain = terrain
+        self.db.commit()
+        return row.to_dict()
+
+    def upsert_from_kml(self, circle_slug, code, name, description, boundary_geojson, commit=True):
+        """Create or update one area's name/description/boundary from a KML import.
+        Deliberately leaves difficulty/terrain untouched on an existing row - a KML
+        placemark carries neither, and shouldn't clobber labels an admin already set
+        by hand via the manual add/update form.
+
+        commit=False lets a bulk-import caller (importing many areas from one file)
+        flush all its changes and commit once at the end, instead of committing - and
+        thus persisting - each area one at a time, which would leave a half-imported
+        circle if a later area in the same file failed."""
+        code = code.upper()
+        row = self.db.query(CircleArea).filter_by(circle_slug=circle_slug, code=code).first()
+        if row:
+            row.name = name
+            row.description = description
+            row.boundary_geojson = boundary_geojson
+        else:
+            row = CircleArea(
+                circle_slug=circle_slug, code=code, name=name, description=description,
+                boundary_geojson=boundary_geojson,
+            )
+            self.db.add(row)
+        if commit:
+            self.db.commit()
+        else:
+            self.db.flush()
+        return row.to_dict()
+
+    def get_boundary_data(self, circle_slug, circle=None):
+        """Area boundaries + map configuration for a circle, in the shape the
+        frontend map JS / /api/areas expect - replaces the old static
+        static/data/area_boundaries_<slug>.json file. Areas with no imported
+        boundary yet (label-only) are omitted from the map, not drawn as empty
+        shapes. `circle` may be passed in (a dict from CircleModel.get_by_slug)
+        to avoid a second query when the caller already has it."""
+        rows = self.db.query(CircleArea).filter_by(circle_slug=circle_slug).all()
+        areas = [
+            {
+                'letter_code': row.code,
+                'name': row.name,
+                'description': row.description or '',
+                'geometry': row.boundary_geojson,
+            }
+            for row in sorted(rows, key=lambda r: natural_sort_key(r.code))
+            if row.boundary_geojson
+        ]
+
+        if circle is None:
+            circle_row = self.db.query(Circle).filter_by(slug=circle_slug).first()
+            circle = circle_row.to_dict() if circle_row else None
+
+        map_config = calculate_map_center_and_bounds(areas)
+        if map_config is None:
+            if circle and circle.get('latitude') is not None and circle.get('longitude') is not None:
+                map_config = {'center': [circle['latitude'], circle['longitude']], 'bounds': None, 'zoom': 10}
+            else:
+                # Last-resort fallback (new circle, no areas imported yet, no lat/lng set).
+                map_config = {'center': [49.2827, -123.1207], 'bounds': None, 'zoom': 4}
+
+        boundaries = (circle.get('major_area_boundaries') if circle else None) or []
+
+        return {'areas': areas, 'map_config': map_config, 'boundaries': boundaries}
+
+
+class CircleAdminModel:
+    """Manage which emails are circle-scoped admins for a circle."""
+
+    def __init__(self, db_session):
+        self.db = db_session
+
+    def is_circle_admin(self, email, circle_slug):
+        """Check whether an email is a circle-admin for this specific circle."""
+        if not email or not circle_slug:
+            return False
+        email = email.lower().strip()
+        return self.db.query(CircleAdmin).filter_by(email=email, circle_slug=circle_slug).first() is not None
+
+    def get_admins_for_circle(self, circle_slug):
+        """Get all circle-admin rows for a circle, ordered by email."""
+        rows = self.db.query(CircleAdmin).filter_by(circle_slug=circle_slug).order_by(CircleAdmin.email).all()
+        return [row.to_dict() for row in rows]
+
+    def get_circles_for_email(self, email):
+        """Get every circle_slug this email is a circle-admin for (reverse of
+        get_admins_for_circle) - used to send a per-circle login link to a
+        multi-circle admin who requests a magic link from the landing host,
+        where there's no single circle to check against."""
+        if not email:
+            return []
+        email = email.lower().strip()
+        rows = self.db.query(CircleAdmin).filter_by(email=email).order_by(CircleAdmin.circle_slug).all()
+        return [row.circle_slug for row in rows]
+
+    def add_admin(self, email, circle_slug):
+        """Grant an email circle-admin access to a circle. Returns the row dict."""
+        email = email.lower().strip()
+        existing = self.db.query(CircleAdmin).filter_by(email=email, circle_slug=circle_slug).first()
+        if existing:
+            return existing.to_dict()
+        row = CircleAdmin(email=email, circle_slug=circle_slug, created_at=datetime.now(timezone.utc))
+        self.db.add(row)
+        self.db.commit()
+        return row.to_dict()
+
+    def remove_admin(self, email, circle_slug):
+        """Revoke an email's circle-admin access to a circle."""
+        email = email.lower().strip()
+        self.db.query(CircleAdmin).filter_by(email=email, circle_slug=circle_slug).delete()
+        self.db.commit()

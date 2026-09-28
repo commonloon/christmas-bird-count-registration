@@ -28,8 +28,7 @@ def is_test_environment():
     """Detect if running in test environment."""
     return (
         os.getenv('TEST_MODE', '').lower() == 'true' or
-        os.getenv('FLASK_ENV') == 'development' or
-        'test' in os.getenv('GOOGLE_CLOUD_PROJECT', '').lower()
+        os.getenv('FLASK_ENV') == 'development'
     )
 
 def get_admin_emails() -> list:

@@ -1,9 +1,10 @@
 # Basic Regression Test Without Authentication
 # Created by Claude AI on 2025-09-23
+# Updated by Claude AI on 2026-09-07 (Firestore -> Postgres)
 
 """
-Simple regression tests that verify basic functionality without requiring OAuth authentication.
-These tests verify the fixes we made to the single-table design work correctly.
+Simple regression tests that verify basic functionality without requiring
+authentication - run directly against the app's real Postgres session.
 """
 
 import pytest
@@ -16,7 +17,8 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
 from models.participant import ParticipantModel
-from config.database import get_firestore_client
+from config.database import get_db_session
+from tests.test_config import TEST_CIRCLE_SLUG
 
 
 class TestBasicSingleTableRegression:
@@ -24,14 +26,13 @@ class TestBasicSingleTableRegression:
 
     def test_database_connection(self):
         """Test that database connection works properly."""
-        db, database_id = get_firestore_client()
-        assert database_id == 'cbc-test'
+        db = get_db_session()
         assert db is not None
 
     def test_participant_model_basic_operations(self):
         """Test basic participant model operations work with single-table design."""
-        db, _ = get_firestore_client()
-        participant_model = ParticipantModel(db, datetime.now().year)
+        db = get_db_session()
+        participant_model = ParticipantModel(db, datetime.now().year, TEST_CIRCLE_SLUG)
 
         # Test getting all participants (should work even with empty database)
         participants = participant_model.get_all_participants()
@@ -43,8 +44,8 @@ class TestBasicSingleTableRegression:
 
     def test_delete_participant_method_signature(self):
         """Test that delete_participant method has correct signature (fixed bug)."""
-        db, _ = get_firestore_client()
-        participant_model = ParticipantModel(db, datetime.now().year)
+        db = get_db_session()
+        participant_model = ParticipantModel(db, datetime.now().year, TEST_CIRCLE_SLUG)
 
         # Test method exists and has correct signature
         assert hasattr(participant_model, 'delete_participant')
@@ -59,7 +60,7 @@ class TestBasicSingleTableRegression:
         expected_text_inputs = ['first_name', 'last_name', 'email', 'phone', 'phone2']
         expected_selects = ['skill_level', 'experience', 'preferred_area']
         expected_radio_buttons = ['regular', 'feeder']  # IDs for participation_type
-        expected_checkboxes = ['has_binoculars', 'spotting_scope', 'interested_in_leadership', 'interested_in_scribe']
+        expected_checkboxes = ['has_binoculars', 'spotting_scope', 'interested_in_leadership']
         expected_textarea = ['notes_to_organizers']
 
         # These should match the actual form structure (verified in validation script)
@@ -70,15 +71,15 @@ class TestBasicSingleTableRegression:
         assert len(expected_text_inputs) == 5
         assert len(expected_selects) == 3
         assert len(expected_radio_buttons) == 2
-        assert len(expected_checkboxes) == 4
+        assert len(expected_checkboxes) == 3
         assert len(expected_textarea) == 1
         assert 'None' in expected_experience_values
         assert 'Expert' in expected_skill_levels
 
     def test_single_table_leadership_integrity(self):
         """Test that single-table design maintains leadership data integrity."""
-        db, _ = get_firestore_client()
-        participant_model = ParticipantModel(db, datetime.now().year)
+        db = get_db_session()
+        participant_model = ParticipantModel(db, datetime.now().year, TEST_CIRCLE_SLUG)
 
         # Get all participants and all leaders
         all_participants = participant_model.get_all_participants()

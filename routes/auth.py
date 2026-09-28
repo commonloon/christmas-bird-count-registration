@@ -1,38 +1,65 @@
-from flask import Blueprint, session, request, redirect, url_for, flash
-from google.oauth2 import id_token
-from google.auth.transport import requests
+from flask import Blueprint, session, request, redirect, url_for, flash, render_template, g
 from functools import wraps
-import os
+from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse
+import hashlib
+import hmac
 import logging
+import secrets
 
 from config.admins import is_admin
+from config.database import get_db_session
+from config.link_scanners import matched_known_link_scanner
+from models.db import MagicLinkToken
 from models.participant import ParticipantModel
+from models.circle import CircleAdminModel, CircleModel
 from services.limiter import limiter
 from config.rate_limits import RATE_LIMITS, get_rate_limit_message
 
 # Import CSRF protection instance
-from app import csrf
+from app import csrf, circle_host, request_scheme
 
 auth_bp = Blueprint('auth', __name__)
 logger = logging.getLogger(__name__)
 
-# Google OAuth configuration
-GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '').strip()
-GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '').strip()
+MAGIC_LINK_EXPIRY_MINUTES = 15
 
 
-def get_user_role(email, db_client, year=None):
-    """Determine user role based on email address."""
+def get_user_role(email, db_session, circle_slug, year=None):
+    """Determine user role based on email address, scoped to the current circle.
+
+    Roles, most to least privileged:
+    - 'super_admin': global whitelist (config/admins.py) - full access to every
+      circle, plus the /bigbird/circles super-admin console.
+    - 'admin': a circle-admin for THIS circle only (circle_admins table). Reuses
+      the same role value 'admin' has always had, so require_admin's existing
+      per-route gating on /bigbird/* needs no changes - ParticipantModel etc.
+      already auto-scope by g.circle_slug, so this "just works" for isolation.
+    - 'leader': an area leader for THIS circle only.
+    - 'public': none of the above, or no circle context (e.g. the landing host).
+    """
     if not email:
         return 'public'
 
-    # Check admin status first
+    # Check super-admin status first - global, not circle-scoped
     if is_admin(email):
-        return 'admin'
+        return 'super_admin'
+
+    if circle_slug is None:
+        # No circle context (e.g. the cbc.birdcount.ca landing host) - only
+        # super-admins have anything to do there.
+        return 'public'
+
+    # Check circle-admin status
+    try:
+        if CircleAdminModel(db_session).is_circle_admin(email, circle_slug):
+            return 'admin'
+    except Exception as e:
+        logger.warning(f"Could not check circle-admin status for {email}: {e}")
 
     # Check area leader status
     try:
-        participant_model = ParticipantModel(db_client, year)
+        participant_model = ParticipantModel(db_session, year, circle_slug)
         if participant_model.is_area_leader(email):
             return 'leader'
     except Exception as e:
@@ -47,7 +74,6 @@ def require_auth(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_email' not in session:
-            # Force HTTPS in next URL for OAuth security
             next_url = request.url.replace('http://', 'https://')
             return redirect(url_for('auth.login', next=next_url))
         return f(*args, **kwargs)
@@ -56,18 +82,49 @@ def require_auth(f):
 
 
 def require_admin(f):
-    """Decorator to require admin privileges."""
+    """Decorator to require admin privileges (circle-admin or super-admin)."""
 
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_email' not in session:
             return redirect(url_for('auth.login', next=request.url))
 
-        if session.get('user_role') != 'admin':
-            flash('Admin access required.', 'error')
-            return redirect(url_for('main.index'))
+        user_role = session.get('user_role')
+        if user_role in ('admin', 'super_admin'):
+            return f(*args, **kwargs)
 
-        return f(*args, **kwargs)
+        if user_role == 'leader':
+            # Leaders sometimes land on an admin URL (bookmarked, or bounced back
+            # here after a magic-link login) - send them somewhere useful instead
+            # of a bare access-denied error.
+            return redirect(url_for('leader.dashboard'))
+
+        flash('Admin access required.', 'error')
+        return redirect(url_for('main.index'))
+
+    return decorated_function
+
+
+def require_super_admin(f):
+    """Decorator to require super-admin privileges (global, cross-circle)."""
+
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_email' not in session:
+            return redirect(url_for('auth.login', next=request.url))
+
+        if session.get('user_role') == 'super_admin':
+            return f(*args, **kwargs)
+
+        if session.get('user_role') == 'admin':
+            # A legitimate circle-admin, just not a super-admin - likely landed
+            # here from the wrong host rather than actually trying anything.
+            flash('This page is only for super-admins. If you administer a specific '
+                  'count circle, log in at that circle\'s own address instead '
+                  '(e.g. yourcircle.cbc.birdcount.ca).', 'error')
+        else:
+            flash('Super-admin access required.', 'error')
+        return redirect(url_for('main.index'))
 
     return decorated_function
 
@@ -81,7 +138,7 @@ def require_leader(f):
             return redirect(url_for('auth.login', next=request.url))
 
         user_role = session.get('user_role')
-        if user_role not in ['admin', 'leader']:
+        if user_role not in ('admin', 'super_admin', 'leader'):
             flash('Area leader access required.', 'error')
             return redirect(url_for('main.index'))
 
@@ -90,76 +147,257 @@ def require_leader(f):
     return decorated_function
 
 
-@auth_bp.route('/login')
+def _hash_token(raw_token: str) -> str:
+    return hashlib.sha256(raw_token.encode('utf-8')).hexdigest()
+
+
+def _safe_next(url):
+    """Restrict a post-login redirect target to this same site.
+
+    `next` round-trips through the emailed magic link as a plain, unsigned
+    query parameter - anyone can send a victim a real /auth/login link with
+    next=https://evil.example set, and once the victim requests and clicks
+    their own genuine magic link, the app would otherwise redirect their
+    freshly-authenticated browser straight to that external URL (an
+    unvalidated-redirect/open-redirect issue, independent of the token itself
+    ever being exposed).
+
+    Same-origin *absolute* URLs are allowed, not just relative paths - the
+    require_*_auth decorators below build next=request.url (e.g.
+    "https://thiscircle.birdcount.ca/bigbird/foo") so a user lands back on
+    the exact admin page they wanted after logging in.
+    """
+    if not url:
+        return '/'
+    url = url.strip()
+    # Normalize backslashes before parsing - some browsers treat a leading
+    # "/\" or "\\" like "//", so "/\evil.example" would otherwise slip past
+    # a naive startswith('/') check as a scheme-relative URL.
+    normalized = url.replace('\\', '/')
+    parsed = urlparse(normalized)
+    if parsed.scheme and parsed.scheme not in ('http', 'https'):
+        return '/'
+    if parsed.netloc and parsed.netloc != request.host:
+        return '/'
+    if not parsed.netloc and (not normalized.startswith('/') or normalized.startswith('//')):
+        return '/'
+    return url
+
+
+@auth_bp.route('/login', methods=['GET'])
 @limiter.limit(RATE_LIMITS['auth'])
 def login():
-    """Initiate Google OAuth login."""
-    # In a real implementation, this would redirect to Google OAuth
-    # For now, return a simple page with Google Sign-In button
-    from flask import render_template
-    return render_template('auth/login.html',
-                           google_client_id=GOOGLE_CLIENT_ID,
-                           next_url=request.args.get('next', '/'))
+    """Show the email-entry form to request a magic link."""
+    return render_template('auth/login.html', next_url=_safe_next(request.args.get('next')))
 
 
-@auth_bp.route('/oauth/callback', methods=['POST'])
-@csrf.exempt
+@auth_bp.route('/login', methods=['POST'])
 @limiter.limit(RATE_LIMITS['auth'], error_message=get_rate_limit_message('auth'))
-def oauth_callback():
-    """Handle Google OAuth callback."""
-    try:
-        # Get the ID token from the request
-        token = request.form.get('credential')
-        if not token:
-            flash('Authentication failed. Please try again.', 'error')
-            return redirect(url_for('main.index'))
+def request_magic_link():
+    """Handle a request for a magic login link.
 
-        # Verify the token
-        idinfo = id_token.verify_oauth2_token(
-            token, requests.Request(), GOOGLE_CLIENT_ID)
+    Always shows the same confirmation regardless of whether the email is a known
+    admin/leader, so this endpoint can't be used to probe which addresses have access.
+    """
+    email = (request.form.get('email') or '').strip().lower()
+    next_url = _safe_next(request.form.get('next'))
 
-        # Extract user information
-        email = idinfo.get('email')
-        name = idinfo.get('name')
-
-        if not email:
-            flash('Could not retrieve email from Google account.', 'error')
-            return redirect(url_for('main.index'))
-
-        # Determine user role
-        from google.cloud import firestore
-        from config.database import get_firestore_client
+    if email:
         try:
-            db_client, _ = get_firestore_client()
-            user_role = get_user_role(email, db_client)
-        except Exception as e:
-            logger.error(f"Database connection error: {e}")
-            # Default to public role if database unavailable
-            user_role = 'public'
+            db = get_db_session()
+            role = get_user_role(email, db, g.circle_slug)
 
-        # Store in session
+            from services.email_service import email_service
+
+            if role == 'public' and g.circle_slug is None:
+                # Landing host, not a super-admin - sessions are isolated per
+                # subdomain, so there's no single circle to log into here. If
+                # this email administers one or more circles, send a link for
+                # each, built explicitly for that circle's own subdomain
+                # (verify_url can't use _external=True here, since that would
+                # just rebuild the landing host's own URL).
+                circle_slugs = CircleAdminModel(db).get_circles_for_email(email)
+                if circle_slugs:
+                    circle_links = []
+                    for slug in circle_slugs:
+                        circle = CircleModel(db).get_by_slug(slug)
+                        if not circle:
+                            continue
+                        raw_token = secrets.token_urlsafe(32)
+                        db.add(MagicLinkToken(
+                            email=email,
+                            token_hash=_hash_token(raw_token),
+                            expires_at=datetime.now(timezone.utc) + timedelta(minutes=MAGIC_LINK_EXPIRY_MINUTES),
+                            created_at=datetime.now(timezone.utc),
+                        ))
+                        verify_path = url_for('auth.verify', token=raw_token, next='/')
+                        circle_links.append({
+                            'circle_name': circle['circle_name'],
+                            'verify_url': f"{request_scheme()}://{circle_host(slug, circle['is_cbc'])}{verify_path}",
+                        })
+                    db.commit()
+                    email_service.send_multi_circle_magic_link(email, circle_links)
+                    logger.info(f"Multi-circle magic link requested for {email} ({len(circle_links)} circles)")
+                else:
+                    logger.info(f"Magic link requested from landing host for {email} - no circles administered, not sent")
+            elif role in ('super_admin', 'admin', 'leader'):
+                raw_token = secrets.token_urlsafe(32)
+                token_record = MagicLinkToken(
+                    email=email,
+                    token_hash=_hash_token(raw_token),
+                    expires_at=datetime.now(timezone.utc) + timedelta(minutes=MAGIC_LINK_EXPIRY_MINUTES),
+                    created_at=datetime.now(timezone.utc),
+                )
+                db.add(token_record)
+                db.commit()
+
+                verify_url = url_for('auth.verify', token=raw_token, next=next_url, _external=True)
+
+                if g.circle_slug is None:
+                    # Only role == 'super_admin' can reach here with no circle
+                    # (get_user_role returns 'public' for admin/leader otherwise) -
+                    # no single circle's name belongs in this email (see
+                    # send_landing_host_magic_link's docstring).
+                    email_service.send_landing_host_magic_link(email, verify_url)
+                else:
+                    email_service.send_magic_link(email, verify_url)
+
+                logger.info(f"Magic link requested for {email} (role: {role})")
+            else:
+                logger.info(f"Magic link requested for non-admin/leader email {email} - not sent")
+        except Exception as e:
+            logger.error(f"Error processing magic link request: {e}")
+
+    return render_template('auth/login.html', link_sent=True, next_url=next_url)
+
+
+@auth_bp.route('/verify/<token>', methods=['GET', 'POST'])
+@limiter.limit(RATE_LIMITS['auth'])
+def verify(token):
+    """Verify a magic link token and log the user in.
+
+    GET renders a confirmation interstitial and does NOT consume the token -
+    email security gateways (Trend Micro Email Security, Microsoft Defender
+    for Office 365 Safe Links, and similar) fetch every link in an incoming
+    email server-side to scan it for phishing before/as the message is
+    delivered, which is otherwise indistinguishable from the recipient's own
+    click and burns the single-use token before they ever see it (confirmed
+    via production access logs - a scanner's GET, identifiable by a
+    urlprotect.trendmicro.com referer or a generic no-referer/outdated-UA
+    request, consistently arrives seconds before the real user's own click).
+    Only a POST - submitted by the interstitial page's "Continue signing in"
+    button - actually consumes the token and logs the user in.
+
+    That button requires a real click, not an auto-submitting script: an
+    earlier version auto-submitted the form on page load, on the assumption
+    that a plain HTTP fetch never runs JS. Production logs then showed a
+    birdscanada.org login (2026-09-12) still failing - that recipient's mail
+    security infrastructure (Microsoft-hosted IPs, consistent with Defender
+    for Office 365 Safe Links) fully renders linked pages including running
+    their JavaScript, so it executed the auto-submit script itself about a
+    second after fetching the page, burning the token roughly two minutes
+    before the recipient's own click. Requiring an actual button click closes
+    that gap, since link-scanners generally execute on-load scripts (for
+    passive analysis) but don't simulate real user clicks.
+
+    A POST whose Referer matches config/link_scanners.py's
+    KNOWN_LINK_SCANNERS is handled before any token/session logic: it gets
+    back bland, token-state-independent content and never reaches that logic
+    at all. This is deliberately NOT "log in as normal but don't mark the
+    token used" - Referer is a plain client-supplied header, unverifiable
+    proof of anything, so treating a match as "safe to log in" would let
+    anyone who later obtains a copy of an already-used token revive it just
+    by adding that one well-known header. Making the match instead incapable
+    of ever producing a session closes that off entirely: it doesn't matter
+    that the token is left unconsumed, since there is nothing on this path
+    to steal or replay.
+
+    This check does NOT apply to GET. It originally did (both methods), but
+    that broke real logins: a birdscanada.org user reported (2026-09-14)
+    being shown the scanner's bland page on their own click and never
+    reaching the interstitial at all. Trend Micro Email Security's URL
+    Protect is a click-through proxy, not just an async pre-fetcher - it
+    rewrites the link in the email, and BOTH its automated pre-scan and the
+    recipient's own real click route through urlprotect.trendmicro.com
+    before landing here, so the two are indistinguishable by Referer on GET.
+    That's fine to drop, since GET already never consumes the token
+    regardless of Referer - the click-only design above is what actually
+    protects it. A real user's subsequent POST (submitted by the
+    interstitial's own same-origin form) carries our own confirm-page URL as
+    Referer, not trendmicro.com, so gating POST on this Referer should never
+    affect a genuine login - it's a residual guard in case a scanner's
+    sandbox ever simulates the button click itself with the original Referer
+    preserved.
+    """
+    if request.method == 'POST':
+        scanner_name = matched_known_link_scanner(request.referrer)
+        if scanner_name:
+            logger.info(f"Known link-scanner POST ({scanner_name}) to /auth/verify - no session issued, token untouched")
+            return 'Form submitted.', 200
+
+    next_url = _safe_next(request.args.get('next') or request.form.get('next'))
+
+    try:
+        db = get_db_session()
+        token_hash = _hash_token(token)
+
+        record = db.query(MagicLinkToken).filter_by(token_hash=token_hash).first()
+
+        if not record:
+            flash('That login link is invalid. Please request a new one.', 'error')
+            return redirect(url_for('auth.login'))
+
+        if datetime.now(timezone.utc) > record.expires_at:
+            flash('That login link has expired. Please request a new one.', 'error')
+            return redirect(url_for('auth.login'))
+
+        if request.method == 'GET':
+            if record.used_at is not None:
+                flash('That login link has already been used. Please request a new one.', 'error')
+                return redirect(url_for('auth.login'))
+            return render_template('auth/verify_confirm.html', token=token, next_url=next_url)
+
+        # Atomically mark used (single-use). A plain read-then-write (check
+        # record.used_at, then set it) is a TOCTOU race: two near-simultaneous
+        # requests for the same token (double-click, or the link opened in two
+        # tabs) could both read used_at as None before either commits, and
+        # both would establish a session. This UPDATE re-checks used_at IS
+        # NULL as part of the same statement, under Postgres's row lock, so
+        # only one concurrent request can ever be the one that updates a row.
+        rows_updated = db.query(MagicLinkToken).filter_by(
+            id=record.id, used_at=None,
+        ).update({'used_at': datetime.now(timezone.utc)}, synchronize_session=False)
+        db.commit()
+
+        if rows_updated == 0:
+            flash('That login link has already been used. Please request a new one.', 'error')
+            return redirect(url_for('auth.login'))
+
+        email = record.email
+        user_role = get_user_role(email, db, g.circle_slug)
+
+        session.permanent = True
         session['user_email'] = email
-        session['user_name'] = name
+        session['user_name'] = email
         session['user_role'] = user_role
 
         logger.info(f"User {email} logged in with role: {user_role}")
 
-        # Redirect based on role and next parameter
-        next_url = request.form.get('next') or request.args.get('next') or session.pop('next_url', None)
+        if user_role == 'super_admin' and g.circle_slug is None and next_url == '/':
+            # Logged in from the landing host, where there's no circle context -
+            # the per-circle dashboard would silently default to Vancouver, which
+            # would be a confusing landing spot after logging in from cbc.birdcount.ca.
+            return redirect(url_for('admin.list_circles'))
 
-        if user_role == 'admin':
-            return redirect(next_url or url_for('admin.dashboard'))
+        if user_role in ('admin', 'super_admin'):
+            return redirect(next_url if next_url != '/' else url_for('admin.dashboard'))
         elif user_role == 'leader':
-            return redirect(next_url or url_for('leader.dashboard'))
+            return redirect(next_url if next_url != '/' else url_for('leader.dashboard'))
         else:
-            return redirect(next_url or url_for('main.index'))
+            return redirect(next_url)
 
-    except ValueError as e:
-        logger.error(f"OAuth token verification failed: {e}")
-        flash('Authentication failed. Please try again.', 'error')
-        return redirect(url_for('main.index'))
     except Exception as e:
-        logger.error(f"OAuth callback error: {e}")
+        logger.error(f"Magic link verification error: {e}")
         flash('Login error. Please try again.', 'error')
         return redirect(url_for('main.index'))
 
@@ -176,7 +414,7 @@ def logout():
 
 def init_auth(app):
     """Initialize authentication for the Flask app."""
-    from datetime import timedelta
+    import os
 
     # Set up session configuration
     app.config['SESSION_TYPE'] = 'filesystem'
@@ -184,20 +422,28 @@ def init_auth(app):
     app.config['SESSION_PERMANENT'] = False
     app.config['SESSION_USE_SIGNER'] = True
     app.config['SESSION_KEY_PREFIX'] = 'cbc:'
+    # SESSION_TYPE/SESSION_USE_SIGNER/SESSION_KEY_PREFIX above only take effect with
+    # Flask-Session installed and initialized (it isn't - not in requirements.txt,
+    # no Session(app) call anywhere). Flask's actual default is in force: session
+    # data lives entirely in a signed cookie, no server-side store. Left as-is
+    # rather than removed, since installing Flask-Session properly is a separate
+    # decision (would also give real cross-request revocation for free).
 
     # Session cookie security attributes (CRITICAL for XSS/CSRF protection)
     app.config['SESSION_COOKIE_HTTPONLY'] = True      # Prevent JavaScript access to session cookie
-    app.config['SESSION_COOKIE_SECURE'] = True        # Only send cookie over HTTPS
-    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'     # Prevent CSRF while allowing OAuth redirects
+    # Only send cookie over HTTPS - defaults on (safe for FullHost/prod). Local dev over
+    # plain http://localhost needs this off, or the cookie never round-trips and every
+    # form submission fails CSRF ("the session token is missing") since Flask-WTF stores
+    # its token in the same session. Opt out explicitly via .env, never flip the default.
+    app.config['SESSION_COOKIE_SECURE'] = os.environ.get('SESSION_COOKIE_SECURE', 'true').lower() != 'false'
+    app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'     # Prevent CSRF while allowing magic-link redirects
 
-    # Session timeout (security best practice for admin sessions)
-    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=2)
-
-    # Ensure Google OAuth credentials are available
-    if not GOOGLE_CLIENT_ID:
-        logger.warning("GOOGLE_CLIENT_ID not set - OAuth will not work")
-    if not GOOGLE_CLIENT_SECRET:
-        logger.warning("GOOGLE_CLIENT_SECRET not set - OAuth will not work")
+    # Session lifetime. Only takes effect on sessions marked permanent (see
+    # session.permanent = True in verify() below) - previously set here but dead,
+    # since nothing set that flag and SESSION_PERMANENT defaults False, so every
+    # session was actually a non-persistent browser-session cookie regardless of
+    # this value.
+    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 
 
 def get_current_user():
@@ -207,6 +453,7 @@ def get_current_user():
         'name': session.get('user_name'),
         'role': session.get('user_role', 'public'),
         'is_authenticated': 'user_email' in session,
-        'is_admin': session.get('user_role') == 'admin',
-        'is_leader': session.get('user_role') in ['admin', 'leader']
+        'is_admin': session.get('user_role') in ('admin', 'super_admin'),
+        'is_super_admin': session.get('user_role') == 'super_admin',
+        'is_leader': session.get('user_role') in ['admin', 'super_admin', 'leader']
     }

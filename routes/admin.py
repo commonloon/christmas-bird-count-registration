@@ -1,36 +1,46 @@
 # Updated by Claude AI on 2025-12-18
-from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response, g, current_app
-from google.cloud import firestore
-from config.database import get_firestore_client
+from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response, g, current_app, session
+from config.database import get_db_session
 from config.email_settings import is_test_server
 from models.participant import ParticipantModel
 from models.removal_log import RemovalLogModel
 from models.withdrawal_log import WithdrawalLogModel
 from models.area_signup_type import AreaSignupTypeModel
 from config.areas import get_area_info, get_all_areas
-from config.organization import get_registration_status
+from config.organization import get_registration_status, get_organization_variables
 from models.reassignment_log import ReassignmentLogModel
 from config.fields import (
     normalize_participant_record, get_participant_csv_fields,
     get_participant_field_default, get_participant_display_name
 )
 from config.admins import get_admin_emails
-from routes.auth import require_admin, get_current_user
+from routes.auth import require_admin, require_super_admin, get_current_user
+from models.circle import CircleModel, CircleAreaModel, CircleAdminModel
+from models.email_content import EmailContentModel
+from config.email_content_blocks import get_email_types, get_blocks
+from services.email_content_service import extract_placeholders
+from services.kml_import import (
+    parse_kml_string, parse_kml_boundary_lines, filter_main_areas, calculate_map_center_and_bounds, KmlParseError,
+)
 from services.email_service import email_service
 from services.ip_blocker import IPBlockerService
 from test.email_generator import (
     generate_team_update_emails,
     generate_weekly_summary_emails,
-    generate_admin_digest_email
+    generate_admin_digest_email,
+    build_team_update_preview,
+    build_weekly_summary_preview,
+    build_admin_digest_preview,
 )
 from services.security import (
-    sanitize_name, sanitize_email, sanitize_phone, sanitize_notes,
-    validate_area_code, validate_experience, validate_email_format, is_suspicious_input, log_security_event
+    sanitize_name, sanitize_email, sanitize_phone, sanitize_notes, sanitize_text_input,
+    sanitize_email_content, validate_area_code, validate_experience, validate_email_format,
+    is_suspicious_input, log_security_event
 )
 from services.csv_security import escape_csv_formula
 from services.limiter import limiter
 from config.rate_limits import RATE_LIMITS, get_rate_limit_message
-from datetime import datetime
+from datetime import datetime, timezone
 import csv
 import logging
 import os
@@ -39,14 +49,64 @@ from io import StringIO
 admin_bp = Blueprint('admin', __name__)
 
 
+# Endpoints that make sense with no circle context (they take an explicit
+# slug, or manage the cross-circle circle list itself) - everything else in
+# this blueprint implicitly acts on g.circle_slug, which is meaningless on
+# the landing host (see app.py's LANDING_HOST branch). Also imported directly by
+# app.py's resolve_circle() so these same routes work from ANY unresolvable host
+# (a raw IP, localhost, a typo) too, not just the landing host - they don't need
+# a resolved circle at all, just the explicit slug in their own URL.
+CIRCLE_CONSOLE_ENDPOINTS = {
+    'admin.list_circles', 'admin.new_circle', 'admin.edit_circle',
+    'admin.circle_admins', 'admin.circle_areas_manage', 'admin.circle_areas_edit', 'admin.circle_areas_import_kml',
+    'admin.circle_logo_upload', 'admin.circle_logo_delete',
+    'admin.email_content_defaults', 'admin.circle_email_content', 'admin.circle_email_content_preview',
+}
+
+
 @admin_bp.before_request
 def load_db():
-    """Load database client and check admin access."""
-    try:
-        g.db, _ = get_firestore_client()
-    except Exception as e:
-        g.db = None
-        flash('Database unavailable.', 'error')
+    """Load database session and check admin access."""
+    g.db = get_db_session()
+
+    if getattr(g, 'is_landing_host', False) and request.endpoint not in CIRCLE_CONSOLE_ENDPOINTS:
+        # No circle context here (g.circle_slug is None on the landing host) - every
+        # other /bigbird/* route implicitly acts on g.circle_slug, which would now
+        # raise (see models/db.py's resolve_default_circle_slug()) rather than the
+        # old silent Vancouver fallback. The circles console's own
+        # require_super_admin/require_admin decorators still gate access after this
+        # redirect - this only redirects, it doesn't authorize.
+        return redirect(url_for('admin.list_circles'))
+
+
+def _is_historical_year(year):
+    """True if year is before the current calendar year - CLAUDE.md documents
+    historical years as read-only, but until now that was UI-enforced only
+    (hidden/disabled controls) with no corresponding server-side check on any
+    write route - a crafted request with an arbitrary `year` field could
+    mutate historical data. Every write route below that takes `year` from
+    the request must check this before touching the database."""
+    return year < datetime.now().year
+
+
+def _reject_if_historical_year_form(selected_year, redirect_endpoint):
+    """For classic form-POST routes: flash + redirect back to the given
+    endpoint (with the same year preserved, so the admin lands back on the
+    historical view they were on). Returns a response to return immediately
+    if the year is historical, else None."""
+    if _is_historical_year(selected_year):
+        flash('This year is historical and read-only - no changes can be saved.', 'error')
+        return redirect(url_for(redirect_endpoint, year=selected_year))
+    return None
+
+
+def _reject_if_historical_year_json(selected_year):
+    """For JSON API routes. Returns a response to return immediately if the
+    year is historical, else None - matches this file's existing
+    {'success': False, 'message': ...} JSON error shape."""
+    if _is_historical_year(selected_year):
+        return jsonify({'success': False, 'message': 'This year is historical and read-only.'})
+    return None
 
 
 @admin_bp.route('/')
@@ -97,7 +157,8 @@ def dashboard():
                            total_assigned=total_assigned,
                            is_test_server=is_test_server(),
                            current_user=get_current_user(),
-                           registration_status=reg_status)
+                           registration_status=reg_status,
+                           test_recipient=get_organization_variables()['test_recipient'])
 
 
 @admin_bp.route('/recent-registrations')
@@ -207,7 +268,7 @@ def participants():
     all_participants = participant_model.get_all_participants()
     all_leaders = participant_model.get_leaders()
 
-    # Filter out UNASSIGNED participants - they have their own dedicated interface at /admin/unassigned
+    # Filter out UNASSIGNED participants - they have their own dedicated interface at /bigbird/unassigned
     assigned_participants = [p for p in all_participants if p.get('preferred_area') != 'UNASSIGNED']
 
     # Normalize participant data to ensure all fields are present
@@ -241,7 +302,6 @@ def participants():
                 'has_binoculars': False,
                 'spotting_scope': False,
                 'interested_in_leadership': True,  # Assumed for leaders
-                'interested_in_scribe': False,
                 'notes_to_organizers': leader.get('notes', ''),
                 'is_leader': True,
                 'assigned_area_leader': None,
@@ -270,7 +330,7 @@ def participants():
     # Define which fields to display in the table (subset of all fields for readability)
     display_fields = ['first_name', 'last_name', 'email', 'phone', 'phone2', 'skill_level',
                      'experience', 'participation_type', 'has_binoculars', 'spotting_scope',
-                     'interested_in_leadership', 'interested_in_scribe', 'notes_to_organizers', 'created_at']
+                     'interested_in_leadership', 'notes_to_organizers', 'created_at']
 
     return render_template('admin/participants.html',
                            participants=combined_participants,
@@ -320,7 +380,11 @@ def assign_participant():
     participant_id = request.form.get('participant_id', '').strip()
     area_code = request.form.get('area_code', '').strip().upper()
     selected_year = int(request.form.get('year', datetime.now().year))
-    
+
+    denied = _reject_if_historical_year_form(selected_year, 'admin.unassigned')
+    if denied:
+        return denied
+
     # Security checks
     user = get_current_user()
     if is_suspicious_input(participant_id) or is_suspicious_input(area_code):
@@ -470,7 +534,11 @@ def add_leader():
         return redirect(url_for('admin.leaders'))
 
     selected_year = int(request.form.get('year', datetime.now().year))
-    
+
+    denied = _reject_if_historical_year_form(selected_year, 'admin.leaders')
+    if denied:
+        return denied
+
     # Get and sanitize form data
     first_name = sanitize_name(request.form.get('first_name', ''))
     last_name = sanitize_name(request.form.get('last_name', ''))
@@ -522,7 +590,6 @@ def add_leader():
     experience = request.form.get('experience', '3+ counts').strip()
     has_binoculars = request.form.get('has_binoculars') == 'on'
     spotting_scope = request.form.get('spotting_scope') == 'on'
-    interested_in_scribe = request.form.get('interested_in_scribe') == 'on'
 
     # Validate skill level
     valid_skill_levels = ['Newbie', 'Beginner', 'Intermediate', 'Expert']
@@ -560,7 +627,6 @@ def add_leader():
             'experience': experience,
             'has_binoculars': has_binoculars,
             'spotting_scope': spotting_scope,
-            'interested_in_scribe': interested_in_scribe,
             'assigned_by': user['email'],
             'assigned_at': datetime.now(),
             'active': True,
@@ -594,6 +660,10 @@ def assign_leader():
     participant_id = request.form.get('participant_id')
     area_code = request.form.get('area_code', '').strip().upper()
     selected_year = int(request.form.get('year', datetime.now().year))
+
+    denied = _reject_if_historical_year_form(selected_year, 'admin.leaders')
+    if denied:
+        return denied
 
     # Validate required fields
     if not participant_id or not area_code:
@@ -649,6 +719,11 @@ def delete_participant(participant_id):
         return redirect(url_for('admin.participants'))
 
     selected_year = int(request.form.get('year', datetime.now().year))
+
+    denied = _reject_if_historical_year_form(selected_year, 'admin.participants')
+    if denied:
+        return denied
+
     participant_model = ParticipantModel(g.db, selected_year)
     removal_model = RemovalLogModel(g.db, selected_year)
     user = get_current_user()
@@ -665,35 +740,47 @@ def delete_participant(participant_id):
 
     # Check if participant is also a leader (needs synchronization)
     is_leader = participant.get('is_leader', False)
+    first_name = participant.get('first_name', '')
+    last_name = participant.get('last_name', '')
+    email = participant.get('email', '')
 
-    # Delete participant
-    if participant_model.delete_participant(participant_id):
-        # Log the removal
+    # Delete + log_removal + leader-deactivation as one transaction, not three
+    # separately-committed steps - a crash partway through must not leave a
+    # deleted participant with no removal-log entry, or an orphaned
+    # is_leader=True row for a person who no longer exists (CLAUDE.md's
+    # bidirectional-synchronization requirement). Any failure here rolls back
+    # everything, including the delete itself - see the individual model
+    # methods' commit=False docstrings.
+    leader_cleanup_skipped = is_leader and not (first_name and last_name and email)
+    try:
+        if not participant_model.delete_participant(participant_id, commit=False):
+            raise RuntimeError(f'delete_participant({participant_id}) returned False')
+
         removal_model.log_removal(
             participant_name=participant_name,
             area_code=area_code,
             removed_by=user['email'],
             reason=reason,
-            participant_email=participant.get('email', '')
+            participant_email=email,
+            commit=False,
         )
 
-        # If participant was also a leader, deactivate corresponding leader records
-        if is_leader:
-            first_name = participant.get('first_name', '')
-            last_name = participant.get('last_name', '')
-            email = participant.get('email', '')
+        if is_leader and not leader_cleanup_skipped:
+            if not participant_model.deactivate_leaders_by_identity(
+                    first_name, last_name, email, user['email'], commit=False):
+                raise RuntimeError(f'deactivate_leaders_by_identity failed for {first_name} {last_name}')
 
-            if first_name and last_name and email:
-                if participant_model.deactivate_leaders_by_identity(first_name, last_name, email, user['email']):
-                    flash(f'Participant {participant_name} and corresponding leader records removed successfully.', 'success')
-                else:
-                    flash(f'Participant {participant_name} removed, but failed to deactivate leader records. Please check leader management.', 'warning')
-            else:
-                flash(f'Participant {participant_name} removed, but leader cleanup skipped due to missing identity information.', 'warning')
-        else:
-            flash(f'Participant {participant_name} removed successfully.', 'success')
+        g.db.commit()
+    except Exception as e:
+        g.db.rollback()
+        logging.error(f"Error removing participant {participant_id}: {e}")
+        flash('Failed to remove participant - no changes were made.', 'error')
+        return redirect(url_for('admin.participants', year=selected_year))
+
+    if leader_cleanup_skipped:
+        flash(f'Participant {participant_name} removed, but leader cleanup skipped due to missing identity information.', 'warning')
     else:
-        flash('Failed to remove participant.', 'error')
+        flash(f'Participant {participant_name} removed successfully.', 'success')
 
     return redirect(url_for('admin.participants', year=selected_year))
 
@@ -707,6 +794,11 @@ def withdraw_participant(participant_id):
         return redirect(url_for('admin.participants'))
 
     selected_year = int(request.form.get('year', datetime.now().year))
+
+    denied = _reject_if_historical_year_form(selected_year, 'admin.participants')
+    if denied:
+        return denied
+
     participant_model = ParticipantModel(g.db, selected_year)
     withdrawal_log_model = WithdrawalLogModel(g.db, selected_year)
     user = get_current_user()
@@ -721,36 +813,47 @@ def withdraw_participant(participant_id):
     area_code = participant.get('preferred_area', 'UNASSIGNED')
     withdrawal_reason = request.form.get('reason', 'Withdrawn by administrator')
 
-    # Withdraw participant
-    if participant_model.withdraw_participant(participant_id):
-        # Log the withdrawal
-        if withdrawal_log_model.log_withdrawal(
+    # Withdraw + log_withdrawal as one transaction (the participant-status/
+    # leadership-removal part was already atomic - both on the same row, one
+    # commit - only the separate log entry wasn't). Email send stays outside
+    # this transaction and its own try/except on purpose: a failed send
+    # shouldn't roll back a withdrawal that otherwise succeeded.
+    try:
+        if not participant_model.withdraw_participant(participant_id, commit=False):
+            raise RuntimeError(f'withdraw_participant({participant_id}) returned False')
+
+        if not withdrawal_log_model.log_withdrawal(
             participant_id=participant_id,
             first_name=participant.get('first_name', ''),
             last_name=participant.get('last_name', ''),
             email=participant.get('email', ''),
             area_code=area_code,
             withdrawal_reason=withdrawal_reason,
-            recorded_by=user['email']
+            recorded_by=user['email'],
+            commit=False,
         ):
-            # Send withdrawal confirmation email to participant
-            try:
-                from services.email_service import email_service
-                email_service.send_withdrawal_confirmation(
-                    participant_email=participant.get('email', ''),
-                    first_name=participant.get('first_name', ''),
-                    last_name=participant.get('last_name', ''),
-                    withdrawal_reason=withdrawal_reason
-                )
-            except Exception as e:
-                logger.error(f"Failed to send withdrawal confirmation email: {e}")
+            raise RuntimeError(f'log_withdrawal failed for participant {participant_id}')
 
-            flash(f'Participant {participant_name} has been withdrawn.', 'success')
-        else:
-            flash(f'Participant {participant_name} withdrawn but failed to log withdrawal. Please review.', 'warning')
-    else:
-        flash('Failed to withdraw participant.', 'error')
+        g.db.commit()
+    except Exception as e:
+        g.db.rollback()
+        logger.error(f"Error withdrawing participant {participant_id}: {e}")
+        flash('Failed to withdraw participant - no changes were made.', 'error')
+        return redirect(url_for('admin.participants', year=selected_year))
 
+    # Send withdrawal confirmation email to participant
+    try:
+        from services.email_service import email_service
+        email_service.send_withdrawal_confirmation(
+            participant_email=participant.get('email', ''),
+            first_name=participant.get('first_name', ''),
+            last_name=participant.get('last_name', ''),
+            withdrawal_reason=withdrawal_reason
+        )
+    except Exception as e:
+        logger.error(f"Failed to send withdrawal confirmation email: {e}")
+
+    flash(f'Participant {participant_name} has been withdrawn.', 'success')
     return redirect(url_for('admin.participants', year=selected_year))
 
 
@@ -763,6 +866,11 @@ def reactivate_participant(participant_id):
         return redirect(url_for('admin.participants'))
 
     selected_year = int(request.form.get('year', datetime.now().year))
+
+    denied = _reject_if_historical_year_form(selected_year, 'admin.participants')
+    if denied:
+        return denied
+
     participant_model = ParticipantModel(g.db, selected_year)
     withdrawal_log_model = WithdrawalLogModel(g.db, selected_year)
     user = get_current_user()
@@ -781,23 +889,30 @@ def reactivate_participant(participant_id):
         flash(f'Participant {participant_name} is not withdrawn.', 'warning')
         return redirect(url_for('admin.participants', year=selected_year))
 
-    # Reactivate participant
-    if participant_model.reactivate_participant(participant_id):
-        # Log the reactivation
-        if withdrawal_log_model.log_reactivation(
+    # Reactivate + log_reactivation as one transaction.
+    try:
+        if not participant_model.reactivate_participant(participant_id, commit=False):
+            raise RuntimeError(f'reactivate_participant({participant_id}) returned False')
+
+        if not withdrawal_log_model.log_reactivation(
             participant_id=participant_id,
             first_name=participant.get('first_name', ''),
             last_name=participant.get('last_name', ''),
             email=participant.get('email', ''),
             area_code=area_code,
-            recorded_by=user['email']
+            recorded_by=user['email'],
+            commit=False,
         ):
-            flash(f'Participant {participant_name} has been reactivated.', 'success')
-        else:
-            flash(f'Participant {participant_name} reactivated but failed to log reactivation. Please review.', 'warning')
-    else:
-        flash('Failed to reactivate participant.', 'error')
+            raise RuntimeError(f'log_reactivation failed for participant {participant_id}')
 
+        g.db.commit()
+    except Exception as e:
+        g.db.rollback()
+        logging.error(f"Error reactivating participant {participant_id}: {e}")
+        flash('Failed to reactivate participant - no changes were made.', 'error')
+        return redirect(url_for('admin.participants', year=selected_year))
+
+    flash(f'Participant {participant_name} has been reactivated.', 'success')
     return redirect(url_for('admin.participants', year=selected_year))
 
 
@@ -911,7 +1026,11 @@ def edit_leader():
         phone = sanitize_phone(data.get('phone', ''))
         phone2 = sanitize_phone(data.get('phone2', ''))
         selected_year = int(data.get('year', datetime.now().year))
-        
+
+        denied = _reject_if_historical_year_json(selected_year)
+        if denied:
+            return denied
+
         # Security checks
         user = get_current_user()
         all_text_inputs = [first_name, last_name, phone, phone2]
@@ -978,7 +1097,7 @@ def edit_leader():
             'email': email,
             'phone': phone,
             'phone2': phone2,
-            'updated_at': datetime.now()
+            'updated_at': datetime.now(timezone.utc)
         }
 
         if not participant_model.update_participant(leader_id, updates):
@@ -1007,6 +1126,10 @@ def delete_leader():
 
         leader_id = data.get('leader_id')
         selected_year = int(data.get('year', datetime.now().year))
+
+        denied = _reject_if_historical_year_json(selected_year)
+        if denied:
+            return denied
 
         if not leader_id:
             return jsonify({'success': False, 'message': 'Leader ID is required'})
@@ -1061,9 +1184,12 @@ def edit_participant():
         has_binoculars = bool(data.get('has_binoculars', False))
         spotting_scope = bool(data.get('spotting_scope', False))
         interested_in_leadership = bool(data.get('interested_in_leadership', False))
-        interested_in_scribe = bool(data.get('interested_in_scribe', False))
         preferred_area = data.get('preferred_area', '').strip().upper() if data.get('preferred_area') else None
         selected_year = int(data.get('year', datetime.now().year))
+
+        denied = _reject_if_historical_year_json(selected_year)
+        if denied:
+            return denied
 
         # Security checks
         user = get_current_user()
@@ -1120,7 +1246,7 @@ def edit_participant():
             'first_name': first_name,
             'last_name': last_name,
             'email': email.lower(),
-            'updated_at': datetime.now()
+            'updated_at': datetime.now(timezone.utc)
         }
 
         # Only update these fields if they are explicitly provided in the request
@@ -1140,8 +1266,6 @@ def edit_participant():
             updates['spotting_scope'] = spotting_scope
         if 'interested_in_leadership' in data:
             updates['interested_in_leadership'] = interested_in_leadership
-        if 'interested_in_scribe' in data:
-            updates['interested_in_scribe'] = interested_in_scribe
         # Track if area changed for reassignment logging
         area_changed = False
         old_area = None
@@ -1154,7 +1278,7 @@ def edit_participant():
                 updates['is_leader'] = False
                 updates['assigned_area_leader'] = None
                 updates['leadership_removed_by'] = user['email']
-                updates['leadership_removed_at'] = datetime.now()
+                updates['leadership_removed_at'] = datetime.now(timezone.utc)
 
         if not participant_model.update_participant(participant_id, updates):
             return jsonify({'success': False, 'message': 'Failed to update participant'})
@@ -1198,8 +1322,8 @@ def register_test_email_routes():
             return jsonify({'error': 'Test triggers only available on test server'}), 403
         
         try:
-            # Generate twice-daily team updates for all areas with leaders
-            results = generate_team_update_emails(current_app)
+            # Generate twice-daily team updates for all areas with leaders, for this admin's own circle
+            results = generate_team_update_emails(current_app, g.circle_slug)
             
             message = f"Team update emails: {results['emails_sent']} sent, {results['areas_processed']} areas processed"
             if results['errors']:
@@ -1227,8 +1351,8 @@ def register_test_email_routes():
             return jsonify({'error': 'Test triggers only available on test server'}), 403
         
         try:
-            # Generate weekly summaries for all areas with leaders
-            results = generate_weekly_summary_emails(current_app)
+            # Generate weekly summaries for all areas with leaders, for this admin's own circle
+            results = generate_weekly_summary_emails(current_app, g.circle_slug)
             
             message = f"Weekly summary emails: {results['emails_sent']} sent, {results['areas_processed']} areas processed"
             if results['errors']:
@@ -1256,8 +1380,8 @@ def register_test_email_routes():
             return jsonify({'error': 'Test triggers only available on test server'}), 403
         
         try:
-            # Generate admin digest
-            results = generate_admin_digest_email(current_app)
+            # Generate admin digest for this admin's own circle
+            results = generate_admin_digest_email(current_app, g.circle_slug)
             
             if results['unassigned_count'] == 0:
                 message = "Admin digest: No unassigned participants found"
@@ -1375,7 +1499,7 @@ def blocked_ips():
     blocks = blocker.get_all_blocks(include_expired=False)
     stats = blocker.get_block_stats()
 
-    return render_template('admin/blocked_ips.html', blocks=blocks, stats=stats)
+    return render_template('admin/blocked_ips.html', blocks=blocks, stats=stats, current_user=get_current_user())
 
 
 @admin_bp.route('/blocked-ips/<ip_address>/unblock', methods=['POST'])
@@ -1402,6 +1526,613 @@ def cleanup_blocks():
     flash(f'Cleaned up {count} expired blocks.', 'success')
 
     return redirect(url_for('admin.blocked_ips'))
+
+
+CIRCLE_SLUG_PATTERN_MESSAGE = 'Slug must be lowercase letters, numbers, and hyphens only.'
+
+
+def _valid_circle_slug(slug):
+    import re as _re
+    return bool(_re.match(r'^[a-z0-9-]+$', slug or ''))
+
+
+def _from_email_domain_allowed(email):
+    """Check a proposed from_email's domain against the code-level allowlist
+    (config/email_settings.py's ALLOWED_FROM_EMAIL_DOMAINS) - deliberately not
+    admin-editable through any form, since it controls what this site's
+    outgoing mail can claim to be sent from."""
+    from config.email_settings import ALLOWED_FROM_EMAIL_DOMAINS
+    if not email or '@' not in email:
+        return False
+    domain = email.rsplit('@', 1)[1].lower()
+    return domain in ALLOWED_FROM_EMAIL_DOMAINS
+
+
+def _can_manage_circle(slug):
+    """True if the current session may edit this circle's own config/areas -
+    either a super-admin (any circle) or a circle-admin for THIS circle only."""
+    user_role = session.get('user_role')
+    if user_role == 'super_admin':
+        return True
+    return user_role == 'admin' and g.circle_slug == slug
+
+
+# Circle-config fields a circle-admin may view but never change - test_recipient
+# controls where TEST_MODE email actually lands (a circle-admin picking their own
+# inbox could hide real recipient-facing bugs), latitude/longitude place this
+# circle's pin on the cross-circle landing map (not this circle's own concern),
+# and from_email is constrained to ALLOWED_FROM_EMAIL_DOMAINS platform-wide - a
+# circle-admin shouldn't be choosing/changing what domain the app sends mail from.
+SUPER_ADMIN_ONLY_CIRCLE_FIELDS = {'test_recipient', 'latitude', 'longitude', 'from_email'}
+
+
+def _require_circle_manage_access(slug):
+    """Returns a redirect response if access should be denied, else None."""
+    if 'user_email' not in session:
+        return redirect(url_for('auth.login', next=request.url))
+    if not _can_manage_circle(slug):
+        flash('You do not have permission to manage this circle.', 'error')
+        return redirect(url_for('main.index'))
+    return None
+
+
+def _circle_form_data(form):
+    """Extract and sanitize circle config fields from a submitted form."""
+    return {
+        'circle_name': sanitize_text_input(form.get('circle_name', ''), max_length=200),
+        'name': sanitize_text_input(form.get('name', ''), max_length=200),
+        'website': sanitize_text_input(form.get('website', ''), max_length=500),
+        'contact': sanitize_email(form.get('contact', '')),
+        'count_contact': sanitize_email(form.get('count_contact', '')),
+        'count_event_name': sanitize_text_input(form.get('count_event_name', ''), max_length=200),
+        'count_info_url': sanitize_text_input(form.get('count_info_url', ''), max_length=500),
+        'from_email': sanitize_email(form.get('from_email', '')),
+        # logo_path deliberately not settable here - a free-text server path
+        # isn't sound UX or particularly safe; a real upload feature (storing
+        # image bytes in the DB, not the app server's filesystem - see this
+        # session's reasoning for area boundaries) is a scoped follow-up.
+        'test_recipient': sanitize_email(form.get('test_recipient', '')),
+        'display_timezone': sanitize_text_input(form.get('display_timezone', 'America/Vancouver'), max_length=100),
+        'is_cbc': form.get('is_cbc') == 'on',
+        'count_experience_label': sanitize_text_input(form.get('count_experience_label', ''), max_length=200),
+        'feeder_counter_label': sanitize_text_input(form.get('feeder_counter_label', ''), max_length=200),
+        'notes_placeholder_example': sanitize_notes(form.get('notes_placeholder_example', '')),
+        'registration_opens_months': int(form.get('registration_opens_months') or 4),
+        'registration_closes_days': int(form.get('registration_closes_days') or 1),
+        'latitude': float(form['latitude']) if form.get('latitude') else None,
+        'longitude': float(form['longitude']) if form.get('longitude') else None,
+    }
+
+
+@admin_bp.route('/circles')
+@require_super_admin
+def list_circles():
+    """Super-admin console: list all count circles."""
+    circles = CircleModel(g.db).get_all()
+    return render_template('admin/circles.html', circles=circles, current_user=get_current_user())
+
+
+@admin_bp.route('/circles/new', methods=['GET', 'POST'])
+@require_super_admin
+def new_circle():
+    """Super-admin console: create a new count circle."""
+    from config.email_settings import ALLOWED_FROM_EMAIL_DOMAINS
+    import pytz
+
+    if request.method == 'GET':
+        return render_template('admin/circle_form.html', circle=None, form_data=None, field_errors=None,
+                                current_user=get_current_user(), timezones=pytz.all_timezones,
+                                allowed_from_email_domains=ALLOWED_FROM_EMAIL_DOMAINS)
+
+    slug = sanitize_text_input(request.form.get('slug', ''), max_length=50).lower()
+    data = _circle_form_data(request.form)
+    data['slug'] = slug
+    count_date = request.form.get('count_date', '').strip()
+    data['yearly_count_dates'] = {str(datetime.now().year): count_date} if count_date else {}
+
+    field_errors = {}
+    if not _valid_circle_slug(slug):
+        field_errors['slug'] = f'Invalid slug: {CIRCLE_SLUG_PATTERN_MESSAGE}'
+    elif CircleModel(g.db).get_by_slug(slug):
+        field_errors['slug'] = f'A circle with slug "{slug}" already exists.'
+
+    if not _from_email_domain_allowed(data['from_email']):
+        field_errors['from_email'] = f'Must be on one of these domains: {", ".join(ALLOWED_FROM_EMAIL_DOMAINS)}'
+
+    if field_errors:
+        for message in field_errors.values():
+            flash(message, 'error')
+        return render_template('admin/circle_form.html', circle=None,
+                                form_data={**data, 'count_date': count_date}, field_errors=field_errors,
+                                current_user=get_current_user(), timezones=pytz.all_timezones,
+                                allowed_from_email_domains=ALLOWED_FROM_EMAIL_DOMAINS)
+
+    CircleModel(g.db).create(data)
+    flash(f'Circle "{data["circle_name"]}" created.', 'success')
+    return redirect(url_for('admin.list_circles'))
+
+
+@admin_bp.route('/circles/<slug>/edit', methods=['GET', 'POST'])
+def edit_circle(slug):
+    """Edit a circle's config - super-admin (any circle) or that circle's own admin."""
+    denied = _require_circle_manage_access(slug)
+    if denied:
+        return denied
+
+    from config.email_settings import ALLOWED_FROM_EMAIL_DOMAINS
+    import pytz
+
+    circle = CircleModel(g.db).get_by_slug(slug)
+    if not circle:
+        flash('Circle not found.', 'error')
+        return redirect(url_for('main.index'))
+
+    if request.method == 'GET':
+        return render_template('admin/circle_form.html', circle=circle, form_data=None, field_errors=None,
+                                current_user=get_current_user(), timezones=pytz.all_timezones,
+                                allowed_from_email_domains=ALLOWED_FROM_EMAIL_DOMAINS)
+
+    data = _circle_form_data(request.form)
+
+    if session.get('user_role') != 'super_admin':
+        # Defense in depth - the form disables these inputs for a circle-admin,
+        # but never trust that a crafted POST honoured it.
+        for field in SUPER_ADMIN_ONLY_CIRCLE_FIELDS:
+            data[field] = circle.get(field)
+
+    count_date = request.form.get('count_date', '').strip()
+    yearly_dates = dict(circle.get('yearly_count_dates') or {})
+    current_year_key = str(datetime.now().year)
+    if count_date:
+        yearly_dates[current_year_key] = count_date
+    else:
+        # Field submitted blank - clear this year's date (revert to "TBD") rather
+        # than silently leaving a previously-set date in place.
+        yearly_dates.pop(current_year_key, None)
+    data['yearly_count_dates'] = {str(k): v for k, v in yearly_dates.items()}
+
+    if not _from_email_domain_allowed(data['from_email']):
+        field_errors = {'from_email': f'Must be on one of these domains: {", ".join(ALLOWED_FROM_EMAIL_DOMAINS)}'}
+        flash(field_errors['from_email'], 'error')
+        return render_template('admin/circle_form.html', circle=circle,
+                                form_data={**data, 'count_date': count_date}, field_errors=field_errors,
+                                current_user=get_current_user(), timezones=pytz.all_timezones,
+                                allowed_from_email_domains=ALLOWED_FROM_EMAIL_DOMAINS)
+
+    CircleModel(g.db).update(slug, data)
+    flash(f'Circle "{data["circle_name"]}" updated.', 'success')
+    return redirect(url_for('admin.edit_circle', slug=slug))
+
+
+@admin_bp.route('/circles/<slug>/admins', methods=['GET', 'POST'])
+@require_super_admin
+def circle_admins(slug):
+    """Super-admin console: manage which emails are circle-admins for a circle."""
+    circle = CircleModel(g.db).get_by_slug(slug)
+    if not circle:
+        flash('Circle not found.', 'error')
+        return redirect(url_for('admin.list_circles'))
+
+    model = CircleAdminModel(g.db)
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+        email = sanitize_email(request.form.get('email', ''))
+        if action == 'add' and email and validate_email_format(email):
+            model.add_admin(email, slug)
+            flash(f'{email} added as an admin for {circle["circle_name"]}.', 'success')
+        elif action == 'remove' and email:
+            model.remove_admin(email, slug)
+            flash(f'{email} removed as an admin for {circle["circle_name"]}.', 'success')
+        else:
+            flash('Invalid request.', 'error')
+        return redirect(url_for('admin.circle_admins', slug=slug))
+
+    admins = model.get_admins_for_circle(slug)
+    return render_template('admin/circle_admins.html', circle=circle, admins=admins, current_user=get_current_user())
+
+
+def _save_email_content_blocks(email_type, save, redirect_target):
+    """Shared save-validation for both the super-admin defaults form and a
+    circle's override form: sanitize each submitted block, reject the whole
+    save (nothing persisted) if any block references a placeholder outside
+    its registry whitelist, else call save(block_key, content) for each.
+    Returns None on success, or the redirect response to send back on error."""
+    errors = []
+    to_save = []
+    for block_key, block_def in get_blocks(email_type).items():
+        raw = request.form.get(f'{email_type}__{block_key}', '')
+        content = sanitize_email_content(raw, block_def['max_length'], block_def['allow_newlines'])
+        bad_placeholders = extract_placeholders(content) - set(block_def['placeholders'])
+        if bad_placeholders:
+            bad_list = ', '.join(sorted('$' + p for p in bad_placeholders))
+            errors.append(f"{block_def['label']}: unsupported placeholder(s) {bad_list}")
+            continue
+        to_save.append((block_key, content))
+
+    if errors:
+        for error in errors:
+            flash(error, 'error')
+        return redirect_target
+
+    for block_key, content in to_save:
+        save(block_key, content)
+    return None
+
+
+@admin_bp.route('/email-content/defaults', methods=['GET', 'POST'])
+@require_super_admin
+def email_content_defaults():
+    """Super-admin console: edit the global default text for each admin-customizable
+    email content block - the fallback used by circles that haven't set their own
+    override. Every circle starts with none of these set, so this page always
+    exists even for a brand-new deployment with no overrides anywhere yet."""
+    model = EmailContentModel(g.db)
+    updated_by = get_current_user()['email']
+
+    if request.method == 'POST':
+        email_type = request.form.get('email_type')
+        if email_type not in get_email_types():
+            flash('Invalid request.', 'error')
+            return redirect(url_for('admin.email_content_defaults'))
+
+        error_response = _save_email_content_blocks(
+            email_type,
+            save=lambda block_key, content: model.set_default(email_type, block_key, content, updated_by),
+            redirect_target=redirect(url_for('admin.email_content_defaults', email_type=email_type)),
+        )
+        if error_response:
+            return error_response
+
+        flash('Email defaults updated.', 'success')
+        return redirect(url_for('admin.email_content_defaults', email_type=email_type))
+
+    email_types = get_email_types()
+    active_email_type = request.args.get('email_type')
+    if active_email_type not in email_types:
+        active_email_type = email_types[0]
+
+    sections = []
+    for email_type in email_types:
+        values = model.get_defaults_for_type(email_type, use_fallback=True)
+        blocks = [
+            {'key': block_key, 'label': block_def['label'], 'value': values[block_key],
+             'allow_newlines': block_def['allow_newlines'], 'max_length': block_def['max_length'],
+             'placeholders': block_def['placeholders']}
+            for block_key, block_def in get_blocks(email_type).items()
+        ]
+        sections.append({'email_type': email_type, 'blocks': blocks})
+
+    return render_template('admin/email_content_defaults.html', sections=sections,
+                            active_email_type=active_email_type, current_user=get_current_user())
+
+
+@admin_bp.route('/circles/<slug>/email-content', methods=['GET', 'POST'])
+def circle_email_content(slug):
+    """Edit one circle's own email-content overrides - super-admin (any circle)
+    or that circle's own admin only, same access as edit_circle/areas/logo."""
+    denied = _require_circle_manage_access(slug)
+    if denied:
+        return denied
+
+    circle = CircleModel(g.db).get_by_slug(slug)
+    if not circle:
+        flash('Circle not found.', 'error')
+        return redirect(url_for('main.index'))
+
+    model = EmailContentModel(g.db)
+    updated_by = get_current_user()['email']
+
+    if request.method == 'POST':
+        email_type = request.form.get('email_type')
+        if email_type not in get_email_types():
+            flash('Invalid request.', 'error')
+            return redirect(url_for('admin.circle_email_content', slug=slug))
+
+        if request.form.get('action') == 'reset':
+            block_key = request.form.get('block_key')
+            if block_key not in get_blocks(email_type):
+                flash('Invalid request.', 'error')
+            else:
+                model.delete_override(slug, email_type, block_key)
+                flash('Reset to default.', 'success')
+            return redirect(url_for('admin.circle_email_content', slug=slug, email_type=email_type))
+
+        error_response = _save_email_content_blocks(
+            email_type,
+            save=lambda block_key, content: model.set_override(slug, email_type, block_key, content, updated_by),
+            redirect_target=redirect(url_for('admin.circle_email_content', slug=slug, email_type=email_type)),
+        )
+        if error_response:
+            return error_response
+
+        flash('Email content updated.', 'success')
+        return redirect(url_for('admin.circle_email_content', slug=slug, email_type=email_type))
+
+    email_types = get_email_types()
+    active_email_type = request.args.get('email_type')
+    if active_email_type not in email_types:
+        active_email_type = email_types[0]
+
+    sections = []
+    for email_type in email_types:
+        resolved = model.resolve_all(slug, email_type)
+        overrides = model.get_overrides_for_circle(slug, email_type)
+        blocks = [
+            {'key': block_key, 'label': block_def['label'], 'value': resolved[block_key],
+             'allow_newlines': block_def['allow_newlines'], 'max_length': block_def['max_length'],
+             'placeholders': block_def['placeholders'], 'is_override': block_key in overrides}
+            for block_key, block_def in get_blocks(email_type).items()
+        ]
+        sections.append({'email_type': email_type, 'blocks': blocks})
+
+    return render_template('admin/circle_email_content.html', circle=circle, sections=sections,
+                            active_email_type=active_email_type, current_user=get_current_user())
+
+
+@admin_bp.route('/circles/<slug>/email-content/preview/<email_type>')
+def circle_email_content_preview(slug, email_type):
+    """Live preview of one circle's currently-saved email content, rendered with
+    synthetic sample data. GET-only - never sends anything."""
+    denied = _require_circle_manage_access(slug)
+    if denied:
+        return denied
+
+    circle = CircleModel(g.db).get_by_slug(slug)
+    if not circle:
+        flash('Circle not found.', 'error')
+        return redirect(url_for('main.index'))
+
+    if email_type == 'registration_confirmation':
+        variant = 'unassigned' if request.args.get('variant') == 'unassigned' else 'assigned'
+        subject, html_content = email_service.build_registration_confirmation_preview(slug, variant=variant)
+        return render_template('admin/email_content_preview.html', circle=circle, email_type=email_type,
+                                subject=subject, html_content=html_content, is_html=True)
+    elif email_type == 'withdrawal_confirmation':
+        subject, body = email_service.build_withdrawal_confirmation_preview(slug)
+        return render_template('admin/email_content_preview.html', circle=circle, email_type=email_type,
+                                subject=subject, body=body, is_html=False)
+    elif email_type in ('team_update', 'weekly_summary', 'admin_digest'):
+        preview_builder = {
+            'team_update': build_team_update_preview,
+            'weekly_summary': build_weekly_summary_preview,
+            'admin_digest': build_admin_digest_preview,
+        }[email_type]
+        subject, html_content = preview_builder(slug)
+        return render_template('admin/email_content_preview.html', circle=circle, email_type=email_type,
+                                subject=subject, html_content=html_content, is_html=True)
+    else:
+        flash('Invalid email type.', 'error')
+        return redirect(url_for('admin.circle_email_content', slug=slug))
+
+
+@admin_bp.route('/circles/<slug>/areas', methods=['GET'])
+def circle_areas_manage(slug):
+    """View a circle's areas - super-admin (any circle) or that circle's own
+    admin. Labels (name/description/difficulty/terrain) are inline-edited from
+    this page via circle_areas_edit (AJAX); boundaries (the map shape) and new
+    areas are only ever created in bulk from a KML file, via
+    circle_areas_import_kml - there is deliberately no manual "add area" path,
+    since a hand-added area has no boundary and code is otherwise immutable
+    (see circle_areas_edit's docstring)."""
+    denied = _require_circle_manage_access(slug)
+    if denied:
+        return denied
+
+    circle = CircleModel(g.db).get_by_slug(slug)
+    if not circle:
+        flash('Circle not found.', 'error')
+        return redirect(url_for('main.index'))
+
+    area_model = CircleAreaModel(g.db)
+    areas = area_model.get_areas_for_circle(slug)
+    return render_template('admin/circle_areas.html', circle=circle, areas=areas, current_user=get_current_user())
+
+
+@admin_bp.route('/circles/<slug>/areas/edit', methods=['POST'])
+@limiter.limit(RATE_LIMITS['admin_modify'], error_message=get_rate_limit_message('admin_modify'))
+def circle_areas_edit(slug):
+    """AJAX inline-edit of one existing area's labels (name/description/
+    difficulty/terrain) - the circle_areas.html table's per-row edit icon.
+    Deliberately does NOT accept a new/changed code: code is a plain string
+    that participants' preferred_area, leaders' assigned_area_leader, and KML
+    re-import matching all reference by value, with no rename cascade - this
+    endpoint only ever updates the row whose existing code is given, never
+    creates one or changes a code. JSON (not the redirect-based
+    _require_circle_manage_access) so a denied/expired-session response can
+    be read by the calling fetch()."""
+    if 'user_email' not in session:
+        return jsonify({'success': False, 'message': 'Please log in again.'}), 401
+    if not _can_manage_circle(slug):
+        return jsonify({'success': False, 'message': 'You do not have permission to manage this circle.'}), 403
+
+    circle = CircleModel(g.db).get_by_slug(slug)
+    if not circle:
+        return jsonify({'success': False, 'message': 'Circle not found.'}), 404
+
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({'success': False, 'message': 'No data provided.'}), 400
+
+    code = (data.get('code') or '').strip().upper()
+    name = sanitize_text_input(data.get('name', ''), max_length=200)
+    description = sanitize_notes(data.get('description', ''))
+    difficulty = sanitize_text_input(data.get('difficulty', ''), max_length=50)
+    terrain = sanitize_text_input(data.get('terrain', ''), max_length=200)
+
+    if not code or not name:
+        return jsonify({'success': False, 'message': 'Area name is required.'}), 400
+
+    for text_input in (name, description, difficulty, terrain):
+        if is_suspicious_input(text_input):
+            log_security_event('Suspicious admin input', 'Edit circle area attempt with suspicious input', get_current_user().get('email'))
+            return jsonify({'success': False, 'message': 'Invalid input detected.'}), 400
+
+    area_model = CircleAreaModel(g.db)
+    if not area_model.get_area(slug, code):
+        return jsonify({'success': False, 'message': f'No such area: {code}'}), 404
+
+    updated = area_model.update_area(slug, code, name=name, description=description, difficulty=difficulty, terrain=terrain)
+    return jsonify({'success': True, 'area': updated})
+
+
+MAX_KML_UPLOAD_BYTES = 5 * 1024 * 1024  # generous - real CBC-circle KML exports run well under 1MB
+
+
+@admin_bp.route('/circles/<slug>/areas/import-kml', methods=['POST'])
+def circle_areas_import_kml(slug):
+    """Bulk-import area boundaries (+ name/description) from an uploaded KML file,
+    exported from Google My Maps. Overwrites name/description/boundary_geojson for
+    any area code the KML defines, leaving difficulty/terrain (and any area not
+    mentioned in the KML) untouched. Also refreshes the circle's own lat/lng from
+    the imported areas' calculated center, since KML import supersedes manual
+    lat/lng entry (see the circle-config form)."""
+    denied = _require_circle_manage_access(slug)
+    if denied:
+        return denied
+
+    circle = CircleModel(g.db).get_by_slug(slug)
+    if not circle:
+        flash('Circle not found.', 'error')
+        return redirect(url_for('main.index'))
+
+    upload = request.files.get('kml_file')
+    if not upload or not upload.filename:
+        flash('Choose a KML file to import.', 'error')
+        return redirect(url_for('admin.circle_areas_manage', slug=slug))
+
+    if not upload.filename.lower().endswith('.kml'):
+        flash('That file does not look like a .kml file.', 'error')
+        return redirect(url_for('admin.circle_areas_manage', slug=slug))
+
+    raw = upload.read(MAX_KML_UPLOAD_BYTES + 1)
+    if len(raw) > MAX_KML_UPLOAD_BYTES:
+        flash(f'That file is larger than the {MAX_KML_UPLOAD_BYTES // (1024 * 1024)}MB limit.', 'error')
+        return redirect(url_for('admin.circle_areas_manage', slug=slug))
+
+    try:
+        kml_content = raw.decode('utf-8')
+    except UnicodeDecodeError:
+        flash('Could not read that file as UTF-8 text - is it really a KML file?', 'error')
+        return redirect(url_for('admin.circle_areas_manage', slug=slug))
+
+    try:
+        all_areas = parse_kml_string(kml_content)
+        boundary_lines = parse_kml_boundary_lines(kml_content)
+    except KmlParseError as e:
+        flash(f'Could not import KML: {e}', 'error')
+        return redirect(url_for('admin.circle_areas_manage', slug=slug))
+
+    areas = filter_main_areas(all_areas)
+    if not areas:
+        flash('No main areas (non-sub-area placemarks) were found in that file.', 'error')
+        return redirect(url_for('admin.circle_areas_manage', slug=slug))
+
+    area_model = CircleAreaModel(g.db)
+    try:
+        for area in areas:
+            area_model.upsert_from_kml(
+                slug, area['letter_code'], area['name'], area['description'], area['geometry'],
+                commit=False,
+            )
+
+        # This KML is the full source of truth for this circle's decorative
+        # boundary-group lines each time - always replaced wholesale
+        # (including cleared to empty when this file has none), never merged
+        # with whatever a previous import set, since the lines have no
+        # individual identity to merge by.
+        circle_updates = {'major_area_boundaries': boundary_lines}
+        map_config = calculate_map_center_and_bounds(areas)
+        if map_config:
+            circle_updates['latitude'] = map_config['center'][0]
+            circle_updates['longitude'] = map_config['center'][1]
+        CircleModel(g.db).update(slug, circle_updates)
+    except Exception:
+        g.db.rollback()
+        logging.exception(f'KML import failed for circle {slug}')
+        flash('Something went wrong while importing that file - no changes were saved.', 'error')
+        return redirect(url_for('admin.circle_areas_manage', slug=slug))
+
+    skipped = len(all_areas) - len(areas)
+    message = f'Imported {len(areas)} area boundaries for {circle["circle_name"]}.'
+    if skipped:
+        message += f' Skipped {skipped} sub-area placemark(s).'
+    if boundary_lines:
+        message += f' Also imported {len(boundary_lines)} major-area boundary line(s).'
+    flash(message, 'success')
+    return redirect(url_for('admin.circle_areas_manage', slug=slug))
+
+
+MAX_LOGO_UPLOAD_BYTES = 2 * 1024 * 1024  # generous for a logo image
+
+# Signature bytes -> MIME type. Checked against the file's actual content, never the
+# client-supplied Content-Type or filename extension (both spoofable) - deliberately
+# PNG/JPEG only, no SVG (same XML-based attack surface the KML importer guards against
+# with its DOCTYPE rejection; browsers don't execute <script> in <img>-loaded SVG, but
+# there's no reason to accept that risk for zero benefit).
+_IMAGE_SIGNATURES = {
+    b'\x89PNG\r\n\x1a\n': 'image/png',
+    b'\xff\xd8\xff': 'image/jpeg',
+}
+
+
+def _sniff_image_type(data):
+    """Return the sniffed MIME type ('image/png' or 'image/jpeg') if data's magic
+    bytes match a supported image format, else None."""
+    for signature, mime_type in _IMAGE_SIGNATURES.items():
+        if data.startswith(signature):
+            return mime_type
+    return None
+
+
+@admin_bp.route('/circles/<slug>/logo', methods=['POST'])
+def circle_logo_upload(slug):
+    """Upload a circle's logo, stored in the DB (not the filesystem - same reasoning
+    as KML-imported area boundaries) and served via /api/circles/<slug>/logo."""
+    denied = _require_circle_manage_access(slug)
+    if denied:
+        return denied
+
+    circle = CircleModel(g.db).get_by_slug(slug)
+    if not circle:
+        flash('Circle not found.', 'error')
+        return redirect(url_for('main.index'))
+
+    upload = request.files.get('logo_file')
+    if not upload or not upload.filename:
+        flash('Choose an image file to upload.', 'error')
+        return redirect(url_for('admin.edit_circle', slug=slug))
+
+    raw = upload.read(MAX_LOGO_UPLOAD_BYTES + 1)
+    if len(raw) > MAX_LOGO_UPLOAD_BYTES:
+        flash(f'That file is larger than the {MAX_LOGO_UPLOAD_BYTES // (1024 * 1024)}MB limit.', 'error')
+        return redirect(url_for('admin.edit_circle', slug=slug))
+
+    content_type = _sniff_image_type(raw)
+    if not content_type:
+        flash('That file does not look like a PNG or JPEG image.', 'error')
+        return redirect(url_for('admin.edit_circle', slug=slug))
+
+    CircleModel(g.db).update(slug, {'logo_data': raw, 'logo_content_type': content_type})
+    flash(f'Logo updated for {circle["circle_name"]}.', 'success')
+    return redirect(url_for('admin.edit_circle', slug=slug))
+
+
+@admin_bp.route('/circles/<slug>/logo/delete', methods=['POST'])
+def circle_logo_delete(slug):
+    """Remove a circle's logo, reverting its pages/emails to the "No logo" placeholder."""
+    denied = _require_circle_manage_access(slug)
+    if denied:
+        return denied
+
+    circle = CircleModel(g.db).get_by_slug(slug)
+    if not circle:
+        flash('Circle not found.', 'error')
+        return redirect(url_for('main.index'))
+
+    CircleModel(g.db).update(slug, {'logo_data': None, 'logo_content_type': None})
+    flash(f'Logo removed for {circle["circle_name"]}.', 'success')
+    return redirect(url_for('admin.edit_circle', slug=slug))
 
 
 # Only register test routes when TEST_MODE is enabled

@@ -48,8 +48,7 @@ TEST_SCENARIOS = {
                 'spotting_scope': False
             },
             'interests': {
-                'leadership': False,
-                'scribe': False
+                'leadership': False
             },
             'notes': 'First time participant test',
             'expected_constraints': []
@@ -76,8 +75,7 @@ TEST_SCENARIOS = {
                 'spotting_scope': False
             },
             'interests': {
-                'leadership': True,
-                'scribe': False
+                'leadership': True
             },
             'notes': 'Interested in leadership role',
             'expected_constraints': []
@@ -104,38 +102,9 @@ TEST_SCENARIOS = {
                 'spotting_scope': True
             },
             'interests': {
-                'leadership': True,
-                'scribe': False
+                'leadership': True
             },
             'notes': 'Experienced participant ready to lead',
-            'expected_constraints': []
-        },
-
-        'regular_scribe_interested': {
-            'personal': {
-                'first_name': 'Sam',
-                'last_name': 'Scribe',
-                'email': None,  # Will be generated dynamically
-                'phone': '555-456-7890',
-                'phone2': ''
-            },
-            'experience': {
-                'skill_level': 'Beginner',
-                'experience': 'None'
-            },
-            'participation': {
-                'type': 'regular',
-                'area': 'E'
-            },
-            'equipment': {
-                'has_binoculars': True,
-                'spotting_scope': False
-            },
-            'interests': {
-                'leadership': False,
-                'scribe': True
-            },
-            'notes': 'Interested in scribe role',
             'expected_constraints': []
         },
 
@@ -160,8 +129,7 @@ TEST_SCENARIOS = {
                 'spotting_scope': False
             },
             'interests': {
-                'leadership': False,  # Should be disabled for FEEDER
-                'scribe': False
+                'leadership': False  # Should be disabled for FEEDER
             },
             'notes': 'Experienced feeder counter',
             'expected_constraints': ['no_unassigned', 'no_leadership']
@@ -188,8 +156,7 @@ TEST_SCENARIOS = {
                 'spotting_scope': False
             },
             'interests': {
-                'leadership': False,
-                'scribe': False
+                'leadership': False
             },
             'notes': 'First time feeder counter',
             'expected_constraints': ['no_unassigned', 'no_leadership']
@@ -216,8 +183,7 @@ TEST_SCENARIOS = {
                 'spotting_scope': False
             },
             'interests': {
-                'leadership': False,
-                'scribe': True
+                'leadership': False
             },
             'notes': 'Available for any area that needs help',
             'expected_constraints': []
@@ -244,8 +210,7 @@ TEST_SCENARIOS = {
                 'spotting_scope': True
             },
             'interests': {
-                'leadership': True,
-                'scribe': True
+                'leadership': True
             },
             'notes': 'Complete profile with all options selected. Long notes to test field limits and display. This person is very enthusiastic about birding and wants to help in any way possible.',
             'expected_constraints': []
@@ -274,8 +239,7 @@ TEST_SCENARIOS = {
                 'spotting_scope': False
             },
             'interests': {
-                'leadership': False,
-                'scribe': False
+                'leadership': False
             },
             'notes': '',
             'expected_errors': ['first_name', 'skill_level', 'participation_type']
@@ -326,8 +290,7 @@ TEST_SCENARIOS = {
                 'spotting_scope': True
             },
             'interests': {
-                'leadership': True,
-                'scribe': False
+                'leadership': True
             },
             'notes': 'Ready for leadership promotion',
             'promotion_target_area': 'J'
@@ -354,8 +317,7 @@ TEST_SCENARIOS = {
                 'spotting_scope': False
             },
             'interests': {
-                'leadership': False,
-                'scribe': False
+                'leadership': False
             },
             'notes': 'Available for area reassignment',
             'reassignment_target_area': 'L'
@@ -382,8 +344,7 @@ TEST_SCENARIOS = {
                 'spotting_scope': False
             },
             'interests': {
-                'leadership': False,
-                'scribe': False
+                'leadership': False
             },
             'notes': 'Test participant for deletion',
             'deletion_reason': 'Test deletion workflow'
@@ -448,12 +409,11 @@ TEST_DATASETS = {
         'regular_newbie',
         'regular_intermediate',
         'regular_expert_leader',
-        'regular_scribe_interested',
         'feeder_expert',
         'feeder_beginner',
         'unassigned_volunteer',
         'complete_profile'
-    ] * 5,  # 40 total participants
+    ] * 5,  # 35 total participants
 
     'leadership_focused': [
         'regular_expert_leader',

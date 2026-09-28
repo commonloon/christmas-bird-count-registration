@@ -14,60 +14,119 @@ Implements race condition prevention and change detection logic.
 import os
 import sys
 from datetime import datetime, timedelta, timezone
+from urllib.parse import quote
 from typing import Dict, List, Optional, Tuple, Any
 from flask import render_template, current_app
 from jinja2 import Template
-from google.cloud import firestore
 import logging
 
-from config.database import get_firestore_client
+from config.database import get_db_session
+from config.organization import get_organization_variables
+from models.db import EmailTimestamp, resolve_default_circle_slug
 from config.admins import ADMIN_EMAILS
 from config.email_settings import (
     is_test_server, get_admin_unassigned_url, get_leader_dashboard_url,
-    EMAIL_SUBJECTS, get_email_branding
+    get_email_branding
 )
 from models.participant import ParticipantModel
 from models.removal_log import RemovalLogModel
 from models.withdrawal_log import WithdrawalLogModel
 from models.reassignment_log import ReassignmentLogModel
+from models.circle import CircleAdminModel
+from models.email_content import EmailContentModel
 from services.email_service import email_service
+from services.email_content_service import substitute_placeholders
 from services.datetime_utils import convert_to_display_timezone
 
 logger = logging.getLogger(__name__)
 
 
+def _substitute_team_update_content(blocks, org_vars, area_code, date_str):
+    """Substitute placeholders into an already-resolved team_update block set
+    (EmailContentModel.resolve_all() called once per circle, outside the area
+    loop - this just re-substitutes per area, no extra DB query). Returns
+    (subject, greeting_intro_text, next_steps_text). Shared by the real send
+    path and the admin email-content preview builder."""
+    placeholder_values = {'date': date_str, 'count_event_name': org_vars['count_event_name'], 'area_code': area_code}
+    subject = substitute_placeholders(blocks['subject'], placeholder_values)
+    greeting_intro_text = substitute_placeholders(blocks['greeting_intro'], placeholder_values)
+    next_steps_text = substitute_placeholders(blocks['next_steps_body'], placeholder_values)
+    return subject, greeting_intro_text, next_steps_text
+
+
+def _substitute_weekly_summary_content(blocks, org_vars, area_code, date_str):
+    """Same as _substitute_team_update_content, for weekly_summary's two blocks."""
+    placeholder_values = {'date': date_str, 'count_event_name': org_vars['count_event_name'], 'area_code': area_code}
+    subject = substitute_placeholders(blocks['subject'], placeholder_values)
+    next_steps_text = substitute_placeholders(blocks['next_steps_body'], placeholder_values)
+    return subject, next_steps_text
+
+
+def _substitute_admin_digest_content(blocks, org_vars, date_str):
+    """Same as _substitute_team_update_content, for admin_digest's three blocks."""
+    placeholder_values = {'date': date_str, 'count_event_name': org_vars['count_event_name']}
+    subject = substitute_placeholders(blocks['subject'], placeholder_values)
+    greeting_salutation_text = substitute_placeholders(blocks['greeting_salutation'], placeholder_values)
+    recommended_actions_text = substitute_placeholders(blocks['recommended_actions_body'], placeholder_values)
+    return subject, greeting_salutation_text, recommended_actions_text
+
+
+def _push_circle_context(flask_app, circle_slug):
+    """Push (and return, already-entered) a request context resolved to the given
+    circle. Caller must pop it (e.g. in a finally block).
+
+    These digest functions are triggered by the scheduler outside any real HTTP
+    request, so every per-circle helper they rely on (ParticipantModel's
+    circle_slug default via resolve_default_circle_slug(), config/organization.py's
+    get_admin_url()/get_leader_url(), config/areas.py) has no request to read
+    g.circle_slug from. Delegates to app.py's push_circle_context() (originally
+    written here, moved there so services/email_service.py's preview builders
+    could reuse the exact same logic - see that function's docstring).
+    flask_app is unused (there's only ever one real Flask app instance) but kept
+    as a parameter so existing call sites don't need to change.
+    """
+    import app as app_module
+    return app_module.push_circle_context(circle_slug)
+
+
 class EmailTimestampModel:
     """Handle email timestamp tracking to prevent race conditions."""
-    
-    def __init__(self, db_client, year: int = None):
-        self.db = db_client
+
+    def __init__(self, db_session, year: int = None, circle_slug: str = None):
+        self.db = db_session
         self.year = year or datetime.now().year
-        self.collection = f'email_timestamps_{self.year}'
-    
+        self.circle_slug = circle_slug or resolve_default_circle_slug()
+
     def get_last_email_sent(self, area_code: str, email_type: str) -> Optional[datetime]:
         """Get the last email sent timestamp for an area and email type."""
         try:
-            doc_ref = self.db.collection(self.collection).document(f'{area_code}_{email_type}')
-            doc = doc_ref.get()
-            if doc.exists:
-                return doc.get('last_sent')
-            return None
+            row = self.db.query(EmailTimestamp).filter_by(
+                circle_slug=self.circle_slug, year=self.year,
+                area_code=area_code, email_type=email_type,
+            ).first()
+            return row.last_sent if row else None
         except Exception as e:
             logger.error(f"Error getting last email sent for {area_code}_{email_type}: {e}")
             return None
-    
+
     def update_last_email_sent(self, area_code: str, email_type: str, timestamp: datetime) -> bool:
         """Update the last email sent timestamp for an area and email type."""
         try:
-            doc_ref = self.db.collection(self.collection).document(f'{area_code}_{email_type}')
-            doc_ref.set({
-                'area_code': area_code,
-                'email_type': email_type,
-                'last_sent': timestamp,
-                'year': self.year
-            })
+            row = self.db.query(EmailTimestamp).filter_by(
+                circle_slug=self.circle_slug, year=self.year,
+                area_code=area_code, email_type=email_type,
+            ).first()
+            if row:
+                row.last_sent = timestamp
+            else:
+                self.db.add(EmailTimestamp(
+                    circle_slug=self.circle_slug, year=self.year,
+                    area_code=area_code, email_type=email_type, last_sent=timestamp,
+                ))
+            self.db.commit()
             return True
         except Exception as e:
+            self.db.rollback()
             logger.error(f"Error updating last email sent for {area_code}_{email_type}: {e}")
             return False
 
@@ -166,16 +225,9 @@ def calculate_net_withdrawal_reactivation_changes(
     if since_timestamp.tzinfo is None:
         since_timestamp = since_timestamp.replace(tzinfo=timezone.utc)
 
-    # Fetch all withdrawal log entries for this area since timestamp
+    # Fetch withdrawal/reactivation log entries for this area since timestamp
     try:
-        all_entries = withdrawal_model._fetch_all_for_filtering()
-        area_events = [
-            entry for entry in all_entries
-            if (entry.get('area_code') == area_code and
-                entry.get('recorded_at') and
-                entry.get('recorded_at') >= since_timestamp and
-                entry.get('status') in ['withdrawn', 'reactivated'])
-        ]
+        area_events = withdrawal_model.get_events_for_area_since(area_code, since_timestamp)
     except Exception as e:
         logger.error(f"Failed to get withdrawal events for area {area_code}: {e}")
         return [], []
@@ -319,23 +371,27 @@ def get_participants_changes_since(participant_model: ParticipantModel, area_cod
         return [], [], []
 
 
-def generate_team_update_emails(app=None) -> Dict[str, Any]:
-    """Generate twice-daily team update emails for areas with changes."""
+def generate_team_update_emails(app, circle_slug) -> Dict[str, Any]:
+    """Generate twice-daily team update emails for areas with changes, for one circle."""
+    ctx = None
     try:
-        db, _ = get_firestore_client()
+        ctx = _push_circle_context(app, circle_slug)
+        db = get_db_session()
         current_year = datetime.now().year
         utc_now = datetime.now(timezone.utc)  # Race condition prevention: pick timestamp first
         current_time, display_timezone = convert_to_display_timezone(utc_now)
-        
+        org_vars = get_organization_variables()
+        content_blocks = EmailContentModel(db).resolve_all(circle_slug, 'team_update')
+
         participant_model = ParticipantModel(db, current_year)
         timestamp_model = EmailTimestampModel(db, current_year)
-        
+
         results = {
             'emails_sent': 0,
             'areas_processed': 0,
             'errors': []
         }
-        
+
         # Get all areas that have leaders
         all_leaders = participant_model.get_leaders()
         areas_with_leaders = set(leader['assigned_area_leader'] for leader in all_leaders if leader.get('is_leader', False))
@@ -406,6 +462,9 @@ def generate_team_update_emails(app=None) -> Dict[str, Any]:
                 withdrawn_participants = participant_model.get_withdrawn_participants_by_area(area_code)
                 current_team = current_team + withdrawn_participants
 
+                subject, greeting_intro_text, next_steps_text = _substitute_team_update_content(
+                    content_blocks, org_vars, area_code, current_time.strftime('%Y-%m-%d'))
+
                 # Prepare email context
                 email_context = {
                     'area_code': area_code,
@@ -420,30 +479,30 @@ def generate_team_update_emails(app=None) -> Dict[str, Any]:
                     'current_team': current_team,
                     'current_date': current_time,
                     'display_timezone': display_timezone,
-                    'leader_dashboard_url': get_leader_dashboard_url(),
+                    # A leader may lead more than one area (separate records, same
+                    # email); deep-link so this area's email opens that area's tab
+                    # directly instead of whichever tab the dashboard defaults to.
+                    'leader_dashboard_url': f"{get_leader_dashboard_url()}?area={quote(area_code)}",
                     'test_mode': is_test_server(),
-                    'branding': get_email_branding()
+                    'branding': get_email_branding(),
+                    'count_event_name': org_vars['count_event_name'],
+                    'greeting_intro_text': greeting_intro_text,
+                    'next_steps_text': next_steps_text,
                 }
-                
+
                 # Render email template
                 try:
-                    if app:
-                        with app.app_context():
-                            html_content = render_template('emails/team_update.html', **email_context)
-                    else:
-                        # Fallback to basic text if no app context
-                        html_content = None
+                    with app.app_context():
+                        html_content = render_template('emails/team_update.html', **email_context)
                 except Exception as template_error:
                     logger.error(f"Template rendering error for area {area_code}: {template_error}")
                     # Fallback to basic text email
                     html_content = None
-                subject = EMAIL_SUBJECTS['team_update'].format(
-                    date=current_time.strftime('%Y-%m-%d'),
-                    area_code=area_code
-                )
-                
+
                 # Send email
-                if email_service.send_email(leader_emails, subject, '', html_content):
+                if email_service.send_email(leader_emails, subject, '', html_content,
+                                             from_email=org_vars['from_email'],
+                                             test_recipient=org_vars['test_recipient']):
                     # Update timestamp AFTER successful send
                     timestamp_model.update_last_email_sent(area_code, 'team_update', current_time)
                     results['emails_sent'] += 1
@@ -458,19 +517,26 @@ def generate_team_update_emails(app=None) -> Dict[str, Any]:
         
         logger.info(f"Team update emails completed: {results['emails_sent']} sent, {results['areas_processed']} areas processed")
         return results
-        
+
     except Exception as e:
         logger.error(f"Critical error in generate_team_update_emails: {e}")
         return {'emails_sent': 0, 'areas_processed': 0, 'errors': [str(e)]}
+    finally:
+        if ctx:
+            ctx.pop()
 
 
-def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
+def generate_weekly_summary_emails(app, circle_slug) -> Dict[str, Any]:
     """Generate weekly summary emails for ALL area leaders."""
+    ctx = None
     try:
-        db, _ = get_firestore_client()
+        ctx = _push_circle_context(app, circle_slug)
+        db = get_db_session()
         current_year = datetime.now().year
         utc_now = datetime.now(timezone.utc)
         current_time, display_timezone = convert_to_display_timezone(utc_now)
+        org_vars = get_organization_variables()
+        content_blocks = EmailContentModel(db).resolve_all(circle_slug, 'weekly_summary')
 
         participant_model = ParticipantModel(db, current_year)
         timestamp_model = EmailTimestampModel(db, current_year)
@@ -550,6 +616,9 @@ def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
                 experience_breakdown = calculate_experience_breakdown(current_team)
                 leadership_interest_count = sum(1 for p in current_team if p.get('interested_in_leadership'))
                 
+                subject, next_steps_text = _substitute_weekly_summary_content(
+                    content_blocks, org_vars, area_code, current_time.strftime('%Y-%m-%d'))
+
                 # Prepare email context
                 email_context = {
                     'area_code': area_code,
@@ -568,30 +637,29 @@ def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
                     'leadership_interest_count': leadership_interest_count,
                     'current_date': current_time,
                     'display_timezone': display_timezone,
-                    'leader_dashboard_url': get_leader_dashboard_url(),
+                    # A leader may lead more than one area (separate records, same
+                    # email); deep-link so this area's email opens that area's tab
+                    # directly instead of whichever tab the dashboard defaults to.
+                    'leader_dashboard_url': f"{get_leader_dashboard_url()}?area={quote(area_code)}",
                     'test_mode': is_test_server(),
-                    'branding': get_email_branding()
+                    'branding': get_email_branding(),
+                    'count_event_name': org_vars['count_event_name'],
+                    'next_steps_text': next_steps_text,
                 }
-                
+
                 # Render email template
                 try:
-                    if app:
-                        with app.app_context():
-                            html_content = render_template('emails/weekly_summary.html', **email_context)
-                    else:
-                        # Fallback to basic text if no app context
-                        html_content = None
+                    with app.app_context():
+                        html_content = render_template('emails/weekly_summary.html', **email_context)
                 except Exception as template_error:
                     logger.error(f"Template rendering error for weekly summary {area_code}: {template_error}")
                     # Fallback to basic text email
                     html_content = None
-                subject = EMAIL_SUBJECTS['weekly_summary'].format(
-                    date=current_time.strftime('%Y-%m-%d'),
-                    area_code=area_code
-                )
-                
+
                 # Send email
-                if email_service.send_email(leader_emails, subject, '', html_content):
+                if email_service.send_email(leader_emails, subject, '', html_content,
+                                             from_email=org_vars['from_email'],
+                                             test_recipient=org_vars['test_recipient']):
                     # Update timestamp AFTER successful send
                     timestamp_model.update_last_email_sent(area_code, 'weekly_summary', current_time)
                     results['emails_sent'] += 1
@@ -606,16 +674,21 @@ def generate_weekly_summary_emails(app=None) -> Dict[str, Any]:
         
         logger.info(f"Weekly summary emails completed: {results['emails_sent']} sent, {results['areas_processed']} areas processed")
         return results
-        
+
     except Exception as e:
         logger.error(f"Critical error in generate_weekly_summary_emails: {e}")
         return {'emails_sent': 0, 'areas_processed': 0, 'errors': [str(e)]}
+    finally:
+        if ctx:
+            ctx.pop()
 
 
-def generate_admin_digest_email(app=None) -> Dict[str, Any]:
-    """Generate daily admin digest with unassigned participants."""
+def generate_admin_digest_email(app, circle_slug) -> Dict[str, Any]:
+    """Generate daily admin digest with unassigned participants, for one circle."""
+    ctx = None
     try:
-        db, _ = get_firestore_client()
+        ctx = _push_circle_context(app, circle_slug)
+        db = get_db_session()
         current_year = datetime.now().year
         utc_now = datetime.now(timezone.utc)
         current_time, display_timezone = convert_to_display_timezone(utc_now)
@@ -660,6 +733,11 @@ def generate_admin_digest_email(app=None) -> Dict[str, Any]:
         
         average_wait_days = round(total_wait_days / len(unassigned_participants)) if unassigned_participants else 0
         
+        org_vars = get_organization_variables()
+        content_blocks = EmailContentModel(db).resolve_all(circle_slug, 'admin_digest')
+        subject, greeting_salutation_text, recommended_actions_text = _substitute_admin_digest_content(
+            content_blocks, org_vars, current_time.strftime('%Y-%m-%d'))
+
         # Prepare email context
         email_context = {
             'unassigned_participants': unassigned_participants,
@@ -670,38 +748,208 @@ def generate_admin_digest_email(app=None) -> Dict[str, Any]:
             'display_timezone': display_timezone,
             'admin_unassigned_url': get_admin_unassigned_url(),
             'test_mode': is_test_server(),
-            'branding': get_email_branding()
+            'branding': get_email_branding(),
+            'count_event_name': org_vars['count_event_name'],
+            'count_experience_label': org_vars['count_experience_label'],
+            'greeting_salutation_text': greeting_salutation_text,
+            'recommended_actions_text': recommended_actions_text,
         }
-        
+
         # Render email template
         try:
-            if app:
-                with app.app_context():
-                    html_content = render_template('emails/admin_digest.html', **email_context)
-            else:
-                # Fallback to basic text if no app context
-                html_content = None
+            with app.app_context():
+                html_content = render_template('emails/admin_digest.html', **email_context)
         except Exception as template_error:
             logger.error(f"Template rendering error for admin digest: {template_error}")
             # Fallback to basic text email
             html_content = None
-        subject = EMAIL_SUBJECTS['admin_digest'].format(
-            date=current_time.strftime('%Y-%m-%d')
-        )
-        
+
+        # Recipients: union of this circle's own circle-admins and the global
+        # super-admin whitelist - backward-compatible (Vancouver's admins are
+        # already in ADMIN_EMAILS, so its behavior is unchanged) and ensures a
+        # circle with no self-service admins configured yet still gets its digest.
+        circle_admin_emails = [a['email'] for a in CircleAdminModel(db).get_admins_for_circle(circle_slug)]
+        recipients = sorted(set(circle_admin_emails) | set(ADMIN_EMAILS))
+
         # Send email to all admins
-        if email_service.send_email(ADMIN_EMAILS, subject, '', html_content):
+        if email_service.send_email(recipients, subject, '', html_content,
+                                     from_email=org_vars['from_email'],
+                                     test_recipient=org_vars['test_recipient']):
             results['emails_sent'] = 1
-            logger.info(f"Admin digest email sent to {len(ADMIN_EMAILS)} admins for {len(unassigned_participants)} unassigned participants")
+            logger.info(f"Admin digest email sent to {len(recipients)} admins for {len(unassigned_participants)} unassigned participants")
         else:
             results['errors'].append("Failed to send admin digest email")
         
         logger.info(f"Admin digest email completed: {results['unassigned_count']} unassigned participants")
         return results
-        
+
     except Exception as e:
         logger.error(f"Critical error in generate_admin_digest_email: {e}")
         return {'emails_sent': 0, 'unassigned_count': 0, 'errors': [str(e)]}
+    finally:
+        if ctx:
+            ctx.pop()
+
+
+def _sample_participant(**overrides):
+    """A synthetic sample participant dict for the digest-email preview builders
+    below - never real data. Matches the field shape ParticipantModel rows
+    actually have, so it renders through the real templates identically to a
+    genuine participant."""
+    sample = {
+        'first_name': 'Sample', 'last_name': 'Participant', 'email': 'sample@example.com',
+        'phone': '(555) 555-6789', 'skill_level': 'Intermediate', 'experience': '1-2 counts',
+        'participation_type': 'regular', 'status': 'active', 'has_binoculars': True,
+        'spotting_scope': False, 'is_leader': False, 'assigned_area_leader': None,
+        'interested_in_leadership': False, 'notes_to_organizers': '',
+        'created_at': datetime.now(timezone.utc),
+    }
+    sample.update(overrides)
+    return sample
+
+
+def build_team_update_preview(circle_slug):
+    """Render the real team_update template with synthetic sample data and this
+    circle's currently-saved (resolved) email-content blocks, for the admin
+    email-content preview route. Never sends anything.
+
+    Reachable via routes/admin.py's CIRCLE_CONSOLE_ENDPOINTS from any host, so the
+    ambient request's own g.circle may be a different circle than circle_slug (or
+    None) - org_vars/branding/dashboard URL must come from circle_slug explicitly
+    via a pushed context (same _push_circle_context() the real, scheduler-triggered
+    generate_team_update_emails() needs), not any of these helpers' ambient lookup,
+    or this could preview circle_slug's content dressed in another circle's
+    identity/URLs."""
+    import app as app_module
+
+    db = get_db_session()
+    ctx = app_module.push_circle_context(circle_slug)
+    try:
+        org_vars = get_organization_variables()
+        current_time, display_timezone = convert_to_display_timezone(datetime.now(timezone.utc))
+        leader_dashboard_url = f"{get_leader_dashboard_url()}?area=A"
+        branding = get_email_branding()
+    finally:
+        ctx.pop()
+
+    content_blocks = EmailContentModel(db).resolve_all(circle_slug, 'team_update')
+    subject, greeting_intro_text, next_steps_text = _substitute_team_update_content(
+        content_blocks, org_vars, 'A', current_time.strftime('%Y-%m-%d'))
+
+    sample = _sample_participant()
+    email_context = {
+        'area_code': 'A',
+        'leader_names': ['Sample Leader'],
+        'new_participants': [sample],
+        'updated_participants': [],
+        'removed_participants': [],
+        'arrivals': [],
+        'departures': [],
+        'withdrawn_participants': [],
+        'reactivated_participants': [],
+        'current_team': [sample],
+        'current_date': current_time,
+        'display_timezone': display_timezone,
+        'leader_dashboard_url': leader_dashboard_url,
+        'test_mode': is_test_server(),
+        'branding': branding,
+        'count_event_name': org_vars['count_event_name'],
+        'greeting_intro_text': greeting_intro_text,
+        'next_steps_text': next_steps_text,
+    }
+
+    with current_app.app_context():
+        html_content = render_template('emails/team_update.html', **email_context)
+    return subject, html_content
+
+
+def build_weekly_summary_preview(circle_slug):
+    """Same as build_team_update_preview, for weekly_summary."""
+    import app as app_module
+
+    db = get_db_session()
+    ctx = app_module.push_circle_context(circle_slug)
+    try:
+        org_vars = get_organization_variables()
+        current_time, display_timezone = convert_to_display_timezone(datetime.now(timezone.utc))
+        leader_dashboard_url = f"{get_leader_dashboard_url()}?area=A"
+        branding = get_email_branding()
+    finally:
+        ctx.pop()
+
+    content_blocks = EmailContentModel(db).resolve_all(circle_slug, 'weekly_summary')
+    subject, next_steps_text = _substitute_weekly_summary_content(
+        content_blocks, org_vars, 'A', current_time.strftime('%Y-%m-%d'))
+
+    sample = _sample_participant()
+    current_team = [sample]
+    email_context = {
+        'area_code': 'A',
+        'leader_names': ['Sample Leader'],
+        'new_participants': [sample],
+        'updated_participants': [],
+        'removed_participants': [],
+        'arrivals': [],
+        'departures': [],
+        'withdrawn_participants': [],
+        'reactivated_participants': [],
+        'current_team': current_team,
+        'has_changes': True,
+        'skill_breakdown': calculate_skill_breakdown(current_team),
+        'experience_breakdown': calculate_experience_breakdown(current_team),
+        'leadership_interest_count': 0,
+        'current_date': current_time,
+        'display_timezone': display_timezone,
+        'leader_dashboard_url': leader_dashboard_url,
+        'test_mode': is_test_server(),
+        'branding': branding,
+        'count_event_name': org_vars['count_event_name'],
+        'next_steps_text': next_steps_text,
+    }
+
+    with current_app.app_context():
+        html_content = render_template('emails/weekly_summary.html', **email_context)
+    return subject, html_content
+
+
+def build_admin_digest_preview(circle_slug):
+    """Same as build_team_update_preview, for admin_digest."""
+    import app as app_module
+
+    db = get_db_session()
+    ctx = app_module.push_circle_context(circle_slug)
+    try:
+        org_vars = get_organization_variables()
+        current_time, display_timezone = convert_to_display_timezone(datetime.now(timezone.utc))
+        admin_unassigned_url = get_admin_unassigned_url()
+        branding = get_email_branding()
+    finally:
+        ctx.pop()
+
+    content_blocks = EmailContentModel(db).resolve_all(circle_slug, 'admin_digest')
+    subject, greeting_salutation_text, recommended_actions_text = _substitute_admin_digest_content(
+        content_blocks, org_vars, current_time.strftime('%Y-%m-%d'))
+
+    sample = _sample_participant(interested_in_leadership=True)
+    email_context = {
+        'unassigned_participants': [sample],
+        'leadership_interest_count': 1,
+        'days_waiting': [3],
+        'average_wait_days': 3,
+        'current_date': current_time,
+        'display_timezone': display_timezone,
+        'admin_unassigned_url': admin_unassigned_url,
+        'test_mode': is_test_server(),
+        'branding': branding,
+        'count_event_name': org_vars['count_event_name'],
+        'count_experience_label': org_vars['count_experience_label'],
+        'greeting_salutation_text': greeting_salutation_text,
+        'recommended_actions_text': recommended_actions_text,
+    }
+
+    with current_app.app_context():
+        html_content = render_template('emails/admin_digest.html', **email_context)
+    return subject, html_content
 
 
 if __name__ == '__main__':
@@ -709,25 +957,28 @@ if __name__ == '__main__':
     import argparse
     
     parser = argparse.ArgumentParser(description='Generate CBC emails')
-    parser.add_argument('--type', choices=['team_update', 'weekly_summary', 'admin_digest'], 
+    parser.add_argument('--type', choices=['team_update', 'weekly_summary', 'admin_digest'],
                        help='Email type to generate')
+    parser.add_argument('--circle', required=True, help='Circle slug to generate for (e.g. vancouver)')
     parser.add_argument('--test', action='store_true', help='Enable test mode')
-    
+
     args = parser.parse_args()
-    
+
     if args.test:
         os.environ['TEST_MODE'] = 'true'
-    
+
     logging.basicConfig(level=logging.INFO)
-    
+
+    from app import app as flask_app
+
     if args.type == 'team_update':
-        results = generate_team_update_emails()
+        results = generate_team_update_emails(flask_app, args.circle)
     elif args.type == 'weekly_summary':
-        results = generate_weekly_summary_emails()
+        results = generate_weekly_summary_emails(flask_app, args.circle)
     elif args.type == 'admin_digest':
-        results = generate_admin_digest_email()
+        results = generate_admin_digest_email(flask_app, args.circle)
     else:
         print("Please specify --type (team_update, weekly_summary, or admin_digest)")
         sys.exit(1)
-    
+
     print(f"Results: {results}")

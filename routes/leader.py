@@ -1,6 +1,6 @@
 # Updated by Claude AI on 2025-10-03
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g, session
-from config.database import get_firestore_client
+from config.database import get_db_session
 from models.participant import ParticipantModel
 from routes.auth import require_leader, get_current_user
 from config.areas import get_area_info
@@ -15,25 +15,21 @@ logger = logging.getLogger(__name__)
 
 @leader_bp.before_request
 def load_db():
-    """Load database client for leader routes and re-validate role."""
-    try:
-        g.db, _ = get_firestore_client()
+    """Load database session for leader routes and re-validate role."""
+    g.db = get_db_session()
 
-        # Re-validate leader status on each request to leader routes
-        # This ensures role changes are reflected immediately without re-login
-        if 'user_email' in session:
-            from routes.auth import get_user_role
-            user_email = session['user_email']
-            current_role = session.get('user_role')
-            actual_role = get_user_role(user_email, g.db)
+    # Re-validate leader status on each request to leader routes
+    # This ensures role changes are reflected immediately without re-login
+    if 'user_email' in session:
+        from routes.auth import get_user_role
+        user_email = session['user_email']
+        current_role = session.get('user_role')
+        actual_role = get_user_role(user_email, g.db, g.circle_slug)
 
-            # Update session if role has changed
-            if actual_role != current_role:
-                session['user_role'] = actual_role
-                logger.info(f"Updated role for {user_email}: {current_role} -> {actual_role}")
-    except Exception as e:
-        g.db = None
-        flash('Database unavailable.', 'error')
+        # Update session if role has changed
+        if actual_role != current_role:
+            session['user_role'] = actual_role
+            logger.info(f"Updated role for {user_email}: {current_role} -> {actual_role}")
 
 
 def get_current_user_email():
@@ -47,10 +43,14 @@ def get_current_user_email():
 @require_leader
 @limiter.limit(RATE_LIMITS['admin_general'])
 def dashboard():
-    """Leader dashboard showing their team roster with historical year support."""
-    if not g.db:
-        return render_template('leader/dashboard.html', error="Database unavailable")
+    """Leader dashboard showing their team roster with historical year support.
 
+    A person can lead more than one area in the same year by registering under
+    a separate participant record per area (same email, a distinguishing name -
+    there is no other way to represent "one person, two areas" in a schema
+    where one participant row has exactly one assigned_area_leader). This route
+    surfaces all of that email's current-year leader records as area tabs
+    rather than arbitrarily picking one."""
     user_email = get_current_user_email()
     if not user_email:
         flash('Authentication error. Please log in again.', 'error')
@@ -62,7 +62,9 @@ def dashboard():
     # Get selected year from query params, default to current year
     selected_year = int(request.args.get('year', current_year))
 
-    # Get leader info from current year to determine area assignment
+    # Get leader info from current year to determine area assignment(s).
+    # Which areas someone leads is always determined from the current year,
+    # even when browsing a historical year's roster for one of those areas.
     current_participant_model = ParticipantModel(g.db, current_year)
     leader_records = current_participant_model.get_participants_by_email(user_email)
     leader_records = [r for r in leader_records if r.get('is_leader', False)]
@@ -71,13 +73,29 @@ def dashboard():
         flash('You are not assigned as an area leader.', 'error')
         return redirect(url_for('main.index'))
 
-    # Get the first leader record (primary) - always from current year
-    leader_info = leader_records[0]
-    assigned_area = leader_info.get('assigned_area_leader')
+    # One leader record per led area (a record with no area is unusable), de-duplicated
+    # and ordered alphabetically by area code for a stable, predictable tab order.
+    records_by_area = {}
+    for record in leader_records:
+        area_code = record.get('assigned_area_leader')
+        if area_code and area_code not in records_by_area:
+            records_by_area[area_code] = record
 
-    if not assigned_area:
+    if not records_by_area:
         flash('No area assignment found for your leadership role.', 'error')
         return redirect(url_for('main.index'))
+
+    led_areas = [
+        {'code': code, 'name': get_area_info(code).get('name', code)}
+        for code in sorted(records_by_area.keys())
+    ]
+
+    # Selected area from query params, defaulting to (and falling back to, if the
+    # query param names an area this email doesn't lead) the first led area.
+    requested_area = request.args.get('area')
+    assigned_area = requested_area if requested_area in records_by_area else led_areas[0]['code']
+
+    leader_info = records_by_area[assigned_area]
 
     # Get area information
     area_info = get_area_info(assigned_area)
@@ -119,6 +137,7 @@ def dashboard():
                            leader_info=leader_info,
                            area_code=assigned_area,
                            area_info=area_info,
+                           led_areas=led_areas,
                            feeder_participants=feeder_participants,
                            regular_participants=regular_participants,
                            withdrawn_participants=withdrawn_participants,

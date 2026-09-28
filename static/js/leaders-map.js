@@ -1,7 +1,17 @@
 // Map functionality for Areas Needing Leaders display
-/* Updated by Claude AI on 2025-10-16 */
+/* Updated by Claude AI on 2026-08-31 */
 let leadersMap;
 let leadersAreaLayers = {};
+
+// area.name/area.letter_code come from the DB (admin-entered, or KML-imported) and
+// aren't guaranteed free of HTML - Leaflet's bindTooltip and plain .innerHTML both
+// render string content as raw markup, so anything interpolated into them must be
+// escaped first (see landing-map.js's comment for the same issue on that page).
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text == null ? '' : String(text);
+    return div.innerHTML;
+}
 
 // Initialize map when page loads
 document.addEventListener('DOMContentLoaded', function() {
@@ -53,6 +63,13 @@ function loadAreasNeedingLeaders() {
 
             displayAreasNeedingLeaders(data.areas, data.areas_without_leaders);
 
+            // Display decorative major-area-group boundary lines, if this
+            // circle has any (most don't - see services/kml_import.py's
+            // parse_kml_boundary_lines())
+            if (data.boundaries && data.boundaries.length > 0) {
+                displayBoundaries(data.boundaries);
+            }
+
             // Display count circle boundary if available
             if (data.count_circle) {
                 displayCountCircle(data.count_circle);
@@ -79,7 +96,7 @@ function displayAreasNeedingLeaders(allAreas, areasWithoutLeaders) {
         const style = getLeadershipStyle(needsLeader);
 
         // Create tooltip text
-        let tooltipText = `Area ${areaCode}: ${area.name}<br>`;
+        let tooltipText = `Area ${escapeHtml(areaCode)}: ${escapeHtml(area.name)}<br>`;
         if (needsLeader) {
             tooltipText += '⚠️ Needs Leader';
         } else {
@@ -88,9 +105,9 @@ function displayAreasNeedingLeaders(allAreas, areasWithoutLeaders) {
             if (window.leaderData && window.leaderData[areaCode] && window.leaderData[areaCode].length > 0) {
                 const leaders = window.leaderData[areaCode];
                 if (leaders.length === 1) {
-                    tooltipText += `<br>Leader: ${leaders[0]}`;
+                    tooltipText += `<br>Leader: ${escapeHtml(leaders[0])}`;
                 } else {
-                    tooltipText += `<br>Leaders: ${leaders.join(', ')}`;
+                    tooltipText += `<br>Leaders: ${leaders.map(escapeHtml).join(', ')}`;
                 }
             }
         }
@@ -133,6 +150,26 @@ function displayAreasNeedingLeaders(allAreas, areasWithoutLeaders) {
     // Update legend - use window.allAreas for consistent total count
     const totalAreas = window.allAreas ? window.allAreas.length : allAreas.length;
     updateLeadersMapLegend(areasWithoutLeaders.length, totalAreas - areasWithoutLeaders.length);
+}
+
+function displayBoundaries(boundaries) {
+    // Draw decorative "major area group" lines as bold blue polylines, on
+    // top of the real (possibly subdivided) area polygons - a visual
+    // orientation aid only, no click/hover behavior, no text (these carry
+    // no name/code of their own - see services/kml_import.py's
+    // parse_kml_boundary_lines())
+    const boundaryStyle = {
+        color: '#0055CC',
+        weight: 4,
+        opacity: 0.85,
+        interactive: false,
+        className: 'area-group-boundary'
+    };
+
+    boundaries.forEach(function(boundary) {
+        const leafletCoords = boundary.coordinates.map(coord => [coord[1], coord[0]]);
+        L.polyline(leafletCoords, boundaryStyle).addTo(leadersMap);
+    });
 }
 
 function displayCountCircle(countCircle) {
@@ -219,7 +256,7 @@ function showAreaInfo(areaCode, areaName) {
     }
     
     infoDiv.innerHTML = `
-        <strong>Area ${areaCode} - ${areaName}</strong><br>
+        <strong>Area ${escapeHtml(areaCode)} - ${escapeHtml(areaName)}</strong><br>
         <small>⚠️ This area currently needs a leader. Consider recruiting someone for this area!</small>
     `;
     

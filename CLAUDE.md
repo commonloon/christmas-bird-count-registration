@@ -10,13 +10,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Do not add completion claims to .md files or code comments
 
 ### Deployment Constraints
-- **NEVER** place application code in `utils/` directory (not deployed to Cloud Run)
+- **NEVER** place application code in `utils/` directory (not deployed to the FullHost app node)
 - Application code belongs in `services/`, `models/`, `config/`, or root directory
+- **NEVER commit/push/deploy/restart production** without asking first - the user pulls, migrates, and restarts the production server themselves, every time
 
 ### Security Requirements
 **NEVER include credentials in version-controlled files:**
 - No passwords, API keys, tokens in .py, .js, .html, .md, .json, .yaml, .ini files
-- Tell user to use environment variables, Google Secret Manager, or secure channels
+- Tell user to use environment variables (set via FullHost's app-node "Variables" panel in production, or a local `.env` for dev) or secure channels
 - NEVER write credentials in documentation "for resuming work"
 
 ### Configuration Management
@@ -97,7 +98,9 @@ selectors = [
 **Family email support:** Multiple family members may share one email address - email alone is NOT unique
 
 ```python
-# CORRECT - Identity-based methods from AreaLeaderModel
+# CORRECT - Identity-based methods on ParticipantModel (single-table design -
+# leadership is is_leader/assigned_area_leader flags on the participant row,
+# there is no separate leader model/table)
 get_leaders_by_identity(first_name, last_name, email)
 deactivate_leaders_by_identity(first_name, last_name, email, removed_by)
 get_areas_by_identity(first_name, last_name, email)
@@ -113,91 +116,68 @@ get_leaders_by_email(email)  # Use only for non-critical operations
 
 ## About This Project
 
-Flask web application for Nature Vancouver's Christmas Bird Count registration. Interactive map/dropdown selection with automatic assignment to areas needing volunteers.
+Flask web application for Christmas Bird Count registration - a multi-circle platform (Vancouver, Nanaimo, Comox Spring, and others) rather than a single organization's app. Interactive map/dropdown selection with automatic assignment to areas needing volunteers. Every circle's data is scoped by `circle_slug`; the circle is always resolved from the request's Host header subdomain, with no default/fallback circle (see `app.py`'s `resolve_circle()`, `models/db.py`'s `resolve_default_circle_slug()`).
 
 ### Core Architecture
-- **Year-based collections**: Separate data per year (`participants_2025`, `area_leaders_2025`)
-- **Backend**: Flask + Blueprints, Firestore (environment-specific: `cbc-test`, `cbc-register`)
-- **Authentication**: Google OAuth with role-based access (Public/Leader/Admin)
+- **Multi-circle, year-scoped data**: shared Postgres tables (`participants`, `removal_log`, etc.) scoped by `(circle_slug, year)`, not per-circle/per-year collections
+- **Backend**: Flask + Blueprints, PostgreSQL (SQLAlchemy)
+- **Authentication**: magic-link email (signed session cookie), role-based access (Public/Leader/Admin/Super-Admin)
 - **Frontend**: Bootstrap 5 + Leaflet.js interactive map
-- **Deployment**: Google Cloud Run + Firestore
+- **Hosting**: FullHost PaaS (migrated off Google Cloud Run/Firestore) - deploy is `git pull` + a manual restart on the production server, not a scripted push
 
 ## Essential Commands
 
 ```bash
 # Development
 pip install -r requirements.txt
-python app.py  # Serves on localhost:8080
+python app.py  # Serves on localhost:8080 - requires a circle hostname, see docs/TEST_SETUP.md
 
-# Deployment
-./deploy.sh test        # Test only
-./deploy.sh production  # Production only
-./deploy.sh both        # Both (default)
-
-# Logs
-gcloud run services logs read cbc-test --region=us-west1 --limit=50
-
-# OAuth Setup (first-time)
-./utils/setup_oauth_secrets.sh
-rm client_secret.json  # Delete after setup
-
-# Annual Season Start (CRITICAL - run each season)
-python utils/verify_indexes.py cbc-test        # Test
-python utils/verify_indexes.py cbc-register    # Production
+# Testing
+pip install -r tests/requirements.txt
+pytest tests/ -v                 # Full suite - see docs/TESTING.md
+pytest tests/unit/ -v            # Unit tests only, no server/browser needed
 
 # Utilities
 python utils/setup_databases.py --dry-run  # Preview
 python utils/generate_test_participants.py 50  # Generate test data
 ```
 
+Production deployment is `git pull` followed by a manual restart directly on the FullHost app node - there is no deploy script, and the user handles this themselves. Never commit, push, deploy, or restart production without asking first.
+
 ## Project Structure
 
-**Config:** `config/areas.py` (24 areas A-X), `config/admins.py` (whitelist), `config/settings.py`, `config/colors.py`, `config/organization.py`, `config/email_settings.py`
+**Config:** `config/areas.py` (static fallback area data), `config/admins.py` (global admin whitelist), `config/colors.py`, `config/organization.py`, `config/email_settings.py`, `config/database.py`, `config/rate_limits.py`
 
-**Models (year-aware):** `models/participant.py`, `models/area_leader.py`, `models/removal_log.py`
+**Models (circle- and year-aware):** `models/participant.py` (single-table participant + leadership flags), `models/removal_log.py`, `models/circle.py` (circle/area/circle-admin management), `models/db.py` (SQLAlchemy table definitions)
 
-**Routes:** `routes/main.py` (public), `routes/admin.py` (admin), `routes/auth.py` (OAuth), `routes/api.py` (JSON endpoints)
+**Routes:** `routes/main.py` (public), `routes/admin.py` (admin, mounted at `/bigbird`), `routes/leader.py` (area leader, mounted at `/leader`), `routes/auth.py` (magic-link auth), `routes/api.py` (JSON endpoints), `routes/scheduler.py` (Task Scheduler email triggers)
 
-**Frontend:** `static/js/map.js`, `static/js/leaders-map.js`, `static/js/registration.js`, `static/css/main.css`, `static/data/area_boundaries.json`
+**Frontend:** `static/js/map.js`, `static/js/leaders-map.js`, `static/js/registration.js`, `static/css/main.css`
 
-**Templates:** `templates/base.html`, `templates/index.html`, `templates/auth/login.html`, `templates/admin/*.html`, `templates/errors/*.html`
+**Templates:** `templates/base.html`, `templates/index.html`, `templates/auth/*.html`, `templates/admin/*.html`, `templates/errors/*.html`
 
 ## Key Implementation Patterns
 
 ### Database Configuration
 ```python
-from config.database import get_firestore_client
-db, database_id = get_firestore_client()
-# Auto-selects: cbc-test (dev/test) or cbc-register (prod)
+from config.database import get_db_session
+db = get_db_session()
 ```
 
-### Year-Based Data
+### Circle- and Year-Aware Data
 ```python
-participant_model = ParticipantModel(db)  # Current year
-historical_model = ParticipantModel(db, 2024)  # Specific year
+participant_model = ParticipantModel(db, year, circle_slug)  # circle_slug required - no default
+historical_model = ParticipantModel(db, 2024, circle_slug)
 historical = participant_model.get_historical_participants('A', years_back=3)
 ```
 
-### Firestore Query Syntax (MANDATORY)
-**Always use modern `FieldFilter` syntax:**
-
-```python
-from google.cloud.firestore_v1.base_query import FieldFilter
-
-# CORRECT
-query = collection.where(filter=FieldFilter('field_name', '==', value))
-
-# INCORRECT (deprecated)
-query = collection.where('field_name', '==', value)
-```
-
 ### Authentication Flow
-1. Google OAuth via `/auth/login` (credentials in Secret Manager)
-2. Role determination: Admin (whitelist) → full access, Leader (area-specific), Public (registration only)
-3. Decorators: `@require_admin`, `@require_leader`, `@require_auth`
+1. Magic-link email to `/auth/login` - no password, no OAuth
+2. Role determination (`routes/auth.py`'s `get_user_role()`), most to least privileged: `super_admin` (global whitelist, `config/admins.py`, full access to every circle) → `admin` (circle-admin for this circle only) → `leader` (area leader for this circle) → `public`
+3. Decorators: `@require_super_admin`, `@require_admin`, `@require_leader`
 
 ### Area Management
-- 24 areas (A-X, no Y), interactive map with clickable polygons
+- Areas are circle-specific and DB-backed (`models/circle.py`'s `CircleAreaModel`), imported per circle from a KML file via the admin UI - `config/areas.py`'s `AREA_CONFIG` is a static fallback only, not the live source of truth
 - Auto-assignment for "UNASSIGNED" preference
 - No capacity limits
 
@@ -206,11 +186,11 @@ query = collection.where('field_name', '==', value)
 ### Data Integrity
 - Current year: read/write; Historical: read-only (UI enforced)
 - Email deduplication across years (most recent wins)
-- Explicit year field in all records
+- Explicit `circle_slug` and year field in every record - never assume/default a circle
 
 ### Security
-- OAuth credentials in Secret Manager
-- Admin whitelist in `config/admins.py`
+- No OAuth/Secret Manager - the only secrets are env vars (`SECRET_KEY`, `SMTP2GO_USERNAME`/`PASSWORD`, `SCHEDULER_SECRET`), set via FullHost's app-node "Variables" panel in production or `.env` locally
+- Admin whitelist in `config/admins.py`; per-circle admins in the `circle_admins` table
 - No public admin links
 - Historical data read-only
 
@@ -222,27 +202,26 @@ query = collection.where('field_name', '==', value)
 ## Environment
 
 **Required Variables:**
-- `GOOGLE_CLOUD_PROJECT=vancouver-cbc-registration`
+- `DATABASE_URL` (Postgres connection string)
 - `SECRET_KEY` (Flask sessions)
+- `SMTP2GO_USERNAME` / `SMTP2GO_PASSWORD` (email sending - silently no-ops without these)
+- `SCHEDULER_SECRET` (bearer token for `routes/scheduler.py`'s Task Scheduler-triggered email routes)
 
-**GCP Services:** Cloud Run, Firestore, OAuth 2.0
+**Hosting:** FullHost PaaS (app node) + PostgreSQL
 
-**Testing:** `cbc-test.naturevancouver.ca` (test), `cbc-registration.naturevancouver.ca` (prod)
+**Local dev/testing:** dedicated `test` circle via a `.test`-TLD hostname - see `docs/TEST_SETUP.md`
 
 ## Common Development Tasks
 
-### OAuth Issues
-1. **"OAuth client not found"**: Check for trailing newlines, verify consent screen published
-2. **"Google OAuth not configured"**: Verify `init_auth(app)` called, check Secret Manager permissions
-3. **Database connection errors**: Check Firestore client init, verify `GOOGLE_CLOUD_PROJECT`
-
 ### Managing Admin Access
-**Production:** Edit `PRODUCTION_ADMIN_EMAILS` in `config/admins.py`, redeploy
+**Global/production:** Edit `PRODUCTION_ADMIN_EMAILS` in `config/admins.py`, ask before deploying
 
-**Test:** Accounts (`cbc-test-admin1@`, `cbc-test-admin2@naturevancouver.ca`) auto-active in test
+**Per-circle:** managed via the `circle_admins` table (admin UI), not a code change
+
+**Test:** Accounts (`cbc-test-admin1@`, `cbc-test-admin2@naturevancouver.ca`) auto-active whenever `config/admins.py`'s `is_test_environment()` is true
 
 ### Year Transition
-Models auto-create new year collections, admin has year selector, historical data read-only
+Models auto-create new year data on first write, admin has year selector, historical data read-only
 
 ### Map Colors
 Centralized in `config/colors.py`:
@@ -258,24 +237,18 @@ Centralized in `config/colors.py`:
 - Multiple leaders per area, one area per leader
 - Email automation: twice-daily updates, weekly summaries, admin digest
 
-**Email System Status:**
-- ✅ Email generation (`test/email_generator.py`), templates, test UI, timezone handling
-- ❌ Needs Google Cloud Email API (currently SMTP)
-
 **Email Components:**
-- Generation: `test/email_generator.py`
-- Service: `services/email_service.py`
+- Generation: `test/email_generator.py` (real production code despite the directory name - the digest generators)
+- Service: `services/email_service.py` (SMTP via SMTP2GO)
 - Templates: `templates/emails/`
 - Config: `config/email_settings.py`
+- Triggers: `routes/scheduler.py`, called by FullHost's Task Scheduler; runs once per circle
 
-### Debugging Deployment
-```bash
-gcloud run services describe SERVICE --region=us-west1
-gcloud run services logs tail SERVICE --region=us-west1
-```
+### Debugging Production
+Log/service inspection is via the FullHost dashboard, not `gcloud` - there's no CLI equivalent confirmed yet. Ask the user to check dashboard logs rather than guessing at a command.
 
 **Notes:**
-- Can't test locally - use `cbc-test.naturevancouver.ca`
+- Can test locally now - see `docs/TEST_SETUP.md` (dedicated `.test`-TLD circle hostname, local Postgres)
 - Project uses git - may need git commands for file operations
 
 ## File Modification Guidelines
@@ -292,23 +265,14 @@ gcloud run services logs tail SERVICE --region=us-west1
 - **NEVER begin replies with "You're right", "You're absolutely correct", etc.** - start directly with analysis
 - Avoid "comprehensive" unless specifically instructed
 
-## Test Suite Status (as of 2025-09-22)
+## Test Suite
 
-**Completed:** Framework architecture, config files, utilities, test accounts, documentation
+353 pytest tests (`tests/`) run entirely locally against a dedicated `test` circle and local Postgres - no cloud dependency. See `docs/TEST_SETUP.md` (setup), `docs/TESTING.md` (running tests), `docs/TEST_SUITE_SPEC.md` (what each part covers).
 
-**Next Steps:** Fix data consistency bugs, implement first test, extend test data generation, Phase 1 tests
+## Documentation Structure
 
-**Priorities:** Leader workflows, participant/leader sync, registration flow, CSV export, authentication
+**Current and accurate:** `docs/TEST_SETUP.md`, `docs/TESTING.md`, `docs/TEST_SUITE_SPEC.md`, `CLAUDE.md` (this file)
 
-**Notes:** Tests run against cloud (cbc-test.naturevancouver.ca), current year for functional tests, year 2000 for isolation
+**Known stale (pre-FullHost-migration, GCP/Cloud Run/OAuth-era) - a rewrite is planned but not yet done, so verify against the live code before trusting these:** `docs/DEPLOYMENT.md`, `docs/DEPLOYMENT_TECHNICAL_REFERENCE.md`, `docs/DEPLOYMENT_WORKSHEET.md`, `docs/DEVELOPER_GUIDE.md`, `docs/SPECIFICATION.md`, `docs/TEST_COVERAGE.md`, `README.md`
 
-## Documentation Structure (as of 2025-10-12)
-
-**For Volunteers:** `docs/DEPLOYMENT.md` (step-by-step), `README.md` (overview)
-
-**For Developers:** `docs/DEPLOYMENT_TECHNICAL_REFERENCE.md` (technical details), `docs/SPECIFICATION.md` (architecture), `CLAUDE.md` (this file)
-
-**For End Users:** `docs/ADMIN_GUIDE.md`, `docs/LEADER_GUIDE.md` (if exist)
-
-**Utilities:** `utils/verify_indexes.py` (annual season start), `utils/setup_databases.py`, `utils/generate_test_participants.py`, `utils/setup_email_scheduler.sh`
-- most documents are in the docs/ directory
+**Utilities:** `utils/setup_databases.py`, `utils/generate_test_participants.py`, `utils/setup_email_scheduler.sh` - most documents are in the docs/ directory

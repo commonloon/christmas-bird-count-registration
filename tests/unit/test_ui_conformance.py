@@ -6,12 +6,12 @@ These tests use Flask test client to render templates and validate that UI
 elements (dropdowns, form fields, table columns, etc.) conform to the
 requirements in SPECIFICATION.md.
 
-Tests connect to the real cbc-test Firestore database and use test data
-loaded by tests/utils/load_test_data.py to validate UI behavior with actual data.
+Tests connect to the local Postgres test database and use test data loaded by
+tests/utils/load_test_data.py to validate UI behavior with actual data.
 
 Setup:
     Before running these tests, load test data:
-    python tests/utils/load_test_data.py --years 2025
+    python tests/utils/load_test_data.py --years <current year>
 
 Note: Flask extensions (flask_wtf, flask_limiter) are mocked to avoid
 requiring their installation for unit tests.
@@ -92,30 +92,30 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Tests must exercise the CURRENT year's live/writable admin UI, not a
+# historical (read-only) year - loading fixture data into a hardcoded past
+# year would silently make every test below exercise the wrong code path.
+CURRENT_TEST_YEAR = datetime.now().year
+
 
 @pytest.fixture(scope='session')
 def load_test_data():
     """
     Session-scoped fixture to ensure test data is loaded before any tests run.
 
-    This loads test participants into year 2025 collection in cbc-test database.
+    This loads test participants into the current year's rows in Postgres.
     The data is loaded once per test session and shared across all tests.
     """
-    from config.database import get_firestore_client
+    from config.database import get_db_session
+    from tests.utils.load_test_data import load_test_fixture
 
-    # Import load_test_data utility
-    sys.path.insert(0, os.path.join(project_root, 'tests', 'utils'))
-    from load_test_data import load_test_fixture
+    db_session = get_db_session()
 
-    # Connect to database
-    db, database_name = get_firestore_client()
-    logger.info(f"Connected to database: {database_name}")
-
-    # Load test data for year 2025
+    # Load test data for the current year
     try:
         results = load_test_fixture(
-            db,
-            years=[2025],
+            db_session,
+            years=[CURRENT_TEST_YEAR],
             csv_filename='test_participants_2025.csv',
             clear_first=True
         )
@@ -130,15 +130,20 @@ def load_test_data():
 @pytest.fixture
 def app(load_test_data):
     """
-    Get Flask app in test mode connected to real cbc-test database.
+    Get the real Flask app in test mode, backed by the local Postgres dev database.
 
     Depends on load_test_data fixture to ensure database has known test data.
+    SERVER_NAME is set to the dedicated test circle's *.test hostname so every
+    test_client() request's Host header resolves to the 'test' circle via the
+    app's normal Host-header-based resolve_circle() - there's no default circle
+    to fall back on otherwise (see app.py's resolve_circle()).
     """
     # Import the app module (app is created at module level, not via create_app)
     import app as app_module
     flask_app = app_module.app
     flask_app.config['TESTING'] = True
     flask_app.config['WTF_CSRF_ENABLED'] = False  # Disable CSRF for testing
+    flask_app.config['SERVER_NAME'] = 'test.cbc.test'
     return flask_app
 
 
@@ -270,7 +275,6 @@ class TestRegistrationFormUI:
             'has_binoculars': 'input',  # checkbox
             'spotting_scope': 'input',  # checkbox
             'interested_in_leadership': 'input',  # checkbox
-            'interested_in_scribe': 'input',  # checkbox
             'notes_to_organizers': 'textarea'
         }
 
@@ -293,20 +297,18 @@ class TestRegistrationFormUI:
         assert binoculars is not None, "Binoculars checkbox not found"
         assert scope is not None, "Spotting scope checkbox not found"
 
-    def test_leadership_and_scribe_checkboxes_present(self, client):
+    def test_leadership_checkbox_present(self, client):
         """
-        Verify leadership and scribe interest checkboxes exist.
+        Verify leadership interest checkbox exists.
 
-        Spec reference: Lines 422-423 (interested_in_leadership, interested_in_scribe)
+        Spec reference: Line 422 (interested_in_leadership)
         """
         response = client.get('/')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         leadership = soup.find('input', {'id': 'interested_in_leadership', 'type': 'checkbox'})
-        scribe = soup.find('input', {'id': 'interested_in_scribe', 'type': 'checkbox'})
 
         assert leadership is not None, "Leadership interest checkbox not found"
-        assert scribe is not None, "Scribe interest checkbox not found"
 
     def test_phone_field_label_is_cell_phone(self, client):
         """
@@ -456,7 +458,7 @@ class TestRegistrationFormUI:
         """
         Verify all checkbox fields have type="checkbox".
 
-        Includes: binoculars, spotting scope, leadership interest, scribe interest.
+        Includes: binoculars, spotting scope, leadership interest.
         """
         response = client.get('/')
         soup = BeautifulSoup(response.data, 'html.parser')
@@ -464,8 +466,7 @@ class TestRegistrationFormUI:
         checkbox_fields = [
             'has_binoculars',
             'spotting_scope',
-            'interested_in_leadership',
-            'interested_in_scribe'
+            'interested_in_leadership'
         ]
 
         for field_name in checkbox_fields:
@@ -554,7 +555,7 @@ class TestRegistrationFormUI:
         """
         Verify optional fields do not have required attribute.
 
-        Optional fields: phone, phone2, binoculars, scope, leadership, scribe, notes.
+        Optional fields: phone, phone2, binoculars, scope, leadership, notes.
         """
         response = client.get('/')
         soup = BeautifulSoup(response.data, 'html.parser')
@@ -565,7 +566,6 @@ class TestRegistrationFormUI:
             'has_binoculars': 'input',
             'spotting_scope': 'input',
             'interested_in_leadership': 'input',
-            'interested_in_scribe': 'input',
             'notes_to_organizers': 'textarea'
         }
 
@@ -590,9 +590,9 @@ class TestAdminParticipantsUI:
         This test validates the fix for the missing Newbie option in admin edit mode.
         Spec reference: Line 416 - skill_level: "Newbie|Beginner|Intermediate|Expert"
 
-        Requires: Test data loaded in year 2025 (via load_test_data fixture)
+        Requires: Test data loaded in the current year (via load_test_data fixture)
         """
-        response = admin_client.get('/admin/participants?year=2025')
+        response = admin_client.get(f'/bigbird/participants?year={CURRENT_TEST_YEAR}')
         assert response.status_code == 200
 
         soup = BeautifulSoup(response.data, 'html.parser')
@@ -619,9 +619,9 @@ class TestAdminParticipantsUI:
 
         Spec reference: Line 417 - experience should be dropdown with defined values
 
-        Requires: Test data loaded in year 2025 (via load_test_data fixture)
+        Requires: Test data loaded in the current year (via load_test_data fixture)
         """
-        response = admin_client.get('/admin/participants?year=2025')
+        response = admin_client.get(f'/bigbird/participants?year={CURRENT_TEST_YEAR}')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         # Should find select elements with experience-input class
@@ -646,9 +646,9 @@ class TestAdminParticipantsUI:
 
         Spec reference: Line 417 - experience: "None|1-2 counts|3+ counts"
 
-        Requires: Test data loaded in year 2025 (via load_test_data fixture)
+        Requires: Test data loaded in the current year (via load_test_data fixture)
         """
-        response = admin_client.get('/admin/participants?year=2025')
+        response = admin_client.get(f'/bigbird/participants?year={CURRENT_TEST_YEAR}')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         experience_selects = soup.find_all('select', {'class': 'experience-input'})
@@ -664,9 +664,9 @@ class TestAdminParticipantsUI:
 
         Spec reference: Lines 111-122 (Participant table columns)
 
-        Requires: Test data loaded in year 2025 (via load_test_data fixture)
+        Requires: Test data loaded in the current year (via load_test_data fixture)
         """
-        response = admin_client.get('/admin/participants?year=2025')
+        response = admin_client.get(f'/bigbird/participants?year={CURRENT_TEST_YEAR}')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         # Find table headers
@@ -677,7 +677,7 @@ class TestAdminParticipantsUI:
 
         required_columns = [
             'Name', 'Email', 'Cell Phone', 'Skill Level', 'Experience',
-            'Equipment', 'Notes', 'Leader', 'Scribe', 'Actions'
+            'Equipment', 'Notes', 'Leader', 'Actions'
         ]
 
         for col in required_columns:
@@ -689,9 +689,9 @@ class TestAdminParticipantsUI:
 
         Spec reference: Line 413 - phone labeled as "Cell Phone"
 
-        Requires: Test data loaded in year 2025 (via load_test_data fixture)
+        Requires: Test data loaded in the current year (via load_test_data fixture)
         """
-        response = admin_client.get('/admin/participants?year=2025')
+        response = admin_client.get(f'/bigbird/participants?year={CURRENT_TEST_YEAR}')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         tables = soup.find_all('table')
@@ -705,13 +705,13 @@ class TestAdminParticipantsUI:
 
     def test_quick_actions_buttons_present(self, admin_client):
         """Verify Quick Actions section has expected buttons."""
-        response = admin_client.get('/admin/participants?year=2025')
+        response = admin_client.get(f'/bigbird/participants?year={CURRENT_TEST_YEAR}')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         # Check for key action buttons
-        manage_unassigned = soup.find('a', href=lambda x: x and '/admin/unassigned' in x)
-        manage_leaders = soup.find('a', href=lambda x: x and '/admin/leaders' in x)
-        export_csv = soup.find('a', href=lambda x: x and '/admin/export_csv' in x)
+        manage_unassigned = soup.find('a', href=lambda x: x and '/bigbird/unassigned' in x)
+        manage_leaders = soup.find('a', href=lambda x: x and '/bigbird/leaders' in x)
+        export_csv = soup.find('a', href=lambda x: x and '/bigbird/export_csv' in x)
 
         assert manage_unassigned is not None, "Manage Unassigned button not found"
         assert manage_leaders is not None, "Manage Leaders button not found"
@@ -723,7 +723,7 @@ class TestAdminParticipantsUI:
 
         Modal should include participant name, warning message, reason textarea.
         """
-        response = admin_client.get('/admin/participants?year=2025')
+        response = admin_client.get(f'/bigbird/participants?year={CURRENT_TEST_YEAR}')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         # Find delete modal
@@ -744,7 +744,7 @@ class TestAdminParticipantsUI:
 
         Modal should allow moving leader as leader or as team member.
         """
-        response = admin_client.get('/admin/participants?year=2025')
+        response = admin_client.get(f'/bigbird/participants?year={CURRENT_TEST_YEAR}')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         # Find leader reassignment modal
@@ -760,24 +760,24 @@ class TestAdminParticipantsUI:
 
     def test_year_badge_displays_current_year(self, admin_client):
         """Verify year badge shows the selected year."""
-        response = admin_client.get('/admin/participants?year=2025')
+        response = admin_client.get(f'/bigbird/participants?year={CURRENT_TEST_YEAR}')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         # Look for year badge
         year_badge = soup.find('span', {'class': 'badge'})
         assert year_badge is not None, "Year badge not found"
-        assert '2025' in year_badge.text, f"Year badge should show 2025, got: {year_badge.text}"
+        assert str(CURRENT_TEST_YEAR) in year_badge.text, f"Year badge should show {CURRENT_TEST_YEAR}, got: {year_badge.text}"
 
     def test_breadcrumb_navigation_present(self, admin_client):
         """Verify breadcrumb navigation is present."""
-        response = admin_client.get('/admin/participants?year=2025')
+        response = admin_client.get(f'/bigbird/participants?year={CURRENT_TEST_YEAR}')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         breadcrumb = soup.find('nav', {'aria-label': 'breadcrumb'})
         assert breadcrumb is not None, "Breadcrumb navigation not found"
 
         # Should have link to dashboard
-        dashboard_link = breadcrumb.find('a', href=lambda x: x and '/admin/' in x)
+        dashboard_link = breadcrumb.find('a', href=lambda x: x and '/bigbird/' in x)
         assert dashboard_link is not None, "Dashboard link not in breadcrumb"
 
     def test_year_tabs_present_with_multiple_years(self, admin_client):
@@ -789,7 +789,7 @@ class TestAdminParticipantsUI:
         Note: This test checks for tab navigation structure. Actual year availability
         depends on database state.
         """
-        response = admin_client.get('/admin/participants?year=2025')
+        response = admin_client.get(f'/bigbird/participants?year={CURRENT_TEST_YEAR}')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         # Look for year tab navigation (Bootstrap nav-tabs)
@@ -810,8 +810,9 @@ class TestAdminParticipantsUI:
 
         Tests that read-only warning is displayed for historical years.
         """
-        # Request a historical year (2024)
-        response = admin_client.get('/admin/participants?year=2024')
+        # Request a historical year (one year before the current test year)
+        historical_year = CURRENT_TEST_YEAR - 1
+        response = admin_client.get(f'/bigbird/participants?year={historical_year}')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         # Look for warning alert/banner
@@ -825,14 +826,13 @@ class TestAdminParticipantsUI:
                 warning_found = True
                 break
 
-        # If we're viewing 2024 and have current year 2025 data, should show warning
-        # This is conditional - warning only shows for actual historical years
-        # We'll make this a soft assertion by checking if year is truly historical
-        current_year = datetime.now().year
+        # If we're viewing a past year and have current-year data, should show warning.
+        # This is conditional - warning only shows for actual historical years.
+        # We'll make this a soft assertion by checking if year is truly historical.
         if response.status_code == 200:
             # Page loaded, check if it's truly a historical year view
             year_badge = soup.find('span', {'class': 'badge'})
-            if year_badge and '2024' in year_badge.text and current_year > 2024:
+            if year_badge and str(historical_year) in year_badge.text:
                 assert warning_found, "Historical year warning banner should be present when viewing past years"
 
     def test_historical_year_tabs_have_distinctive_styling(self, admin_client):
@@ -841,7 +841,7 @@ class TestAdminParticipantsUI:
 
         Spec reference: Line 184 (Historical year tabs: Orange text with archive icon indicator)
         """
-        response = admin_client.get('/admin/participants?year=2025')
+        response = admin_client.get(f'/bigbird/participants?year={CURRENT_TEST_YEAR}')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         # Look for year tabs
@@ -880,7 +880,7 @@ class TestAdminLeadersUI:
 
         Note: Leaders table should exist even if empty
         """
-        response = admin_client.get('/admin/leaders?year=2025')
+        response = admin_client.get(f'/bigbird/leaders?year={CURRENT_TEST_YEAR}')
         assert response.status_code == 200
 
         soup = BeautifulSoup(response.data, 'html.parser')
@@ -899,7 +899,7 @@ class TestAdminLeadersUI:
 
     def test_potential_leaders_table_present(self, admin_client):
         """Verify Potential Leaders section exists."""
-        response = admin_client.get('/admin/leaders?year=2025')
+        response = admin_client.get(f'/bigbird/leaders?year={CURRENT_TEST_YEAR}')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         # Look for Potential Leaders heading or table
@@ -913,11 +913,6 @@ class TestInfoPages:
     def test_area_leader_info_page_accessible(self, client):
         """Verify area leader info page loads."""
         response = client.get('/area-leader-info')
-        assert response.status_code == 200
-
-    def test_scribe_info_page_accessible(self, client):
-        """Verify scribe info page loads."""
-        response = client.get('/scribe-info')
         assert response.status_code == 200
 
     def test_area_leader_info_preserves_form_data(self, client):
@@ -941,12 +936,12 @@ class TestDashboardUI:
 
     def test_dashboard_loads_for_admin(self, admin_client):
         """Verify admin dashboard loads successfully."""
-        response = admin_client.get('/admin/')
+        response = admin_client.get('/bigbird/')
         assert response.status_code == 200
 
     def test_dashboard_has_statistics_section(self, admin_client):
         """Verify dashboard displays statistics overview."""
-        response = admin_client.get('/admin/')
+        response = admin_client.get('/bigbird/')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         # Look for common dashboard elements
@@ -956,7 +951,7 @@ class TestDashboardUI:
 
     def test_dashboard_has_year_selector(self, admin_client):
         """Verify dashboard has year selector."""
-        response = admin_client.get('/admin/')
+        response = admin_client.get('/bigbird/')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         # Look for year selector or year indicator
@@ -969,12 +964,12 @@ class TestAdminUnassignedPage:
 
     def test_unassigned_page_loads(self, admin_client):
         """Verify unassigned page is accessible."""
-        response = admin_client.get('/admin/unassigned?year=2025')
+        response = admin_client.get(f'/bigbird/unassigned?year={CURRENT_TEST_YEAR}')
         assert response.status_code == 200
 
     def test_unassigned_page_has_table(self, admin_client):
         """Verify page displays unassigned participants table."""
-        response = admin_client.get('/admin/unassigned?year=2025')
+        response = admin_client.get(f'/bigbird/unassigned?year={CURRENT_TEST_YEAR}')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         # Should have at least one table
@@ -983,7 +978,7 @@ class TestAdminUnassignedPage:
 
     def test_unassigned_table_has_assignment_controls(self, admin_client):
         """Verify table has controls for assigning participants to areas."""
-        response = admin_client.get('/admin/unassigned?year=2025')
+        response = admin_client.get(f'/bigbird/unassigned?year={CURRENT_TEST_YEAR}')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         # Look for select/dropdown elements for area assignment
@@ -1002,7 +997,7 @@ class TestCSVExport:
 
     def test_csv_export_returns_csv_content_type(self, admin_client):
         """Verify CSV export returns correct content type."""
-        response = admin_client.get('/admin/export_csv?year=2025')
+        response = admin_client.get(f'/bigbird/export_csv?year={CURRENT_TEST_YEAR}')
         assert response.status_code == 200
 
         content_type = response.headers.get('Content-Type', '')
@@ -1011,13 +1006,13 @@ class TestCSVExport:
 
     def test_csv_export_has_filename_with_year(self, admin_client):
         """Verify CSV filename includes year for organization."""
-        response = admin_client.get('/admin/export_csv?year=2025')
+        response = admin_client.get(f'/bigbird/export_csv?year={CURRENT_TEST_YEAR}')
 
         content_disposition = response.headers.get('Content-Disposition', '')
         assert 'attachment' in content_disposition.lower(), \
             "CSV should be served as attachment"
-        assert '2025' in content_disposition, \
-            f"Filename should include year 2025, got: {content_disposition}"
+        assert str(CURRENT_TEST_YEAR) in content_disposition, \
+            f"Filename should include year {CURRENT_TEST_YEAR}, got: {content_disposition}"
 
     def test_csv_export_has_required_headers(self, admin_client):
         """
@@ -1025,9 +1020,9 @@ class TestCSVExport:
 
         This is critical for data integrity and downstream processing.
 
-        Requires: Test data loaded in year 2025 (via load_test_data fixture)
+        Requires: Test data loaded in the current year (via load_test_data fixture)
         """
-        response = admin_client.get('/admin/export_csv?year=2025')
+        response = admin_client.get(f'/bigbird/export_csv?year={CURRENT_TEST_YEAR}')
         csv_data = response.data.decode('utf-8')
 
         # Parse CSV headers (first line)
@@ -1067,7 +1062,7 @@ class TestEmptyStateDisplays:
         we verify the template has empty state handling.
         """
         # Request a year that likely has no data (year 2000 for isolation)
-        response = admin_client.get('/admin/participants?year=2000')
+        response = admin_client.get('/bigbird/participants?year=2000')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         # Page should either have participants or an empty state message
@@ -1094,7 +1089,7 @@ class TestEmptyStateDisplays:
 
         Should display "No unassigned participants" or similar message.
         """
-        response = admin_client.get('/admin/unassigned?year=2025')
+        response = admin_client.get(f'/bigbird/unassigned?year={CURRENT_TEST_YEAR}')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         # Look for either table with unassigned participants OR empty state message
@@ -1123,7 +1118,7 @@ class TestEmptyStateDisplays:
 
         Should show which areas need leaders.
         """
-        response = admin_client.get('/admin/leaders?year=2025')
+        response = admin_client.get(f'/bigbird/leaders?year={CURRENT_TEST_YEAR}')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         # Look for section showing areas needing leaders
@@ -1147,7 +1142,7 @@ class TestEmptyStateDisplays:
         Statistics should show zeros rather than errors.
         """
         # Request year with no data
-        response = admin_client.get('/admin/?year=2000')
+        response = admin_client.get('/bigbird/?year=2000')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         # Dashboard should load successfully
@@ -1164,8 +1159,8 @@ class TestEmptyStateDisplays:
         Each area detail view should handle empty state.
         """
         # Try to access area detail page (if route exists)
-        # This tests /admin/area/<code> route
-        response = admin_client.get('/admin/area/A?year=2000')
+        # This tests /bigbird/area/<code> route
+        response = admin_client.get('/bigbird/area/A?year=2000')
 
         # Page might not exist or might redirect - check response
         if response.status_code == 200:
@@ -1196,7 +1191,7 @@ class TestAccessibility:
 
         Semantic table structure improves screen reader navigation.
         """
-        response = admin_client.get('/admin/participants?year=2025')
+        response = admin_client.get(f'/bigbird/participants?year={CURRENT_TEST_YEAR}')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         tables = soup.find_all('table')
@@ -1231,7 +1226,7 @@ class TestAccessibility:
 
         Action buttons (edit, delete, cancel) should use type="button".
         """
-        response = admin_client.get('/admin/participants?year=2025')
+        response = admin_client.get(f'/bigbird/participants?year={CURRENT_TEST_YEAR}')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         # Find all buttons
@@ -1249,7 +1244,7 @@ class TestAccessibility:
 
         Images without alt text are inaccessible to vision-impaired users.
         """
-        response = admin_client.get('/admin/participants?year=2025')
+        response = admin_client.get(f'/bigbird/participants?year={CURRENT_TEST_YEAR}')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         images = soup.find_all('img')
@@ -1266,7 +1261,7 @@ class TestAccessibility:
 
         Spec reference: Custom SVG spotting scope icon needs alt text.
         """
-        response = admin_client.get('/admin/participants?year=2025')
+        response = admin_client.get(f'/bigbird/participants?year={CURRENT_TEST_YEAR}')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         # Look for spotting scope images
@@ -1329,8 +1324,7 @@ class TestAccessibility:
         # Test public pages that vision-impaired users might access
         public_pages = [
             '/',                    # Registration form
-            '/area-leader-info',   # Area leader info page
-            '/scribe-info'         # Scribe info page
+            '/area-leader-info'    # Area leader info page
         ]
 
         for page_url in public_pages:
@@ -1360,8 +1354,7 @@ class TestAccessibility:
         # Test public pages that vision-impaired users might access
         public_pages = [
             '/',                    # Registration form
-            '/area-leader-info',   # Area leader info page
-            '/scribe-info'         # Scribe info page
+            '/area-leader-info'    # Area leader info page
         ]
 
         for page_url in public_pages:
@@ -1520,9 +1513,9 @@ class TestDataDrivenParticipantRendering:
         """
         Verify that participants from test database render in tables.
 
-        Requires: Test data loaded in year 2025 (via load_test_data fixture)
+        Requires: Test data loaded in the current year (via load_test_data fixture)
         """
-        response = admin_client.get('/admin/participants?year=2025')
+        response = admin_client.get(f'/bigbird/participants?year={CURRENT_TEST_YEAR}')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         # Find all participant rows (tr elements with data-participant-id)
@@ -1537,7 +1530,7 @@ class TestDataDrivenParticipantRendering:
 
         Checks that names are escaped and displayed properly.
         """
-        response = admin_client.get('/admin/participants?year=2025')
+        response = admin_client.get(f'/bigbird/participants?year={CURRENT_TEST_YEAR}')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         # Find participant name elements
@@ -1558,7 +1551,7 @@ class TestDataDrivenParticipantRendering:
         Badges should have color coding: Expert=success, Intermediate=primary,
         Beginner=info, Newbie=secondary.
         """
-        response = admin_client.get('/admin/participants?year=2025')
+        response = admin_client.get(f'/bigbird/participants?year={CURRENT_TEST_YEAR}')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         # Find skill level displays
@@ -1579,7 +1572,7 @@ class TestDataDrivenParticipantRendering:
 
         Per spec, FEEDER participants should be visually distinguished.
         """
-        response = admin_client.get('/admin/participants?year=2025')
+        response = admin_client.get(f'/bigbird/participants?year={CURRENT_TEST_YEAR}')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         # Find all table rows
@@ -1603,7 +1596,7 @@ class TestDataDrivenParticipantRendering:
 
         Icons: binoculars icon, spotting scope icon/image.
         """
-        response = admin_client.get('/admin/participants?year=2025')
+        response = admin_client.get(f'/bigbird/participants?year={CURRENT_TEST_YEAR}')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         # Find equipment display divs
@@ -1626,7 +1619,7 @@ class TestDataDrivenParticipantRendering:
 
         Leader badge should be visible and styled (bg-success).
         """
-        response = admin_client.get('/admin/participants?year=2025')
+        response = admin_client.get(f'/bigbird/participants?year={CURRENT_TEST_YEAR}')
         soup = BeautifulSoup(response.data, 'html.parser')
 
         # Find all leader badges

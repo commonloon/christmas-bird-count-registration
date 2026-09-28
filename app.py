@@ -1,18 +1,105 @@
 # app.py - Flask application entry point
-# Updated by Claude AI on 2025-12-09
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session, g, send_file
+# Updated by Claude AI on 2026-09-28
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session, g, send_file, abort, has_request_context
 from flask_wtf.csrf import CSRFProtect
-from google.cloud import firestore
-from config.database import get_firestore_client
-from config.organization import get_organization_variables
+from config.database import get_db_session, teardown_db_session
+from config.organization import get_organization_variables, get_registration_url, get_admin_url, get_leader_url, DISPLAY_TIMEZONE
+from config.fields import get_skill_level_label
 from services.limiter import limiter
 from services.ip_blocker import IPBlockerService, get_client_ip
-from google.oauth2 import id_token
-from google.auth.transport import requests as google_requests
+from models.circle import CircleModel, CircleAreaModel
 import os
+import re
+import sys
 from datetime import datetime
-import json
 import logging
+
+# CBC counts live at <slug>.cbc.birdcount.ca; non-CBC counts (KBA surveys, spring
+# counts, etc.) live one level up at <slug>.birdcount.ca directly - both resolve the
+# same way in resolve_circle() below, distinguished only by which pattern matches.
+#
+# The .test patterns mirror these one-for-one under the IANA-reserved .test TLD
+# (RFC 6761) - permanently reserved for local/private use, guaranteed never to
+# resolve on the real internet (unlike a real-looking domain, which might actually
+# be owned by someone else and could receive leaked test traffic if a resolver ever
+# bypasses a local hosts-file override). This lets local dev/testing resolve a real
+# circle (e.g. the 'test' circle) via genuine Host-header subdomain matching - the
+# same mechanism production uses - instead of a hardcoded default circle.
+CIRCLE_SUBDOMAIN_PATTERNS = (
+    re.compile(r'^([a-z0-9-]+)\.cbc\.birdcount\.ca$', re.IGNORECASE),
+    re.compile(r'^([a-z0-9-]+)\.birdcount\.ca$', re.IGNORECASE),
+    re.compile(r'^([a-z0-9-]+)\.cbc\.test$', re.IGNORECASE),
+    re.compile(r'^([a-z0-9-]+)\.test$', re.IGNORECASE),
+)
+LANDING_HOST = 'cbc.birdcount.ca'
+APEX_LANDING_HOST = 'birdcount.ca'
+
+# .test equivalents of the two landing hosts above, mirrored the same way
+# CIRCLE_SUBDOMAIN_PATTERNS mirrors circle hosts (birdcount.ca replaced by the
+# .test TLD): cbc.birdcount.ca -> cbc.test, birdcount.ca (bare apex) -> test
+# (bare). Deliberately NOT reachable via a real hosts-file entry pointed at
+# the real production domain names - added 2026-09-15 because that approach
+# meant re-editing the hosts file to switch between testing the dev server
+# and reaching the real production site. 'cbc.test' also happens to match
+# CIRCLE_SUBDOMAIN_PATTERNS' generic <slug>.test pattern (as if it were a
+# circle literally slugged "cbc"), but the exact-match check below runs
+# before that pattern loop and returns first, so there's no runtime
+# ambiguity - only a real circle ever slugged "cbc" (vanishingly unlikely)
+# would become unreachable at cbc.test locally.
+TEST_LANDING_HOST = 'cbc.test'
+TEST_APEX_LANDING_HOST = 'test'
+
+
+def is_test_dev_host():
+    """True if the CURRENT request (if any) arrived on the .test dev mirror
+    (TEST_LANDING_HOST/TEST_APEX_LANDING_HOST, or any circle's own *.test
+    subdomain) rather than a real birdcount.ca host. False with no active
+    request context (e.g. a standalone utils/ script), which keeps
+    circle_host()/request_scheme() defaulting to real-domain behavior there,
+    same as before either existed."""
+    if not has_request_context():
+        return False
+    host = request.host.split(':', 1)[0].lower()
+    return host == TEST_APEX_LANDING_HOST or host.endswith('.test')
+
+
+def request_scheme():
+    """'http' under the .test dev mirror (no TLS locally), else 'https' - for
+    building an absolute URL to another circle/landing host, where url_for's
+    own scheme detection doesn't apply (that host isn't this request's own)."""
+    return 'http' if is_test_dev_host() else 'https'
+
+
+def request_port_suffix():
+    """':<port>' under the .test dev mirror if the current request itself
+    carries a non-default port (dev_server.sh runs on 8080, not 80/443), else
+    ''. Real production has no port to carry over - LANDING_HOST/
+    circle_host()'s real-domain branch never needs this. Without it, a link
+    built from circle_host()/TEST_LANDING_HOST/TEST_APEX_LANDING_HOST would
+    point at port 80 (browsers' default for a bare http:// URL), which
+    nothing is listening on locally, instead of back at the dev server."""
+    if not is_test_dev_host():
+        return ''
+    host = request.host
+    return ':' + host.split(':', 1)[1] if ':' in host else ''
+
+
+def circle_host(slug, is_cbc):
+    """The subdomain a given circle is actually reachable at - mirrors
+    CIRCLE_SUBDOMAIN_PATTERNS above. Used wherever a circle's own login/registration
+    URL is built explicitly (e.g. the landing host's multi-circle magic-link email),
+    rather than derived from the current request's Host header.
+
+    Test-mode-aware (see is_test_dev_host()): a request that itself arrived on
+    the .test dev mirror gets a .test-mirrored circle host back too (port
+    included, via request_port_suffix()), so a locally-viewed landing page's
+    circle links (and a locally-triggered landing-host magic-link email's
+    verify_url) stay on the dev server instead of pointing out at the real
+    production site - or at port 80, where nothing is listening."""
+    if is_test_dev_host():
+        base = f"{slug}.cbc.test" if is_cbc else f"{slug}.test"
+        return base + request_port_suffix()
+    return f"{slug}.cbc.birdcount.ca" if is_cbc else f"{slug}.birdcount.ca"
 
 # Initialize coverage if enabled (test server only)
 coverage_instance = None
@@ -35,28 +122,66 @@ csrf = CSRFProtect(app)
 # Initialize rate limiter with the app
 limiter.init_app(app)
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging. Deliberately NOT logging.basicConfig(): under mod_wsgi
+# that installs a StreamHandler which caches whatever sys.stderr/wsgi.errors
+# object exists at the moment app.py is first imported (i.e. one specific
+# request's log stream), and every logger in the app keeps writing through
+# that same stale stream for the rest of the worker process's life. mod_wsgi
+# then logs "RuntimeError: log object has expired" once Apache destroys that
+# original request. _DynamicStderrHandler re-resolves sys.stderr on every
+# write (like logging.lastResort does) instead of caching it once, so it
+# always targets the current request's stream.
+class _DynamicStderrHandler(logging.StreamHandler):
+    @property
+    def stream(self):
+        return sys.stderr
+
+    @stream.setter
+    def stream(self, value):
+        pass
+
+
+_root_handler = _DynamicStderrHandler()
+_root_handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT))
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.INFO)
+root_logger.addHandler(_root_handler)
+
 logger = logging.getLogger(__name__)
 
-# OAuth configuration
-GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID')
-GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET')
+# Suppress the specific "log object has expired" noise mod_wsgi prints when
+# it finalizes a request's wsgi.errors TextIOWrapper after Python's garbage
+# collector (Python 3.13+ needs multiple GC passes for some cyclic garbage,
+# per https://github.com/GrahamDumpleton/mod_wsgi/issues/912) collects it
+# later than mod_wsgi expects - not caused by anything in this app caching
+# wsgi.errors (checked; nothing does), just GC-timing vs. Apache request
+# teardown timing. Harmless (happens during GC, not during actual request
+# handling) but floods the error log every few minutes. sys.unraisablehook
+# is exactly the hook CPython's io module calls to print this message
+# (PEP 578), so filter only this one known-benign case through to it and
+# let every other unraisable-exception report through unchanged, so a real
+# future bug (e.g. a genuinely unclosed file) still gets logged normally.
+_default_unraisablehook = sys.unraisablehook
 
-# Initialize Firestore client
-try:
-    db, database_id = get_firestore_client()
-    logger.info(f"Firestore client initialized successfully for database: {database_id}")
-except Exception as e:
-    logger.error(f"Warning: Could not initialize Firestore client: {e}")
-    db = None
+
+def _suppress_expired_wsgi_log_object(unraisable):
+    if (unraisable.exc_type is RuntimeError
+            and str(unraisable.exc_value) == 'log object has expired'):
+        return
+    _default_unraisablehook(unraisable)
+
+
+sys.unraisablehook = _suppress_expired_wsgi_log_object
+
+# Release the request-scoped DB session at the end of every request
+app.teardown_appcontext(teardown_db_session)
 
 # Import route modules
 from routes.main import main_bp
-from routes.admin import admin_bp
+from routes.admin import admin_bp, CIRCLE_CONSOLE_ENDPOINTS
 from routes.leader import leader_bp
 from routes.api import api_bp
-from routes.auth import auth_bp, init_auth
+from routes.auth import auth_bp, init_auth, get_user_role
 from routes.scheduler import scheduler_bp
 
 # Initialize authentication
@@ -64,7 +189,7 @@ init_auth(app)
 
 # Register blueprints
 app.register_blueprint(main_bp)
-app.register_blueprint(admin_bp, url_prefix='/admin')
+app.register_blueprint(admin_bp, url_prefix='/bigbird')
 app.register_blueprint(leader_bp, url_prefix='/leader')
 app.register_blueprint(api_bp, url_prefix='/api')
 app.register_blueprint(auth_bp, url_prefix='/auth')
@@ -93,33 +218,69 @@ def set_security_headers(response):
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
 
     # Content-Security-Policy: Restrict resource loading to trusted sources
-    # Note: Allows Google OAuth, Bootstrap CDN, and Leaflet map resources
+    # Note: Allows Bootstrap CDN and Leaflet map resources
     response.headers['Content-Security-Policy'] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://accounts.google.com https://cdn.jsdelivr.net https://unpkg.com; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; "
         "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; "
         "img-src 'self' data: https:; "
         "font-src 'self' https://cdn.jsdelivr.net; "
-        "connect-src 'self' https://accounts.google.com; "
-        "frame-src https://accounts.google.com;"
+        "connect-src 'self';"
     )
 
     return response
 
 # Load area boundaries data
 def load_area_boundaries():
-    """Load area boundary data from JSON file."""
+    """Load a circle's area boundary + map config data from the DB (circle_areas.boundary_geojson).
+
+    No areas on the landing host (g.circle_slug is None there - no single circle's
+    areas make sense on a page that lists every circle)."""
+    circle_slug = getattr(g, 'circle_slug', None)
+    if not circle_slug:
+        return {'areas': [], 'map_config': {}}
     try:
-        with open('static/data/area_boundaries.json', 'r') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        print("Warning: Area boundaries file not found")
-        return []
+        return CircleAreaModel(get_db_session()).get_boundary_data(circle_slug)
+    except Exception as e:
+        print(f"Warning: Could not load area boundaries: {e}")
+        return {'areas': [], 'map_config': {}}
+
+app.jinja_env.filters['skill_label'] = get_skill_level_label
+
+
+@app.template_filter('nl2br')
+def nl2br(text):
+    """Render admin-authored email content's newlines as <br> tags, safely.
+    Escapes first (so the text itself can never inject markup), then replaces
+    \\n with <br> - safe because escaping happens before the <br> insertion,
+    and the <br> tags themselves aren't derived from user input. Never use
+    |safe on raw admin-authored content instead of this filter."""
+    from markupsafe import Markup, escape
+    if text is None:
+        return ''
+    return Markup(str(escape(text)).replace('\n', '<br>\n'))
 
 # Make area boundaries and common data available to templates
 @app.context_processor
 def inject_common_data():
-    org_vars = get_organization_variables()
+    """Templates rendered while g.circle is None (the landing host, or one of
+    routes/admin.py's CIRCLE_CONSOLE_ENDPOINTS reached from a non-circle host)
+    have no single organization to describe - get_organization_variables() would
+    raise there (no cross-circle default, by design). Every template reachable
+    in that state already branches around these values (see base.html's navbar
+    and landing.html), so a blank placeholder dict is safe; only the URL helpers,
+    which don't depend on any one circle, are real.
+    """
+    if getattr(g, 'circle', None) is not None:
+        org_vars = get_organization_variables()
+    else:
+        org_vars = {
+            'organization_name': None, 'organization_website': None, 'organization_contact': None,
+            'count_contact': None, 'count_event_name': None, 'count_info_url': None,
+            'from_email': None, 'logo_url': None, 'display_timezone': DISPLAY_TIMEZONE,
+            'registration_url': get_registration_url(), 'admin_url': get_admin_url(),
+            'leader_url': get_leader_url(),
+        }
     return {
         'areas': load_area_boundaries(),
         'current_year': datetime.now().year,
@@ -141,14 +302,157 @@ def inject_common_data():
         'display_timezone': org_vars['display_timezone']
     }
 
+# Must run before every other before_request hook - redirects before any DB/circle
+# work happens on a request that's about to be thrown away anyway.
+@app.before_request
+def enforce_https():
+    """Redirect a plain-HTTP request to the same URL over HTTPS.
+
+    Confirmed this was reachable in production: nothing at the Apache/FullHost layer
+    upgrades http:// to https:// for this app (verified directly with curl against
+    multiple circles' hosts, not just one), so a request can genuinely arrive here
+    over plain HTTP - typically because the browser has no HSTS record yet for this
+    exact hostname (e.g. a brand new circle subdomain nobody has visited before) and
+    something (a typed URL, an old bookmark) specified http:// explicitly. Session
+    and CSRF cookies are marked Secure whenever SESSION_COOKIE_SECURE is on (see
+    routes/auth.py's init_auth), and browsers silently refuse to store a Secure
+    cookie set over a plain HTTP response - so without this redirect, the login page
+    renders with no session cookie taking hold at all, and the next form submit fails
+    with a baffling "CSRF session token is missing" error. Skipped when
+    SESSION_COOKIE_SECURE is off (local http://localhost dev has no TLS to redirect to).
+    """
+    if app.config.get('SESSION_COOKIE_SECURE') and not request.is_secure:
+        return redirect(request.url.replace('http://', 'https://', 1), code=301)
+
+# Before request handler for multi-circle resolution (must run before anything that
+# reads g.circle/g.circle_slug, including model construction in later before_request
+# hooks and in route handlers)
+@app.before_request
+def resolve_circle():
+    """Resolve which count circle this request is for, from the Host header.
+
+    e.g. vancouver.cbc.birdcount.ca -> the 'vancouver' circle (CBC counts), or
+    fraser-estuary-kba.birdcount.ca -> the 'fraser-estuary-kba' circle (non-CBC
+    counts, one subdomain level up - see CIRCLE_SUBDOMAIN_PATTERNS). Local dev/testing
+    uses the same mechanism via a dedicated *.test hostname (see CIRCLE_SUBDOMAIN_PATTERNS
+    and docs/ for the hosts-file setup) rather than a separate fallback path. A host that
+    matches no pattern (a raw IP, FullHost's bare default hostname, a typo) gets
+    abort(400) - this is a multi-circle platform, so a request whose circle can't be
+    determined must fail loudly rather than silently falling back to any one circle's
+    data. There is deliberately no environment-variable escape hatch for this.
+    """
+    if request.endpoint == 'static':
+        return None
+
+    host = request.host.split(':', 1)[0].lower()
+
+    if host in (LANDING_HOST, APEX_LANDING_HOST, TEST_LANDING_HOST, TEST_APEX_LANDING_HOST):
+        # Two landing hosts (plus their .test dev-mode equivalents - see
+        # TEST_LANDING_HOST/TEST_APEX_LANDING_HOST above), not any one circle's
+        # registration site: cbc.birdcount.ca lists CBC circles, birdcount.ca
+        # (the bare apex, one level up) lists non-CBC circles and links across
+        # to the CBC listing - see routes/main.py's index(). Not an unmatched
+        # circle subdomain, so no 404 - g.circle stays None; callers that need
+        # circle-specific data with no circle resolved (e.g. a landing-host
+        # magic-link login) must handle that explicitly - see
+        # config/organization.py's _circle_value(), which raises rather than
+        # substituting any one circle's data here.
+        g.circle = None
+        g.circle_slug = None
+        g.is_landing_host = True
+        g.is_apex_landing_host = host in (APEX_LANDING_HOST, TEST_APEX_LANDING_HOST)
+        return None
+
+    g.is_landing_host = False
+    g.is_apex_landing_host = False
+    match = None
+    for pattern in CIRCLE_SUBDOMAIN_PATTERNS:
+        match = pattern.match(host)
+        if match:
+            break
+
+    if not match:
+        if request.endpoint in CIRCLE_CONSOLE_ENDPOINTS:
+            # These routes take their circle as an explicit URL slug and don't
+            # touch g.circle_slug at all (see routes/admin.py) - e.g. managing a
+            # circle's areas/KML import works from any host, not just that
+            # circle's own subdomain.
+            g.circle = None
+            g.circle_slug = None
+            return None
+
+        # No subdomain match at all - refuse to guess (e.g. a raw IP, FullHost's bare
+        # default hostname, or a typo silently reading/writing another circle's data
+        # instead of failing loudly). Local dev/testing should use a real *.test
+        # hostname (see CIRCLE_SUBDOMAIN_PATTERNS) instead of hitting this branch.
+        abort(400, description="Could not determine which count circle this request is for.")
+
+    slug = match.group(1).lower()
+    circle = CircleModel(get_db_session()).get_by_slug(slug)
+
+    if circle is None:
+        # A real circle subdomain that doesn't correspond to any known circle.
+        abort(404)
+
+    g.circle = circle
+    g.circle_slug = slug
+    return None
+
+
+def push_circle_context(circle_slug):
+    """Push (and return, already-entered) a request context resolved to the given
+    circle. Caller must pop it (e.g. in a finally block).
+
+    For code that has an explicit circle_slug but no real request resolved to it -
+    the scheduler's digest generators (see test/email_generator.py, the original
+    home of this helper), and the admin email-content preview builders
+    (services/email_service.py's build_registration_confirmation_preview()/
+    build_withdrawal_confirmation_preview(), reachable via routes/admin.py's
+    CIRCLE_CONSOLE_ENDPOINTS from any host - trusting ambient g.circle there would
+    mean previewing circle B's content while showing circle A's (or no circle's)
+    organization name/timezone/etc., the exact cross-circle mixup this platform
+    must not allow). Pushing a fake request context for the circle's own host and
+    running resolve_circle() against it makes every per-circle helper (get_
+    organization_variables(), config/areas.py, ParticipantModel's circle_slug
+    default) resolve exactly as it would for a genuine request to that circle.
+    """
+    db = get_db_session()
+    circle = CircleModel(db).get_by_slug(circle_slug)
+    if not circle:
+        raise ValueError(f"Unknown circle: {circle_slug}")
+
+    host = circle_host(circle_slug, circle['is_cbc'])
+    ctx = app.test_request_context(path='/', base_url=f'https://{host}')
+    ctx.push()
+    resolve_circle()
+    return ctx
+
 # Before request handler for authentication context
 @app.before_request
 def load_user():
-    """Load user information into g context for templates."""
+    """Load user information into g context for templates.
+
+    Re-derives user_role from the database on every request rather than trusting
+    the value cached in the session cookie at login time - sessions now live up to
+    PERMANENT_SESSION_LIFETIME (see routes/auth.py), so without this a circle-admin
+    or leader removed from the database would keep their old privileges for the
+    rest of that window. Written back into the session so require_admin/
+    require_leader/require_super_admin (which read session['user_role'] directly)
+    see the current value too.
+
+    Skipped for static-file requests, same as resolve_circle() - g.circle_slug is
+    never set for those (resolve_circle() returns early), so reading it here would
+    raise AttributeError for any authenticated session's CSS/JS/image requests.
+    Role information is irrelevant to serving a static file anyway.
+    """
+    if request.endpoint == 'static':
+        return None
+
     if 'user_email' in session:
         g.user_email = session['user_email']
         g.user_name = session.get('user_name', '')
-        g.user_role = session.get('user_role', 'public')
+        g.user_role = get_user_role(g.user_email, get_db_session(), g.circle_slug)
+        session['user_role'] = g.user_role
     else:
         g.user_email = None
         g.user_name = None
@@ -164,12 +468,14 @@ def check_blocked_ip():
     # Get client IP
     client_ip = get_client_ip(request)
 
-    # Check if blocked
-    if db:
-        blocker = IPBlockerService(db)
+    # Check if blocked (best-effort - don't let a DB hiccup break normal request handling)
+    try:
+        blocker = IPBlockerService(get_db_session())
         if blocker.is_blocked(client_ip):
             logger.warning(f"BLOCKED_REQUEST: {client_ip} attempted access to {request.path}")
             return render_template('errors/403.html'), 403
+    except Exception as e:
+        logger.error(f"IP block check failed: {e}")
 
     return None
 
@@ -178,19 +484,22 @@ def check_blocked_ip():
 def not_found_error(error):
     """Handle 404 errors with IP tracking."""
     # Only track unauthenticated users
-    if 'user_email' not in session and db:
+    if 'user_email' not in session:
         from config.ip_blocking import EXCLUDED_404_PATHS
 
         # Skip tracking for common browser resource requests
         if request.path not in EXCLUDED_404_PATHS:
-            client_ip = get_client_ip(request)
-            user_agent = request.headers.get('User-Agent', '')
+            try:
+                client_ip = get_client_ip(request)
+                user_agent = request.headers.get('User-Agent', '')
 
-            blocker = IPBlockerService(db)
-            block_id = blocker.track_404(client_ip, request.path, user_agent)
+                blocker = IPBlockerService(get_db_session())
+                block_id = blocker.track_404(client_ip, request.path, user_agent)
 
-            if block_id:
-                logger.warning(f"IP_AUTO_BLOCKED: {client_ip} exceeded 404 threshold")
+                if block_id:
+                    logger.warning(f"IP_AUTO_BLOCKED: {client_ip} exceeded 404 threshold")
+            except Exception as e:
+                logger.error(f"404 IP tracking failed: {e}")
 
     return render_template('errors/404.html'), 404
 

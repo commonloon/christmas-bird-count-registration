@@ -1,6 +1,10 @@
-# Updated by Claude AI on 2025-11-30
-# Area configuration for the application
-# Note: admin_assignment_only is now managed in Firestore collection 'area_signup_type'
+# Updated by Claude AI on 2026-09-10
+# Historical reference only - Vancouver's original area set, from before areas were
+# DB-backed per circle (see models/circle.py's CircleAreaModel). No longer consulted
+# by get_area_info()/get_all_areas() below, which raise when no circle is resolved
+# instead of falling back to this. Not deleted only because tests/installation/
+# test_configuration.py still validates it as a static data-integrity exercise.
+# Note: admin_assignment_only is now managed in the 'area_signup_type' table
 #       Use AreaSignupTypeModel.get_public_areas() to get areas available for public registration
 AREA_CONFIG = {
     'A': {
@@ -155,15 +159,57 @@ AREA_CONFIG = {
     }
 }
 
+def _get_circle_areas():
+    """Areas for the currently-resolved circle (see app.py's resolve_circle hook), as a
+    dict keyed by code - empty if the circle has none configured yet (deliberately NOT
+    an error - a brand-new circle with no areas imported yet should just show as empty).
+
+    Raises RuntimeError when there's no resolved circle at all (outside a request
+    context, or before resolution has run - scripts, tests). There is no default set
+    of area boundaries to fall back to - every circle's areas are its own, imported
+    from its own KML file, and silently substituting another circle's (formerly
+    Vancouver's static AREA_CONFIG, kept below only as inert historical/reference
+    data) would show/validate against the wrong circle's areas entirely. Callers with
+    no request in flight (scripts, tests) must push a request context for one specific
+    circle first - see test/email_generator.py's _push_circle_context() for the
+    established pattern.
+    """
+    from flask import g, has_request_context
+    if not has_request_context() or not getattr(g, 'circle_slug', None):
+        raise RuntimeError(
+            "No circle resolved - area data has no cross-circle default. This is a "
+            "multi-circle platform; every caller needs a real, resolved circle "
+            "(see app.py's resolve_circle() / test/email_generator.py's "
+            "_push_circle_context() for scripts)."
+        )
+
+    from config.database import get_db_session
+    from models.circle import CircleAreaModel
+    areas = CircleAreaModel(get_db_session()).get_areas_for_circle(g.circle_slug)
+    return {area['code']: area for area in areas}
+
 def get_area_info(letter_code):
     """Get configuration info for a specific area."""
-    return AREA_CONFIG.get(letter_code.upper(), {
+    circle_areas = _get_circle_areas()
+    area = circle_areas.get(letter_code.upper())
+    if area:
+        return {
+            'name': area['name'],
+            'description': area['description'],
+            'difficulty': area['difficulty'],
+            'terrain': area['terrain'],
+        }
+    return {
         'name': f'Area {letter_code}',
         'description': 'Area description not available',
         'difficulty': 'Unknown',
         'terrain': 'Unknown'
-    })
+    }
 
 def get_all_areas():
-    """Get list of all available area codes."""
-    return sorted(AREA_CONFIG.keys())
+    """Get list of all available area codes, naturally sorted."""
+    from models.area_signup_type import natural_sort_key  # local import: avoids a
+    # module-load cycle (models.area_signup_type imports this module's get_all_areas)
+
+    circle_areas = _get_circle_areas()
+    return sorted(circle_areas.keys(), key=natural_sort_key)

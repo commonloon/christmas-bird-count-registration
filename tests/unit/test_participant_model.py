@@ -1,23 +1,23 @@
 # Unit tests for ParticipantModel
-# Updated by Claude AI on 2025-10-11
+# Updated by Claude AI on 2026-09-07 (Firestore -> Postgres)
 """
 Fast unit tests for ParticipantModel that test core database operations.
-These tests run against the test Firestore database and use year 2000 for isolation.
+These tests run against the real Postgres database (local dev by default)
+and use year 2000 for isolation.
 """
 
 import pytest
 from datetime import datetime
 from models.participant import ParticipantModel
-from tests.test_config import get_database_name
-from google.cloud import firestore
+from models.db import Participant
+from config.database import get_db_session
+from tests.test_config import TEST_CIRCLE_SLUG
 
 
 @pytest.fixture(scope="module")
-def firestore_client():
-    """Module-scoped Firestore client for fast test execution."""
-    database_name = get_database_name()
-    client = firestore.Client(database=database_name)
-    yield client
+def db_session():
+    """Module-scoped Postgres session for fast test execution."""
+    return get_db_session()
 
 
 @pytest.fixture(scope="module")
@@ -27,18 +27,17 @@ def test_year():
 
 
 @pytest.fixture(scope="module")
-def participant_model(firestore_client, test_year):
+def participant_model(db_session, test_year):
     """Module-scoped participant model."""
-    return ParticipantModel(firestore_client, test_year)
+    return ParticipantModel(db_session, test_year, TEST_CIRCLE_SLUG)
 
 
 @pytest.fixture(scope="module", autouse=True)
-def clear_test_data(firestore_client, test_year):
+def clear_test_data(db_session, test_year):
     """Clear test data before running tests."""
-    collection_name = f'participants_{test_year}'
-    docs = firestore_client.collection(collection_name).stream()
-    for doc in docs:
-        doc.reference.delete()
+    circle_slug = TEST_CIRCLE_SLUG
+    db_session.query(Participant).filter_by(circle_slug=circle_slug, year=test_year).delete()
+    db_session.commit()
     yield
     # Leave data for inspection after tests
 
@@ -62,8 +61,7 @@ class TestParticipantCreation:
         participant_id = participant_model.add_participant(participant_data)
 
         assert participant_id is not None
-        assert isinstance(participant_id, str)
-        assert len(participant_id) > 0
+        assert isinstance(participant_id, int)
 
     def test_add_participant_sets_defaults(self, participant_model):
         """Test that add_participant sets default values."""
@@ -568,9 +566,9 @@ class TestAreaCounts:
 class TestStaticMethods:
     """Test static/class methods."""
 
-    def test_get_available_years(self, firestore_client):
+    def test_get_available_years(self, db_session):
         """Test getting available years."""
-        years = ParticipantModel.get_available_years(firestore_client)
+        years = ParticipantModel.get_available_years(db_session, TEST_CIRCLE_SLUG)
         assert isinstance(years, list)
         assert 2000 in years  # Our test year
         assert all(isinstance(year, int) for year in years)

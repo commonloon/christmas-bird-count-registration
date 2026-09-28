@@ -1,4 +1,5 @@
 # Updated by Claude AI on 2026-01-12
+import html
 import os
 import smtplib
 from email.mime.text import MIMEText
@@ -17,6 +18,10 @@ class EmailService:
 
     def __init__(self):
         self.config = get_email_config()
+        # Fallback only - this is Vancouver's constant, evaluated once at process
+        # startup with no request/circle context. Real calls should pass their own
+        # circle's test_recipient explicitly (see send_email's test_recipient param);
+        # this only applies when a caller doesn't have one (e.g. no circle context).
         self.test_recipient = TEST_RECIPIENT
 
         if self.config is None:
@@ -47,23 +52,37 @@ class EmailService:
         return self.config is not None
 
     def send_email(self, to_addresses: List[str], subject: str, body: str,
-                   html_body: str = None) -> bool:
-        """Send email with test mode support."""
+                   html_body: str = None, from_email: str = None, test_recipient: str = None) -> bool:
+        """Send email with test mode support.
+
+        from_email: per-circle sender address (config/organization.py's
+        get_organization_variables()['from_email']), already validated against
+        config/email_settings.py's ALLOWED_FROM_EMAIL_DOMAINS when it was set
+        via the circle admin form. Falls back to this service's own
+        environment-configured default when not given (e.g. cross-circle
+        emails sent from the landing host, where there's no single circle).
+
+        test_recipient: per-circle test-mode redirect address (get_organization_variables()
+        ['test_recipient']). Falls back to self.test_recipient (Vancouver's, frozen at
+        process startup) when not given - callers with a real circle context should
+        always pass this explicitly, same as from_email.
+        """
         if not self.is_configured():
             logger.error("Cannot send email - service not configured")
             return False
 
         try:
             if self.test_mode:
-                return self._send_test_email(to_addresses, subject, body, html_body)
+                return self._send_test_email(to_addresses, subject, body, html_body, from_email, test_recipient)
             else:
-                return self._send_production_email(to_addresses, subject, body, html_body)
+                return self._send_production_email(to_addresses, subject, body, html_body, from_email)
         except Exception as e:
             logger.error(f"Failed to send email: {e}")
             return False
 
     def _send_test_email(self, original_recipients: List[str], subject: str,
-                         body: str, html_body: str = None) -> bool:
+                         body: str, html_body: str = None, from_email: str = None,
+                         test_recipient: str = None) -> bool:
         """Send email in test mode - redirect to test recipient with modified content."""
         test_subject = f"[TEST - Would send to: {', '.join(original_recipients)}] {subject}"
 
@@ -95,11 +114,11 @@ ORIGINAL MESSAGE:
             </div>
             """
 
-        return self._send_production_email([self.test_recipient], test_subject,
-                                           test_body, test_html_body)
+        return self._send_production_email([test_recipient or self.test_recipient], test_subject,
+                                           test_body, test_html_body, from_email)
 
     def _send_production_email(self, to_addresses: List[str], subject: str,
-                               body: str, html_body: str = None) -> bool:
+                               body: str, html_body: str = None, from_email: str = None) -> bool:
         """Send email in production mode."""
         if not self.smtp_username or not self.smtp_password:
             logger.error("Email credentials not configured")
@@ -107,7 +126,7 @@ ORIGINAL MESSAGE:
 
         try:
             msg = MIMEMultipart('alternative')
-            msg['From'] = self.from_email
+            msg['From'] = from_email or self.from_email
             msg['To'] = ', '.join(to_addresses)
             msg['Subject'] = subject
 
@@ -171,7 +190,8 @@ Please log into the admin interface to assign these participants to areas:
 This is an automated daily digest. You will receive this email each day until all participants are assigned.
         """
 
-        return self.send_email(admin_emails, subject, body)
+        return self.send_email(admin_emails, subject, body, from_email=org_vars['from_email'],
+                                test_recipient=org_vars['test_recipient'])
 
     def send_area_leader_update(self, leader_emails: List[str], area_code: str,
                                 added_participants: List[Dict],
@@ -217,11 +237,120 @@ For the complete current team roster, visit: {org_vars['leader_url']}
 This is an automated notification from the CBC registration system.
         """
 
-        return self.send_email(leader_emails, subject, body)
+        return self.send_email(leader_emails, subject, body, from_email=org_vars['from_email'],
+                                test_recipient=org_vars['test_recipient'])
+
+    def _resolve_registration_confirmation_content(self, participant_data, assigned_area, area_info,
+                                                     org_vars, current_year, circle_slug):
+        """Resolve this circle's admin-customizable registration_confirmation blocks
+        (config/email_content_blocks.py) and substitute placeholders. Returns
+        (subject, intro_text, whats_next_text, closing_text). Shared by the real send
+        path and the admin email-content preview route, so both stay in sync."""
+        from models.email_content import EmailContentModel
+        from services.email_content_service import substitute_placeholders
+
+        db = self._get_db_session()
+        blocks = EmailContentModel(db).resolve_all(circle_slug, 'registration_confirmation')
+
+        placeholder_values = {
+            'first_name': participant_data.get('first_name') or '',
+            'count_event_name': org_vars['count_event_name'],
+            'year': current_year,
+            'area_name': area_info['name'] if area_info else '',
+            'count_contact': org_vars['count_contact'],
+        }
+
+        subject = substitute_placeholders(blocks['subject'], placeholder_values)
+        if assigned_area == 'UNASSIGNED':
+            intro_text = substitute_placeholders(blocks['intro_unassigned'], placeholder_values)
+            whats_next_text = substitute_placeholders(blocks['whats_next_unassigned'], placeholder_values)
+        else:
+            intro_text = substitute_placeholders(blocks['intro_assigned'], placeholder_values)
+            whats_next_text = substitute_placeholders(blocks['whats_next_assigned'], placeholder_values)
+        closing_text = substitute_placeholders(blocks['closing_message'], placeholder_values)
+
+        return subject, intro_text, whats_next_text, closing_text
+
+    def build_registration_confirmation_preview(self, circle_slug, variant='assigned'):
+        """Render the real registration_confirmation template with synthetic sample
+        data and this circle's currently-saved (resolved) email-content blocks, for
+        the admin email-content preview route. Never sends anything. variant
+        'unassigned' previews the not-yet-assigned wording instead.
+
+        Reachable via routes/admin.py's CIRCLE_CONSOLE_ENDPOINTS from any host, so
+        the ambient request's own g.circle may be a different circle than
+        circle_slug (or None) - org_vars must come from circle_slug explicitly via
+        a pushed context, not from get_organization_variables()'s ambient lookup,
+        or this could preview circle_slug's content dressed in another circle's
+        (or no circle's) organization name/timezone/etc."""
+        from flask import current_app, render_template
+        from config.email_settings import get_email_branding, is_test_server
+        from services.datetime_utils import convert_to_display_timezone
+        import app as app_module
+
+        ctx = app_module.push_circle_context(circle_slug)
+        try:
+            org_vars = get_organization_variables()
+            branding = get_email_branding()
+            registration_date, display_timezone = convert_to_display_timezone(datetime.now(timezone.utc))
+        finally:
+            ctx.pop()
+
+        current_year = datetime.now().year
+
+        assigned_area = 'UNASSIGNED' if variant == 'unassigned' else 'A'
+        if assigned_area == 'UNASSIGNED':
+            area_info, area_leaders = None, []
+        else:
+            area_info = {
+                'name': 'Area A - Sample Neighbourhood',
+                'description': 'Sample area description for preview purposes.',
+                'difficulty': 'Moderate',
+                'terrain': 'Urban parks and residential streets',
+            }
+            area_leaders = [{
+                'first_name': 'Sample', 'last_name': 'Leader',
+                'leader_email': 'leader@example.com', 'cell_phone': '(555) 555-1234',
+            }]
+
+        participant_data = {
+            'first_name': 'Sample', 'last_name': 'Participant', 'email': 'sample@example.com',
+            'phone': '(555) 555-6789', 'participation_type': 'regular', 'skill_level': 'Intermediate',
+            'experience': '1-2 counts', 'has_binoculars': True, 'spotting_scope': False,
+            'interested_in_leadership': False, 'notes_to_organizers': '',
+        }
+
+        subject, intro_text, whats_next_text, closing_text = self._resolve_registration_confirmation_content(
+            participant_data, assigned_area, area_info, org_vars, current_year, circle_slug)
+
+        email_context = {
+            'count_event_name': f'{current_year} {org_vars["count_event_name"]}',
+            'registration_date': registration_date,
+            'display_timezone': display_timezone,
+            'assigned_area': assigned_area,
+            'area_info': area_info,
+            'area_leaders': area_leaders,
+            **participant_data,
+            'organization_name': org_vars['organization_name'],
+            'count_contact': org_vars['count_contact'],
+            'organization_contact': org_vars['organization_contact'],
+            'count_info_url': org_vars['count_info_url'],
+            'count_experience_label': org_vars['count_experience_label'],
+            'is_cbc': org_vars['is_cbc'],
+            'test_mode': is_test_server(),
+            'branding': branding,
+            'intro_text': intro_text,
+            'whats_next_text': whats_next_text,
+            'closing_text': closing_text,
+        }
+
+        with current_app.app_context():
+            html_content = render_template('emails/registration_confirmation.html', **email_context)
+        return subject, html_content
 
     def send_registration_confirmation(self, participant_data: dict, assigned_area: str) -> bool:
         """Send HTML registration confirmation email to participant."""
-        from flask import current_app, render_template
+        from flask import current_app, render_template, g
         from config.email_settings import get_email_branding, is_test_server
         from config.areas import get_area_info
         from models.participant import ParticipantModel
@@ -237,7 +366,7 @@ This is an automated notification from the CBC registration system.
 
             # Get area leaders
             try:
-                db, _ = self._get_db_client()
+                db = self._get_db_session()
                 participant_model = ParticipantModel(db, current_year)
                 area_leaders = participant_model.get_leaders_by_area(assigned_area)
             except Exception as e:
@@ -249,6 +378,10 @@ This is an automated notification from the CBC registration system.
 
         # Get organization variables from config
         org_vars = get_organization_variables()
+        circle_slug = getattr(g, 'circle_slug', None)
+
+        subject, intro_text, whats_next_text, closing_text = self._resolve_registration_confirmation_content(
+            participant_data, assigned_area, area_info, org_vars, current_year, circle_slug)
 
         # Prepare email context
         email_context = {
@@ -268,7 +401,6 @@ This is an automated notification from the CBC registration system.
             'has_binoculars': participant_data.get('has_binoculars', False),
             'spotting_scope': participant_data.get('spotting_scope', False),
             'interested_in_leadership': participant_data.get('interested_in_leadership', False),
-            'interested_in_scribe': participant_data.get('interested_in_scribe', False),
             'notes_to_organizers': participant_data.get('notes_to_organizers'),
             'organization_name': org_vars['organization_name'],
             'count_contact': org_vars['count_contact'],
@@ -277,7 +409,10 @@ This is an automated notification from the CBC registration system.
             'count_experience_label': org_vars['count_experience_label'],
             'is_cbc': org_vars['is_cbc'],
             'test_mode': is_test_server(),
-            'branding': get_email_branding()
+            'branding': get_email_branding(),
+            'intro_text': intro_text,
+            'whats_next_text': whats_next_text,
+            'closing_text': closing_text,
         }
 
         # Render HTML template
@@ -289,42 +424,186 @@ This is an automated notification from the CBC registration system.
             # Fallback to simple text email
             html_content = None
 
-        subject = f"{current_year} {org_vars['count_event_name']} Registration Confirmation"
         participant_email = participant_data.get('email')
 
-        return self.send_email([participant_email], subject, '', html_content)
+        return self.send_email([participant_email], subject, '', html_content, from_email=org_vars['from_email'],
+                                test_recipient=org_vars['test_recipient'])
+
+    def _resolve_withdrawal_confirmation_content(self, first_name, last_name, org_vars, current_year, circle_slug):
+        """Resolve this circle's admin-customizable withdrawal_confirmation blocks
+        and substitute placeholders. Returns (subject, intro_message, closing_message).
+        withdrawal_reason and the "REASON FOR WITHDRAWAL:" framing stay fixed, not
+        admin-editable - only the surrounding intro/closing prose is a content block."""
+        from models.email_content import EmailContentModel
+        from services.email_content_service import substitute_placeholders
+
+        db = self._get_db_session()
+        blocks = EmailContentModel(db).resolve_all(circle_slug, 'withdrawal_confirmation')
+
+        placeholder_values = {
+            'first_name': first_name or '',
+            'last_name': last_name or '',
+            'year': current_year,
+            'count_event_name': org_vars['count_event_name'],
+            'count_contact': org_vars['count_contact'],
+            'organization_name': org_vars['organization_name'],
+        }
+
+        subject = substitute_placeholders(blocks['subject'], placeholder_values)
+        intro_message = substitute_placeholders(blocks['intro_message'], placeholder_values)
+        closing_message = substitute_placeholders(blocks['closing_message'], placeholder_values)
+        return subject, intro_message, closing_message
+
+    def build_withdrawal_confirmation_preview(self, circle_slug):
+        """Subject + body for this circle's currently-saved withdrawal_confirmation
+        blocks, using synthetic sample data. Never sends anything.
+
+        Reachable via routes/admin.py's CIRCLE_CONSOLE_ENDPOINTS from any host, so
+        org_vars must come from circle_slug explicitly via a pushed context, not
+        get_organization_variables()'s ambient lookup - see
+        build_registration_confirmation_preview's docstring for why."""
+        import app as app_module
+
+        ctx = app_module.push_circle_context(circle_slug)
+        try:
+            org_vars = get_organization_variables()
+        finally:
+            ctx.pop()
+
+        current_year = datetime.now().year
+        subject, intro_message, closing_message = self._resolve_withdrawal_confirmation_content(
+            'Sample', 'Participant', org_vars, current_year, circle_slug)
+
+        body = f"""
+{intro_message}
+
+REASON FOR WITHDRAWAL:
+Sample withdrawal reason, shown here for preview purposes only.
+
+{closing_message}
+        """
+        return subject, body
 
     def send_withdrawal_confirmation(self, participant_email: str, first_name: str,
                                     last_name: str, withdrawal_reason: str) -> bool:
         """Send withdrawal confirmation email to participant."""
+        from flask import g
         org_vars = get_organization_variables()
         current_year = datetime.now().year
+        circle_slug = getattr(g, 'circle_slug', None)
 
-        subject = f"[{org_vars['count_event_name']}] Withdrawal Confirmation"
+        subject, intro_message, closing_message = self._resolve_withdrawal_confirmation_content(
+            first_name, last_name, org_vars, current_year, circle_slug)
 
         body = f"""
-Dear {first_name} {last_name},
-
-Your withdrawal from the {current_year} {org_vars['count_event_name']} has been recorded.
+{intro_message}
 
 REASON FOR WITHDRAWAL:
 {withdrawal_reason}
 
-If your circumstances change and you would like to participate, please contact:
-{org_vars['count_contact']}
-
-We hope to have you join us again in the future.
-
-Best regards,
-{org_vars['organization_name']} - {org_vars['count_event_name']} Registration System
+{closing_message}
         """
 
-        return self.send_email([participant_email], subject, body)
+        return self.send_email([participant_email], subject, body, from_email=org_vars['from_email'],
+                                test_recipient=org_vars['test_recipient'])
 
-    def _get_db_client(self):
-        """Get Firestore database client."""
-        from config.database import get_firestore_client
-        return get_firestore_client()
+    def _get_db_session(self):
+        """Get the request-scoped database session."""
+        from config.database import get_db_session
+        return get_db_session()
+
+    def send_magic_link(self, email: str, verify_url: str) -> bool:
+        """Send a magic-link login email."""
+        org_vars = get_organization_variables()
+
+        subject = f"{org_vars['count_event_name']} - Login Link"
+
+        body = f"""
+Click the link below to log in to the {org_vars['count_event_name']} registration system:
+
+{verify_url}
+
+This link expires in 15 minutes and can only be used once.
+
+If you didn't request this, you can safely ignore this email.
+        """
+
+        html_body = f"""
+        <p>Click the link below to log in to the {org_vars['count_event_name']} registration system:</p>
+        <p><a href="{verify_url}">{verify_url}</a></p>
+        <p>This link expires in 15 minutes and can only be used once.</p>
+        <p>If you didn't request this, you can safely ignore this email.</p>
+        """
+
+        return self.send_email([email], subject, body, html_body, from_email=org_vars['from_email'],
+                                test_recipient=org_vars['test_recipient'])
+
+    def send_landing_host_magic_link(self, email: str, verify_url: str) -> bool:
+        """Send a magic-link login email with no circle-specific wording.
+
+        Used for a super-admin logging in from the landing host (cbc.birdcount.ca),
+        where g.circle is None - there is no single circle's name to put in the
+        subject/body (send_magic_link's get_organization_variables() call would
+        raise there, by design; it used to silently fall back to Vancouver's
+        wording regardless of which admin was logging in, which is exactly the
+        kind of cross-circle identity leak this platform must not have).
+        """
+        subject = "Christmas Bird Count - Login Link"
+
+        body = f"""
+Click the link below to log in:
+
+{verify_url}
+
+This link expires in 15 minutes and can only be used once.
+
+If you didn't request this, you can safely ignore this email.
+        """
+
+        html_body = f"""
+        <p>Click the link below to log in:</p>
+        <p><a href="{verify_url}">{verify_url}</a></p>
+        <p>This link expires in 15 minutes and can only be used once.</p>
+        <p>If you didn't request this, you can safely ignore this email.</p>
+        """
+
+        return self.send_email([email], subject, body, html_body)
+
+    def send_multi_circle_magic_link(self, email: str, circle_links: list) -> bool:
+        """Send a login email listing one link per circle this email administers.
+
+        Used when a magic link is requested from the cross-circle landing host,
+        where there's no single circle to log into - sessions are isolated per
+        subdomain, so a multi-circle admin needs a separate link (and separate
+        login) for each one. circle_links: list of {'circle_name': ..., 'verify_url': ...}.
+        """
+        subject = "Christmas Bird Count - Login Links"
+
+        link_lines = "\n".join(
+            f"{c['circle_name']}: {c['verify_url']}" for c in circle_links
+        )
+        body = f"""
+You administer the following count circles. Click the link for the one you want to log in to:
+
+{link_lines}
+
+Each link expires in 15 minutes and can only be used once.
+
+If you didn't request this, you can safely ignore this email.
+        """
+
+        link_items = "".join(
+            f"<li>{html.escape(c['circle_name'])}: <a href=\"{html.escape(c['verify_url'])}\">{html.escape(c['verify_url'])}</a></li>"
+            for c in circle_links
+        )
+        html_body = f"""
+        <p>You administer the following count circles. Click the link for the one you want to log in to:</p>
+        <ul>{link_items}</ul>
+        <p>Each link expires in 15 minutes and can only be used once.</p>
+        <p>If you didn't request this, you can safely ignore this email.</p>
+        """
+
+        return self.send_email([email], subject, body, html_body)
 
 
 # Global email service instance
