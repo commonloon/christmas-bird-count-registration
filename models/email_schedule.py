@@ -120,6 +120,13 @@ class EmailScheduleRunLogModel:
             EmailScheduleRunLog.run_at >= since,
         ).first() is not None
 
+    def has_any_attempt(self, schedule_id):
+        """True if this schedule row has ever had an attempt logged (evidence the
+        scheduler has actually been running for it)."""
+        return self.db.query(EmailScheduleRunLog).filter(
+            EmailScheduleRunLog.schedule_id == schedule_id,
+        ).first() is not None
+
     def record(self, circle_slug, email_type, year, run_at, success, emails_sent=0,
                error_summary=None, schedule_id=None, triggered_by='scheduler'):
         row = EmailScheduleRunLog(
