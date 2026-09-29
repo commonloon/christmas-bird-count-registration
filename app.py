@@ -182,7 +182,7 @@ from routes.admin import admin_bp, CIRCLE_CONSOLE_ENDPOINTS
 from routes.leader import leader_bp
 from routes.api import api_bp
 from routes.auth import auth_bp, init_auth, get_user_role
-from routes.scheduler import scheduler_bp
+from services.scheduler_cli import tick_scheduled_emails_command
 
 # Initialize authentication
 init_auth(app)
@@ -193,10 +193,10 @@ app.register_blueprint(admin_bp, url_prefix='/bigbird')
 app.register_blueprint(leader_bp, url_prefix='/leader')
 app.register_blueprint(api_bp, url_prefix='/api')
 app.register_blueprint(auth_bp, url_prefix='/auth')
-app.register_blueprint(scheduler_bp, url_prefix='/scheduler')
 
-# Exempt scheduler routes from CSRF protection (they use OIDC tokens instead)
-csrf.exempt(scheduler_bp)
+# Scheduled emails run from cron via `flask tick-scheduled-emails`, not over HTTP
+# (Updated by Claude AI on 2026-09-28) - see services/scheduler_service.py.
+app.cli.add_command(tick_scheduled_emails_command)
 
 # Add security headers to all responses
 @app.after_request

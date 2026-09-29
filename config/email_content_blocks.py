@@ -204,6 +204,13 @@ EMAIL_CONTENT_BLOCKS = {
 }
 
 
+# Email types that fire on a schedule (see models/email_schedule.py and
+# services/scheduler_service.py). Deliberately a separate tuple from
+# EMAIL_CONTENT_BLOCKS' keys: the registration/withdrawal confirmations are
+# customizable but triggered by participant action, not by time.
+SCHEDULABLE_EMAIL_TYPES = ('team_update', 'weekly_summary', 'admin_digest')
+
+
 def get_email_types():
     """Ordered list of email_type keys currently registered."""
     return list(EMAIL_CONTENT_BLOCKS.keys())

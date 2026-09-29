@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 from models.db import Circle, CircleArea, CircleAdmin
 from models.area_signup_type import natural_sort_key
+from models.email_schedule import CircleEmailScheduleModel
 from services.kml_import import calculate_map_center_and_bounds
 
 
@@ -49,6 +50,9 @@ class CircleModel:
         )
         self.db.add(row)
         self.db.commit()
+        # A circle with no schedule rows would silently never send any email -
+        # give every new circle the default send times (editable by its admins).
+        CircleEmailScheduleModel(self.db).create_defaults(row.slug)
         return row.to_dict()
 
     def update(self, slug, circle_data):

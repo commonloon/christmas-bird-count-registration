@@ -328,6 +328,53 @@ class EmailContentOverride(Base, DictMixin):
     updated_by = Column(String(254))
 
 
+class CircleEmailSchedule(Base, DictMixin):
+    """One scheduled send time for one circle + email type (migration 0012).
+    hour is the LOCAL hour in the circle's display_timezone; day_of_week uses
+    Python's date.weekday() convention (0=Monday ... 6=Sunday), NULL = every
+    day. The (circle, type, hour, day) uniqueness lives in a COALESCE-based
+    unique index created by the migration, not declared here."""
+    __tablename__ = 'circle_email_schedules'
+
+    id = Column(Integer, primary_key=True)
+    circle_slug = Column(String(50), ForeignKey('circles.slug'), nullable=False, index=True)
+    email_type = Column(String(50), nullable=False)
+    hour = Column(Integer, nullable=False)
+    day_of_week = Column(Integer)
+    created_at = Column(DateTime(timezone=True), nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class EmailScheduleRunLog(Base, DictMixin):
+    """Append-only record of every scheduled/manual email run attempt, and the
+    only thing the tick reads to decide whether an occurrence already ran.
+    schedule_id is NULL for manual super-admin runs and stays NULL if its
+    schedule row is later deleted (ON DELETE SET NULL)."""
+    __tablename__ = 'email_schedule_run_log'
+
+    id = Column(Integer, primary_key=True)
+    circle_slug = Column(String(50), nullable=False, index=True)
+    email_type = Column(String(50), nullable=False)
+    schedule_id = Column(Integer, ForeignKey('circle_email_schedules.id', ondelete='SET NULL'))
+    year = Column(Integer, nullable=False)
+    run_at = Column(DateTime(timezone=True), nullable=False)
+    success = Column(Boolean, nullable=False)
+    emails_sent = Column(Integer, nullable=False, default=0)
+    error_summary = Column(Text)
+    triggered_by = Column(String(254), nullable=False, default='scheduler')
+
+
+class AppSetting(Base, DictMixin):
+    """Small global (not per-circle) key/value settings, e.g. the scheduler
+    failure-alert From address. See models/app_settings.py."""
+    __tablename__ = 'app_settings'
+
+    key = Column(String(100), primary_key=True)
+    value = Column(Text, nullable=False)
+    updated_at = Column(DateTime(timezone=True), nullable=False)
+    updated_by = Column(String(254))
+
+
 class MagicLinkToken(Base, DictMixin):
     __tablename__ = 'magic_link_tokens'
 
