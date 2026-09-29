@@ -150,7 +150,7 @@ Production deployment is `git pull` followed by a manual restart directly on the
 
 **Models (circle- and year-aware):** `models/participant.py` (single-table participant + leadership flags), `models/removal_log.py`, `models/circle.py` (circle/area/circle-admin management), `models/db.py` (SQLAlchemy table definitions)
 
-**Routes:** `routes/main.py` (public), `routes/admin.py` (admin, mounted at `/bigbird`), `routes/leader.py` (area leader, mounted at `/leader`), `routes/auth.py` (magic-link auth), `routes/api.py` (JSON endpoints), `routes/scheduler.py` (Task Scheduler email triggers)
+**Routes:** `routes/main.py` (public), `routes/admin.py` (admin, mounted at `/bigbird`), `routes/leader.py` (area leader, mounted at `/leader`), `routes/auth.py` (magic-link auth), `routes/api.py` (JSON endpoints), `services/scheduler_service.py` + `services/scheduler_cli.py` (cron-driven scheduled emails - not a route; see `docs/SCHEDULER.md`)
 
 **Frontend:** `static/js/map.js`, `static/js/leaders-map.js`, `static/js/registration.js`, `static/css/main.css`
 
@@ -189,7 +189,7 @@ historical = participant_model.get_historical_participants('A', years_back=3)
 - Explicit `circle_slug` and year field in every record - never assume/default a circle
 
 ### Security
-- No OAuth/Secret Manager - the only secrets are env vars (`SECRET_KEY`, `SMTP2GO_USERNAME`/`PASSWORD`, `SCHEDULER_SECRET`), set via FullHost's app-node "Variables" panel in production or `.env` locally
+- No OAuth/Secret Manager - the only secrets are env vars (`SECRET_KEY`, `SMTP2GO_USERNAME`/`PASSWORD`), set via FullHost's app-node "Variables" panel in production or `.env` locally
 - Admin whitelist in `config/admins.py`; per-circle admins in the `circle_admins` table
 - No public admin links
 - Historical data read-only
@@ -205,7 +205,6 @@ historical = participant_model.get_historical_participants('A', years_back=3)
 - `DATABASE_URL` (Postgres connection string)
 - `SECRET_KEY` (Flask sessions)
 - `SMTP2GO_USERNAME` / `SMTP2GO_PASSWORD` (email sending - silently no-ops without these)
-- `SCHEDULER_SECRET` (bearer token for `routes/scheduler.py`'s Task Scheduler-triggered email routes)
 
 **Hosting:** FullHost PaaS (app node) + PostgreSQL
 
@@ -242,7 +241,7 @@ Centralized in `config/colors.py`:
 - Service: `services/email_service.py` (SMTP via SMTP2GO)
 - Templates: `templates/emails/`
 - Config: `config/email_settings.py`
-- Triggers: `routes/scheduler.py`, called by FullHost's Task Scheduler; runs once per circle
+- Triggers: hourly cron runs `flask tick-scheduled-emails` (`services/scheduler_cli.py`); per-circle send times live in `circle_email_schedules` (admin-editable), see `docs/SCHEDULER.md`
 
 ### Debugging Production
 Log/service inspection is via the FullHost dashboard, not `gcloud` - there's no CLI equivalent confirmed yet. Ask the user to check dashboard logs rather than guessing at a command.
@@ -275,4 +274,4 @@ Log/service inspection is via the FullHost dashboard, not `gcloud` - there's no 
 
 **Known stale (pre-FullHost-migration, GCP/Cloud Run/OAuth-era) - a rewrite is planned but not yet done, so verify against the live code before trusting these:** `docs/DEPLOYMENT.md`, `docs/DEPLOYMENT_TECHNICAL_REFERENCE.md`, `docs/DEPLOYMENT_WORKSHEET.md`, `docs/DEVELOPER_GUIDE.md`, `docs/SPECIFICATION.md`, `docs/TEST_COVERAGE.md`, `README.md`
 
-**Utilities:** `utils/setup_databases.py`, `utils/generate_test_participants.py`, `utils/setup_email_scheduler.sh` - most documents are in the docs/ directory
+**Utilities:** `utils/setup_databases.py`, `utils/generate_test_participants.py` - most documents are in the docs/ directory

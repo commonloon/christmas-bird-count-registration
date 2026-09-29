@@ -1,0 +1,144 @@
+{# Updated by Claude AI on 2026-09-28 #}
+{% extends "base.html" %}
+
+{% block title %}Scheduler{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0">Scheduled Emails</h1>
+    <a href="{{ url_for('admin.list_circles') }}" class="btn btn-outline-secondary">Back to Circles</a>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h5 class="card-title">Failure alerts</h5>
+        <p class="text-muted small">
+            When a scheduled email fails or misses its 3-hour window, one summary goes to the super-admins,
+            and each affected circle's admins get a short notice for their own circle.
+        </p>
+        <form method="POST" action="{{ url_for('admin.scheduler_settings') }}" class="row g-2 align-items-end">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="col-md-6">
+                <label class="form-label">Alert "From" address</label>
+                <input type="email" name="alert_from_email" class="form-control" required
+                       value="{{ alert_from_email|e }}">
+                <div class="form-text">Must be on one of these domains: {{ allowed_from_email_domains|join(', ') }}</div>
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h5 class="card-title">Circles</h5>
+        <table class="table table-sm align-middle">
+            <thead>
+                <tr><th>Circle</th><th>Timezone</th><th>Email season</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for item in circle_rows %}
+                <tr>
+                    <td>{{ item.circle.circle_name|e }} <code>{{ item.circle.slug|e }}</code></td>
+                    <td>{{ item.circle.display_timezone|e }}</td>
+                    <td>
+                        {% if item.season.in_season %}
+                        <span class="badge bg-success">Active</span> until {{ item.season.ends.isoformat() }}
+                        {% elif item.season.starts %}
+                        <span class="badge bg-secondary">Not yet</span> starts {{ item.season.starts.isoformat() }}
+                        {% else %}
+                        <span class="badge bg-secondary">No upcoming count date</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-end">
+                        <a href="{{ url_for('admin.circle_email_schedule', slug=item.circle.slug) }}"
+                           class="btn btn-sm btn-outline-secondary">Send times</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h5 class="card-title">Recent runs (all circles)</h5>
+        {% if runs %}
+        <div class="table-responsive">
+        <table class="table table-sm align-middle">
+            <thead>
+                <tr><th>When (UTC)</th><th>Circle</th><th>Email</th><th>Result</th><th>Sent</th><th>Triggered by</th><th>Error</th></tr>
+            </thead>
+            <tbody>
+                {% for run in runs %}
+                <tr>
+                    <td>{{ run.run_at.strftime('%Y-%m-%d %H:%M')|e }}</td>
+                    <td><code>{{ run.circle_slug|e }}</code></td>
+                    <td>{{ run.email_type|e }}</td>
+                    <td>
+                        {% if run.success %}<span class="badge bg-success">OK</span>
+                        {% else %}<span class="badge bg-danger">Failed</span>{% endif %}
+                    </td>
+                    <td>{{ run.emails_sent }}</td>
+                    <td>{{ run.triggered_by|e }}</td>
+                    <td class="small">{{ (run.error_summary or '')|e }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">Nothing has run yet.</p>
+        {% endif %}
+    </div>
+</div>
+
+<details class="card border-warning mb-4">
+    <summary class="card-header bg-warning-subtle" style="cursor: pointer;">
+        Manual run (recovery only) - click to expand
+    </summary>
+    <div class="card-body">
+        <p class="small">
+            Use this only after a failure has been investigated and fixed. It runs the email immediately,
+            for that one circle, and only sends what has changed since each team's last email - so running it
+            right after a normal run sends nothing new. It is refused outside a circle's email season.
+            To run, type the circle's slug in the box beside the button.
+        </p>
+        <div class="table-responsive">
+        <table class="table table-sm align-middle">
+            <thead>
+                <tr><th>Circle</th><th>Email</th><th>Confirm</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for item in circle_rows %}
+                {% for value, label in email_type_options %}
+                <tr>
+                    <td><code>{{ item.circle.slug|e }}</code></td>
+                    <td>{{ label|e }}</td>
+                    <td colspan="2">
+                        <form method="POST" action="{{ url_for('admin.scheduler_run') }}" class="d-flex gap-2"
+                              onsubmit='return confirm({{ ("Run " ~ label ~ " for " ~ item.circle.slug ~ " now?")|tojson }});'>
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="circle_slug" value="{{ item.circle.slug|e }}">
+                            <input type="hidden" name="email_type" value="{{ value|e }}">
+                            <input type="text" name="confirm_slug" class="form-control form-control-sm"
+                                   placeholder="type {{ item.circle.slug|e }}" autocomplete="off"
+                                   {% if not item.season.in_season %}disabled{% endif %}>
+                            <button type="submit" class="btn btn-sm btn-outline-danger"
+                                    {% if not item.season.in_season %}disabled title="Outside this circle's email season"{% endif %}>
+                                Run now
+                            </button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+</details>
+{% endblock %}

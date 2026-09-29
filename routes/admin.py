@@ -17,7 +17,12 @@ from config.admins import get_admin_emails
 from routes.auth import require_admin, require_super_admin, get_current_user
 from models.circle import CircleModel, CircleAreaModel, CircleAdminModel
 from models.email_content import EmailContentModel
-from config.email_content_blocks import get_email_types, get_blocks
+from config.email_content_blocks import get_email_types, get_blocks, SCHEDULABLE_EMAIL_TYPES
+from config.email_settings import ALLOWED_FROM_EMAIL_DOMAINS
+from models.app_settings import AppSettingsModel, SCHEDULER_ALERT_FROM_EMAIL_KEY
+from models.email_schedule import CircleEmailScheduleModel, EmailScheduleRunLogModel
+from services import scheduler_service
+from services.datetime_utils import get_timezone_label
 from services.email_content_service import extract_placeholders
 from services.kml_import import (
     parse_kml_string, parse_kml_boundary_lines, filter_main_areas, calculate_map_center_and_bounds, KmlParseError,
@@ -44,6 +49,7 @@ from datetime import datetime, timezone
 import csv
 import logging
 import os
+import pytz
 from io import StringIO
 
 admin_bp = Blueprint('admin', __name__)
@@ -61,6 +67,8 @@ CIRCLE_CONSOLE_ENDPOINTS = {
     'admin.circle_admins', 'admin.circle_areas_manage', 'admin.circle_areas_edit', 'admin.circle_areas_import_kml',
     'admin.circle_logo_upload', 'admin.circle_logo_delete',
     'admin.email_content_defaults', 'admin.circle_email_content', 'admin.circle_email_content_preview',
+    'admin.circle_email_schedule',
+    'admin.scheduler_console', 'admin.scheduler_settings', 'admin.scheduler_run',
 }
 
 
@@ -1904,6 +1912,151 @@ def circle_email_content_preview(slug, email_type):
     else:
         flash('Invalid email type.', 'error')
         return redirect(url_for('admin.circle_email_content', slug=slug))
+
+
+WEEKDAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+SCHEDULED_EMAIL_LABELS = {
+    'team_update': 'Leader team update',
+    'weekly_summary': 'Leader weekly summary',
+    'admin_digest': 'Admin digest (unassigned participants)',
+}
+
+
+def _parse_int(value):
+    """int(value), or None if it isn't a whole number."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _hour_label(hour):
+    return f"{hour % 12 or 12}:00 {'am' if hour < 12 else 'pm'}"
+
+
+@admin_bp.route('/circles/<slug>/email-schedule', methods=['GET', 'POST'])
+def circle_email_schedule(slug):
+    """View/edit when this circle's scheduled emails go out (times are in the
+    circle's own display timezone). Super-admin (any circle) or that circle's
+    own admin, same access as edit_circle/areas/email-content. The cron tick
+    (services/scheduler_service.py) reads these rows; nothing else needs
+    reconfiguring when they change."""
+    denied = _require_circle_manage_access(slug)
+    if denied:
+        return denied
+
+    circle = CircleModel(g.db).get_by_slug(slug)
+    if not circle:
+        flash('Circle not found.', 'error')
+        return redirect(url_for('main.index'))
+
+    model = CircleEmailScheduleModel(g.db)
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+        try:
+            if action == 'add':
+                email_type = request.form.get('email_type', '')
+                hour = _parse_int(request.form.get('hour'))
+                day_raw = request.form.get('day_of_week', '')
+                day_of_week = None if day_raw == '' else _parse_int(day_raw)
+                if hour is None or (day_raw != '' and day_of_week is None):
+                    flash('Invalid request.', 'error')
+                else:
+                    model.add(slug, email_type, hour, day_of_week)
+                    flash('Send time added.', 'success')
+            elif action == 'remove':
+                schedule_id = _parse_int(request.form.get('schedule_id'))
+                if schedule_id is not None and model.remove(schedule_id, slug):
+                    flash('Send time removed.', 'success')
+                else:
+                    flash('Invalid request.', 'error')
+            else:
+                flash('Invalid request.', 'error')
+        except ValueError as e:
+            flash(str(e), 'error')
+        return redirect(url_for('admin.circle_email_schedule', slug=slug))
+
+    tz = pytz.timezone(circle['display_timezone'])
+    schedules = [
+        {**row, 'label': SCHEDULED_EMAIL_LABELS[row['email_type']],
+         'day_label': 'Every day' if row['day_of_week'] is None else WEEKDAY_NAMES[row['day_of_week']],
+         'time_label': _hour_label(row['hour'])}
+        for row in model.get_for_circle(slug)
+    ]
+    runs = EmailScheduleRunLogModel(g.db).get_recent(limit=20, circle_slug=slug)
+    for run in runs:
+        run['label'] = SCHEDULED_EMAIL_LABELS.get(run['email_type'], run['email_type'])
+        run['run_at_local'] = run['run_at'].astimezone(tz).strftime('%Y-%m-%d %H:%M')
+    return render_template(
+        'admin/circle_email_schedule.html', circle=circle, schedules=schedules, runs=runs,
+        season=scheduler_service.season_summary(circle, datetime.now(tz).date()),
+        timezone_label=get_timezone_label(circle['display_timezone']),
+        email_type_options=[(t, SCHEDULED_EMAIL_LABELS[t]) for t in SCHEDULABLE_EMAIL_TYPES],
+        hour_options=[(h, _hour_label(h)) for h in range(24)],
+        weekday_names=WEEKDAY_NAMES, current_user=get_current_user())
+
+
+@admin_bp.route('/scheduler', methods=['GET'])
+@require_super_admin
+def scheduler_console():
+    """Super-admin view of scheduled-email health: recent runs across every
+    circle, the failure-alert sender setting, and (tucked away) the manual
+    recovery run."""
+    circles = CircleModel(g.db).get_all()
+    now = datetime.now(timezone.utc)
+    circle_rows = [
+        {'circle': circle,
+         'season': scheduler_service.season_summary(
+             circle, now.astimezone(pytz.timezone(circle['display_timezone'])).date())}
+        for circle in circles
+    ]
+    return render_template(
+        'admin/scheduler.html', circle_rows=circle_rows,
+        runs=EmailScheduleRunLogModel(g.db).get_recent(limit=100),
+        alert_from_email=AppSettingsModel(g.db).get_scheduler_alert_from_email(),
+        allowed_from_email_domains=ALLOWED_FROM_EMAIL_DOMAINS,
+        email_type_options=[(t, SCHEDULED_EMAIL_LABELS[t]) for t in SCHEDULABLE_EMAIL_TYPES],
+        current_user=get_current_user())
+
+
+@admin_bp.route('/scheduler/settings', methods=['POST'])
+@require_super_admin
+def scheduler_settings():
+    """Save the From address used for scheduler failure alerts."""
+    email = sanitize_email(request.form.get('alert_from_email', ''))
+    if not email or not validate_email_format(email) or not _from_email_domain_allowed(email):
+        flash(f'Enter a valid address on one of these domains: {", ".join(ALLOWED_FROM_EMAIL_DOMAINS)}', 'error')
+    else:
+        AppSettingsModel(g.db).set(SCHEDULER_ALERT_FROM_EMAIL_KEY, email, updated_by=get_current_user()['email'])
+        flash('Alert sender updated.', 'success')
+    return redirect(url_for('admin.scheduler_console'))
+
+
+@admin_bp.route('/scheduler/run', methods=['POST'])
+@require_super_admin
+def scheduler_run():
+    """Manual recovery run of one (circle, email type). Deliberately needs the
+    circle's slug typed in as confirmation, and is refused outside the circle's
+    season (services/scheduler_service.py's run_manual). Runs synchronously and
+    only sends what changed since each area's last send."""
+    slug = request.form.get('circle_slug', '').strip().lower()
+    email_type = request.form.get('email_type', '')
+    if request.form.get('confirm_slug', '').strip().lower() != slug or not slug:
+        flash('Type the circle slug exactly to confirm - nothing was run.', 'error')
+        return redirect(url_for('admin.scheduler_console'))
+
+    try:
+        result = scheduler_service.run_manual(
+            current_app._get_current_object(), slug, email_type, get_current_user()['email'])
+    except ValueError as e:
+        flash(str(e), 'error')
+    else:
+        if result['success']:
+            flash(f'{slug} / {email_type}: ran, {result["emails_sent"]} email(s) sent.', 'success')
+        else:
+            flash(f'{slug} / {email_type}: FAILED - {result["error_summary"]}', 'error')
+    return redirect(url_for('admin.scheduler_console'))
 
 
 @admin_bp.route('/circles/<slug>/areas', methods=['GET'])

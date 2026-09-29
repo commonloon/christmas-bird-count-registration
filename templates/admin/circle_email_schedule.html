@@ -1,0 +1,128 @@
+{# Updated by Claude AI on 2026-09-28 #}
+{% extends "base.html" %}
+
+{% block title %}Email Schedule - {{ circle.circle_name|e }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="mb-0">Email Schedule - {{ circle.circle_name|e }}</h1>
+    <a href="{{ url_for('admin.edit_circle', slug=circle.slug) }}" class="btn btn-outline-secondary">Back to Circle Settings</a>
+</div>
+
+<div class="alert alert-info">
+    Times are in this circle's timezone: <strong>{{ timezone_label|e }}</strong>.
+    The defaults suit most circles; you only need to change these if you want emails at different times.
+    {% if season.in_season %}
+    <br>Emails are being sent now, and will stop after the count date
+    ({{ season.ends.strftime('%B %d, %Y')|e }}).
+    {% elif season.starts %}
+    <br>Emails are not being sent yet. They will start on {{ season.starts.strftime('%B %d, %Y')|e }}
+    (when registration opens) and stop after the count date ({{ season.ends.strftime('%B %d, %Y')|e }}).
+    {% else %}
+    <br><strong>No emails will be sent</strong> because there is no upcoming count date. Set the count date in
+    <a href="{{ url_for('admin.edit_circle', slug=circle.slug) }}">Circle Settings</a>.
+    {% endif %}
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h5 class="card-title">Send times</h5>
+        {% if schedules %}
+        <table class="table table-striped align-middle">
+            <thead>
+                <tr><th>Email</th><th>Day</th><th>Time</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for row in schedules %}
+                <tr>
+                    <td>{{ row.label|e }}</td>
+                    <td>{{ row.day_label|e }}</td>
+                    <td>{{ row.time_label|e }}</td>
+                    <td class="text-end">
+                        <form method="POST" class="d-inline">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <input type="hidden" name="action" value="remove">
+                            <input type="hidden" name="schedule_id" value="{{ row.id }}">
+                            <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted">No send times are set, so no scheduled emails will go out for this circle.</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <h5 class="card-title">Add a send time</h5>
+        <form method="POST" class="row g-2 align-items-end">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="action" value="add">
+            <div class="col-md-5">
+                <label class="form-label">Email</label>
+                <select name="email_type" class="form-select" required>
+                    {% for value, label in email_type_options %}
+                    <option value="{{ value|e }}">{{ label|e }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Day</label>
+                <select name="day_of_week" class="form-select">
+                    <option value="">Every day</option>
+                    {% for name in weekday_names %}
+                    <option value="{{ loop.index0 }}">{{ name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label">Time</label>
+                <select name="hour" class="form-select" required>
+                    {% for value, label in hour_options %}
+                    <option value="{{ value }}"{% if value == 7 %} selected{% endif %}>{{ label|e }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">Add</button>
+            </div>
+        </form>
+        <div class="form-text mt-2">
+            Leader updates only go out when something has changed for that team. Up to 4 send times per email type.
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <h5 class="card-title">Recent scheduled runs</h5>
+        {% if runs %}
+        <table class="table table-sm align-middle">
+            <thead>
+                <tr><th>When ({{ timezone_label|e }})</th><th>Email</th><th>Result</th><th>Emails sent</th></tr>
+            </thead>
+            <tbody>
+                {% for run in runs %}
+                <tr>
+                    <td>{{ run.run_at_local|e }}</td>
+                    <td>{{ run.label|e }}</td>
+                    <td>
+                        {% if run.success %}<span class="badge bg-success">OK</span>
+                        {% else %}<span class="badge bg-danger">Failed</span>{% endif %}
+                    </td>
+                    <td>{{ run.emails_sent }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <div class="form-text">A failed run is reported to the site administrators, who will look into it.</div>
+        {% else %}
+        <p class="text-muted mb-0">Nothing has run for this circle yet.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

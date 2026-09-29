@@ -161,9 +161,12 @@ def _wipe_test_circle_2_data(db_session):
     from models.db import (
         Circle, CircleArea, CircleAdmin, Participant, RemovalLog,
         ReassignmentLog, WithdrawalLog, EmailTimestamp, EmailContentOverride,
+        CircleEmailSchedule, EmailScheduleRunLog,
     )
+    # EmailScheduleRunLog before CircleEmailSchedule (its schedule_id FK).
     for model_cls in (Participant, RemovalLog, ReassignmentLog, WithdrawalLog,
-                       CircleArea, CircleAdmin, EmailTimestamp, EmailContentOverride):
+                       CircleArea, CircleAdmin, EmailTimestamp, EmailContentOverride,
+                       EmailScheduleRunLog, CircleEmailSchedule):
         db_session.query(model_cls).filter_by(circle_slug=TEST_CIRCLE_SLUG_2).delete(synchronize_session=False)
     db_session.query(Circle).filter_by(slug=TEST_CIRCLE_SLUG_2).delete(synchronize_session=False)
     db_session.commit()

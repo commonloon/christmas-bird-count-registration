@@ -7,6 +7,7 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1>Count Circles</h1>
     <div>
+        <a href="{{ url_for('admin.scheduler_console') }}" class="btn btn-outline-secondary">Scheduler</a>
         <a href="{{ url_for('admin.email_content_defaults') }}" class="btn btn-outline-secondary">Email Defaults</a>
         <a href="{{ url_for('admin.new_circle') }}" class="btn btn-primary">Add Circle</a>
     </div>
@@ -34,6 +35,7 @@
                         <a href="{{ url_for('admin.circle_areas_manage', slug=circle.slug) }}" class="btn btn-sm btn-outline-secondary">Areas</a>
                         <a href="{{ url_for('admin.circle_admins', slug=circle.slug) }}" class="btn btn-sm btn-outline-secondary">Admins</a>
                         <a href="{{ url_for('admin.circle_email_content', slug=circle.slug) }}" class="btn btn-sm btn-outline-secondary">Email Content</a>
+                        <a href="{{ url_for('admin.circle_email_schedule', slug=circle.slug) }}" class="btn btn-sm btn-outline-secondary">Schedule</a>
                     </td>
                 </tr>
                 {% endfor %}
