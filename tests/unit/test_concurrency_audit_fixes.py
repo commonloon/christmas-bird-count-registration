@@ -30,6 +30,7 @@ from models.participant import ParticipantModel
 from models.removal_log import RemovalLogModel
 from models.withdrawal_log import WithdrawalLogModel
 from tests.test_config import TEST_CIRCLE_SLUG
+from tests.utils.email_addresses import make_test_email
 
 CURRENT_YEAR = datetime.now().year
 HISTORICAL_YEAR = CURRENT_YEAR - 1
@@ -47,7 +48,7 @@ def test_participant(db_session):
     unique = secrets.token_hex(4)
     participant_id = model.add_participant({
         'first_name': 'ConcurrencyAudit', 'last_name': f'Test{unique}',
-        'email': f'concurrency-audit-{unique}@example.com',
+        'email': make_test_email(f'concurrency-audit-{unique}'),
         'preferred_area': 'UNASSIGNED', 'skill_level': 'Intermediate',
         'experience': '1-2 counts', 'participation_type': 'regular',
     })

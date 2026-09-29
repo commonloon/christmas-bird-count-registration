@@ -190,7 +190,7 @@ IDENTITY_TEST_CONFIG = {
     # Family email scenarios for comprehensive testing
     'family_scenarios': [
         {
-            'email': 'smith-family@test-scenarios.ca',
+            'email': 'birdcount+test-scenarios-smith-family@naturevancouver.ca',
             'description': 'Two-member family with one leader',
             'members': [
                 {
@@ -212,7 +212,7 @@ IDENTITY_TEST_CONFIG = {
             ]
         },
         {
-            'email': 'johnson-family@test-scenarios.ca',
+            'email': 'birdcount+test-scenarios-johnson-family@naturevancouver.ca',
             'description': 'Three-member family with multiple leaders',
             'members': [
                 {
