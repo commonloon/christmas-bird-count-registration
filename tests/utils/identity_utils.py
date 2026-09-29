@@ -369,7 +369,7 @@ def create_identity_helper(db_session, test_year: int = None, circle_slug: str =
 # Standard family scenarios for consistent testing
 STANDARD_FAMILY_SCENARIOS = [
     {
-        'email': 'smith-family@test-scenarios.ca',
+        'email': 'birdcount+test-scenarios-smith-family@naturevancouver.ca',
         'members': [
             {
                 'first_name': 'John',
@@ -390,7 +390,7 @@ STANDARD_FAMILY_SCENARIOS = [
         ]
     },
     {
-        'email': 'johnson-family@test-scenarios.ca',
+        'email': 'birdcount+test-scenarios-johnson-family@naturevancouver.ca',
         'members': [
             {
                 'first_name': 'Bob',

@@ -529,7 +529,7 @@ def identity_test_database(clean_database):
 
     # Cleanup after test (optional - clean_database fixture handles main cleanup)
     try:
-        cleanup_count = identity_helper.cleanup_test_identities("test-scenarios.ca")
+        cleanup_count = identity_helper.cleanup_test_identities("birdcount+test-scenarios-")
         if cleanup_count > 0:
             logger.info(f"Cleaned up {cleanup_count} identity test records")
     except Exception as e:

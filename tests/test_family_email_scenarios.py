@@ -177,7 +177,7 @@ class TestFamilyEmailSharing:
         import random
         import string
         test_suffix = ''.join(random.choices(string.ascii_lowercase, k=8))
-        family_email = f"family-workflow-{test_suffix}@test-functional.ca"
+        family_email = f"birdcount+family-workflow-{test_suffix}@naturevancouver.ca"
 
         # Register first family member (parent)
         parent_id, parent = register_family_member(
@@ -224,7 +224,7 @@ class TestFamilyEmailSharing:
         import random
         import string
         test_suffix = ''.join(random.choices(string.ascii_lowercase, k=8))
-        family_email = f"iso-isolation-{test_suffix}@test-functional.ca"
+        family_email = f"birdcount+iso-isolation-{test_suffix}@naturevancouver.ca"
 
         # Register two family members
         parent_id, parent = register_family_member(
@@ -267,7 +267,7 @@ class TestFamilyEmailSharing:
         import random
         import string
         test_suffix = ''.join(random.choices(string.ascii_lowercase, k=8))
-        family_email = f"ldrmgmt-leader-{test_suffix}@test-functional.ca"
+        family_email = f"birdcount+ldrmgmt-leader-{test_suffix}@naturevancouver.ca"
 
         # Register two family members
         bob_id, bob = register_family_member(
@@ -323,7 +323,7 @@ class TestFamilyEmailSharing:
         import random
         import string
         test_suffix = ''.join(random.choices(string.ascii_lowercase, k=8))
-        family_email = f"duplicate-test-{test_suffix}@test-functional.ca"
+        family_email = f"birdcount+duplicate-test-{test_suffix}@naturevancouver.ca"
 
         # Register first family member
         original_id, original = register_family_member(
@@ -404,7 +404,7 @@ class TestFamilyEmailEdgeCases:
         import random
         import string
         test_suffix = ''.join(random.choices(string.ascii_lowercase, k=8))
-        family_email = f"largefam-large-{test_suffix}@test-functional.ca"
+        family_email = f"birdcount+largefam-large-{test_suffix}@naturevancouver.ca"
         family_members = [
             {'name': 'Mom', 'area': 'M'},
             {'name': 'Dad', 'area': 'N'},
@@ -448,7 +448,7 @@ class TestFamilyEmailEdgeCases:
     @pytest.mark.family
     def test_family_authentication_sharing(self, browser, base_url, clean_database):
         """Test that family members sharing email can have shared authentication privileges."""
-        family_email = f"auth-sharing-{int(time.time())}@test-functional.ca"
+        family_email = f"birdcount+auth-sharing-{int(time.time())}@naturevancouver.ca"
 
         # Register leader candidate
         leader_id, leader = register_family_member(

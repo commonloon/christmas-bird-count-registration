@@ -12,7 +12,7 @@ from datetime import datetime
 def generate_unique_email(base="test"):
     """Generate unique email address for testing."""
     timestamp = int(time.time() * 1000)  # Millisecond precision
-    return f"{base}-{timestamp}@test-functional.ca"
+    return f"birdcount+{base}-{timestamp}@naturevancouver.ca"
 
 def generate_unique_identity(base_first="Test", base_last="User", base_email="test"):
     """Generate unique identity (first_name, last_name, email) for testing."""
@@ -20,7 +20,7 @@ def generate_unique_identity(base_first="Test", base_last="User", base_email="te
     return {
         'first_name': f"{base_first}{timestamp % 10000}",  # Keep names readable
         'last_name': f"{base_last}{timestamp % 10000}",
-        'email': f"{base_email}-{timestamp}@test-functional.ca"
+        'email': f"birdcount+{base_email}-{timestamp}@naturevancouver.ca"
     }
 
 

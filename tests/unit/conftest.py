@@ -136,3 +136,31 @@ def super_admin_client(client):
         sess['user_email'] = 'cbc-test-admin1@naturevancouver.ca'
         sess['user_name'] = 'Test Super Admin'
     return client
+
+
+# The suite deliberately sends real mail (redirected to the test recipient when
+# TEST_MODE is on), but only ever to birdcount+<uniquifier>@naturevancouver.ca -
+# see tests/utils/email_addresses.py. Tests that replace send_email themselves
+# (to capture recipients) are unaffected; this guards every test that would
+# otherwise reach SMTP. A violating send is blocked, and the test fails at
+# teardown (a route that swallows the send error can't hide it).
+@pytest.fixture(autouse=True)
+def only_birdcount_plus_recipients(monkeypatch):
+    from services.email_service import EmailService
+    from tests.utils.email_addresses import is_allowed_test_recipient
+
+    real_send_email = EmailService.send_email
+    violations = []
+
+    def guarded_send_email(self, to_addresses, *args, **kwargs):
+        bad = [a for a in to_addresses if not is_allowed_test_recipient(a)]
+        if bad:
+            violations.append(bad)
+            return False
+        return real_send_email(self, to_addresses, *args, **kwargs)
+
+    monkeypatch.setattr(EmailService, 'send_email', guarded_send_email)
+    yield
+    assert not violations, (
+        f'Test tried to send real email to non-test address(es) {violations}; use '
+        f'tests.utils.email_addresses.make_test_email() (birdcount+<tag>@naturevancouver.ca)')
