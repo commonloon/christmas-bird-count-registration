@@ -40,6 +40,9 @@ UTC = timezone.utc
 # which would make these hand-computed offsets depend on the tz database version.
 VANCOUVER = 'America/Los_Angeles'
 LONG_AGO = datetime(2020, 1, 1, tzinfo=UTC)
+# run_at of the history rows the scheduled_circle fixture seeds; logged_runs()
+# hides them so assertions only see what the code under test wrote.
+SEEDED_RUN_AT = datetime(2020, 1, 2, tzinfo=UTC)
 
 
 def utc(*args):
@@ -116,9 +119,10 @@ class TestClassifyScheduleRows:
         row.update(overrides)
         return row
 
-    def classify(self, schedules, attempted=lambda schedule_id, since: False, circles=None):
+    def classify(self, schedules, attempted=lambda schedule_id, since: False, circles=None,
+                 has_history=lambda schedule_id: True):
         circles = {'x': self.CIRCLE} if circles is None else circles
-        return classify_schedule_rows(schedules, circles, attempted, self.NOW)
+        return classify_schedule_rows(schedules, circles, attempted, has_history, self.NOW)
 
     def test_within_retry_window_is_due(self):
         due, expired = self.classify([self.schedule()])  # 07:00 PST, now 08:30 -> 1.5h
@@ -127,12 +131,28 @@ class TestClassifyScheduleRows:
 
     def test_exactly_at_the_end_of_the_window_is_still_due(self):
         now = utc(2026, 11, 20, 18, 0)  # 3h after 15:00 UTC
-        due, expired = classify_schedule_rows([self.schedule()], {'x': self.CIRCLE}, lambda i, s: False, now)
+        due, expired = classify_schedule_rows(
+            [self.schedule()], {'x': self.CIRCLE}, lambda i, s: False, lambda i: True, now)
         assert len(due) == 1 and not expired
 
     def test_past_the_retry_window_is_expired_not_due(self):
         due, expired = self.classify([self.schedule(hour=4)])  # 04:00 PST, 4.5h ago
         assert not due and len(expired) == 1
+
+    def test_expired_row_with_no_history_at_all_is_silently_skipped(self):
+        """No logged attempt ever for this row = no evidence the scheduler was
+        running for it yet (e.g. cron installed hours after the migration created
+        the row). A missed first occurrence is not reported as expired."""
+        assert self.classify([self.schedule(hour=4)], has_history=lambda schedule_id: False) == ([], [])
+
+    def test_due_row_with_no_history_still_runs(self):
+        due, expired = self.classify([self.schedule()], has_history=lambda schedule_id: False)
+        assert len(due) == 1 and not expired
+
+    def test_history_lookup_gets_this_rows_id(self):
+        seen = []
+        self.classify([self.schedule(id=42, hour=4)], has_history=lambda i: seen.append(i) or True)
+        assert seen == [42]
 
     def test_any_logged_attempt_suppresses_it(self):
         assert self.classify([self.schedule()], attempted=lambda i, s: True) == ([], [])
@@ -213,6 +233,11 @@ def scheduled_circle(db):
         row = schedule_model.add(TEST_CIRCLE_SLUG, email_type, hour)
         db.query(CircleEmailSchedule).filter_by(id=row['id']).update({'created_at': LONG_AGO})
         rows[email_type] = row
+        # Prior history for each row (an old successful run), so the scheduler counts
+        # as "already running" for it and a missed occurrence is reported as expired.
+        # Tests of the no-history case delete these first (see SEEDED_RUN_AT).
+        EmailScheduleRunLogModel(db).record(
+            TEST_CIRCLE_SLUG, email_type, 2020, SEEDED_RUN_AT, True, schedule_id=row['id'])
     db.commit()
 
     yield rows
@@ -253,7 +278,8 @@ def run_tick(now=TICK_NOW, generators=None):
 
 def logged_runs(db):
     db.expire_all()
-    return EmailScheduleRunLogModel(db).get_recent(circle_slug=TEST_CIRCLE_SLUG)
+    return [r for r in EmailScheduleRunLogModel(db).get_recent(circle_slug=TEST_CIRCLE_SLUG)
+            if r['run_at'] != SEEDED_RUN_AT]
 
 
 class TestTick:
@@ -287,6 +313,20 @@ class TestTick:
         assert missed[0]['schedule_id'] == scheduled_circle['admin_digest']['id']
         assert summary['notified'] is True
         assert any(MISSED_WINDOW_MESSAGE in email['body'] for email in sent_emails)
+
+    def test_missed_first_occurrence_with_no_history_is_not_reported(self, db, scheduled_circle, sent_emails):
+        """Rollout case: the migration created the rows, cron was installed hours
+        later. The already-passed occurrence must not be logged as a failure or
+        alert anyone - only the due row runs."""
+        db.query(EmailScheduleRunLog).filter_by(circle_slug=TEST_CIRCLE_SLUG).delete()
+        db.commit()
+
+        summary, generators = run_tick()
+
+        assert summary['expired'] == 0 and summary['notified'] is False
+        assert generators.calls == [('team_update', TEST_CIRCLE_SLUG)]  # the due 07:00 row still runs
+        assert [r for r in logged_runs(db) if not r['success']] == []
+        assert sent_emails == []
 
     def test_synthetic_failure_is_not_reported_again_on_the_next_tick(self, db, scheduled_circle, sent_emails):
         run_tick()
@@ -381,6 +421,9 @@ class TestFailureNotifications:
 
         circle_email = next(e for e in sent_emails if CIRCLE_ADMIN_TEST_EMAIL in e['to'])
         assert 'team update' in circle_email['body']
+        assert 'did not send at their scheduled time' in circle_email['body']
+        assert 'did not send' in circle_email['subject'] and 'failed' not in circle_email['subject']
+        assert 'reported to the site administrators' in circle_email['body']
         assert 'secret SQL detail' not in circle_email['body']
         super_email = next(e for e in sent_emails if 'cbc-test-admin1@naturevancouver.ca' in e['to'])
         assert CIRCLE_ADMIN_TEST_EMAIL not in super_email['to']

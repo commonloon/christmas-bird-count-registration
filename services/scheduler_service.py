@@ -119,7 +119,7 @@ def season_summary(circle, local_today):
     return {'in_season': False, 'starts': None, 'ends': None}
 
 
-def classify_schedule_rows(schedules, circles_by_slug, has_attempt_since, now_utc):
+def classify_schedule_rows(schedules, circles_by_slug, has_attempt_since, has_any_attempt, now_utc):
     """Split schedule rows into (due, expired) lists of
     {'schedule', 'circle', 'occurrence'} dicts.
 
@@ -128,7 +128,12 @@ def classify_schedule_rows(schedules, circles_by_slug, has_attempt_since, now_ut
     must not fire retroactively), the occurrence's local date was outside the
     circle's season, or any attempt - success or failure - is already logged for
     it. Otherwise it is due while within RETRY_WINDOW of the occurrence, and
-    expired once past it."""
+    expired once past it - except that a row with no logged attempt at all
+    (has_any_attempt false) is never reported as expired. With no history there
+    is no evidence the scheduler was running for that slot yet (e.g. the
+    migration created the row hours before cron was first installed), so a
+    missed first occurrence is a rollout artifact, not a failure to alert on.
+    Such a row still runs normally once an occurrence is within the window."""
     due, expired = [], []
     for schedule in schedules:
         circle = circles_by_slug.get(schedule['circle_slug'])
@@ -150,7 +155,10 @@ def classify_schedule_rows(schedules, circles_by_slug, has_attempt_since, now_ut
             continue
 
         entry = {'schedule': schedule, 'circle': circle, 'occurrence': occurrence}
-        (due if now_utc - occurrence <= RETRY_WINDOW else expired).append(entry)
+        if now_utc - occurrence <= RETRY_WINDOW:
+            due.append(entry)
+        elif has_any_attempt(schedule['id']):
+            expired.append(entry)
     return due, expired
 
 
@@ -244,14 +252,14 @@ def send_failure_notifications(db, failures, circles_by_slug):
             for f in circle_failures
         ]
         circle_body = (
-            f'The following scheduled emails for {circle_name} did not go out:\n\n' +
+            f'The following scheduled emails for {circle_name} did not send at their scheduled time:\n\n' +
             '\n'.join(circle_lines) +
-            '\n\nThe site administrators have been notified and will look into it. '
+            '\n\nThis has been reported to the site administrators, who will look into it. '
             'No action is needed from you.\n'
         )
         try:
             email_service.send_email(
-                recipients, f'[CBC Scheduler] {circle_name}: {len(circle_failures)} email job(s) failed - {today}',
+                recipients, f'[CBC Scheduler] {circle_name}: {len(circle_failures)} scheduled email(s) did not send - {today}',
                 circle_body, from_email=alert_from)
         except Exception as e:
             logger.error(f'Could not send scheduler failure notification for {slug}: {e}', exc_info=True)
@@ -282,7 +290,8 @@ def tick(app, now_utc=None, generators=None, only_circles=None):
             only_circles = set(only_circles)
             schedules = [s for s in schedules if s['circle_slug'] in only_circles]
         run_log =EmailScheduleRunLogModel(db)
-        due, expired = classify_schedule_rows(schedules, circles_by_slug, run_log.has_attempt_since, now_utc)
+        due, expired = classify_schedule_rows(
+            schedules, circles_by_slug, run_log.has_attempt_since, run_log.has_any_attempt, now_utc)
 
         failures = []
 
