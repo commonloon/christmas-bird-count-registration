@@ -268,11 +268,9 @@ def participants():
     all_participants = participant_model.get_all_participants()
     all_leaders = participant_model.get_leaders()
 
-    # Filter out UNASSIGNED participants - they have their own dedicated interface at /bigbird/unassigned
-    assigned_participants = [p for p in all_participants if p.get('preferred_area') != 'UNASSIGNED']
-
-    # Normalize participant data to ensure all fields are present
-    normalized_participants = [normalize_participant_record(p) for p in assigned_participants]
+    # Unassigned participants are included (shown in their own section first) so they stay fully editable
+    # Updated by Claude AI on 2026-10-04
+    normalized_participants = [normalize_participant_record(p) for p in all_participants]
 
     # Convert manually added leaders to participant-like records for display
     leader_as_participants = []

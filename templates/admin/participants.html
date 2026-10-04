@@ -1,4 +1,4 @@
-{# Updated by Claude AI on 2025-12-16 #}
+{# Updated by Claude AI on 2026-10-04 #}
 {% extends "base.html" %}
 
 {% block title %}All Participants - {{ count_event_name }}{% endblock %}
@@ -64,7 +64,9 @@
 </div>
 
 <!-- Area Navigation -->
-{% set areas_with_participants = participants | groupby('preferred_area') | list %}
+{# Unassigned section first so admins see it, then areas alphabetically #}
+{% set grouped_areas = participants | groupby('preferred_area') | list %}
+{% set areas_with_participants = grouped_areas | selectattr('grouper', 'equalto', 'UNASSIGNED') | list + grouped_areas | rejectattr('grouper', 'equalto', 'UNASSIGNED') | list %}
 {% if areas_with_participants %}
 <div class="card mb-4">
     <div class="card-body">
@@ -76,7 +78,7 @@
             {% set field_count = area_list|selectattr('status', 'equalto', 'active')|selectattr('participation_type', 'equalto', 'regular')|list|length %}
             {% set feeder_count = area_list|selectattr('status', 'equalto', 'active')|selectattr('participation_type', 'equalto', 'FEEDER')|list|length %}
             {% set withdrawn_count = area_list|selectattr('status', 'equalto', 'withdrawn')|list|length %}
-            <a href="#area-{{ area_code }}" class="btn btn-outline-primary btn-sm">
+            <a href="#area-{{ area_code }}" class="btn {% if area_code == 'UNASSIGNED' %}btn-warning{% else %}btn-outline-primary{% endif %} btn-sm">
                 {{ area_label }} ({{ field_count }} field{% if feeder_count > 0 %}, {{ feeder_count }} feeder{% endif %}{% if withdrawn_count > 0 %}, {{ withdrawn_count }} withdrawn{% endif %})
             </a>
             {% endfor %}
@@ -88,11 +90,11 @@
 <!-- Participants by Area -->
 {% if participants %}
     {# Group participants by area and sort areas alphabetically #}
-    {% for area_code in participants | map(attribute='preferred_area') | list | unique | sort %}
+    {% for area_code in areas_with_participants | map(attribute='grouper') | list %}
     {% set area_participants = participants | selectattr('preferred_area', 'equalto', area_code) | list %}
     {% if area_participants %}
-    <div id="area-{{ area_code }}" class="card mb-4{% if is_historical %} bg-warning bg-opacity-10{% endif %}">
-        <div class="card-header{% if is_historical %} bg-warning bg-opacity-25{% endif %}">
+    <div id="area-{{ area_code }}" class="card mb-4{% if is_historical %} bg-warning bg-opacity-10{% elif area_code == 'UNASSIGNED' %} border-warning{% endif %}">
+        <div class="card-header{% if is_historical %} bg-warning bg-opacity-25{% elif area_code == 'UNASSIGNED' %} bg-warning bg-opacity-25{% endif %}">
             <h5 class="mb-0">
                 {% set field_count = area_participants|selectattr('status', 'equalto', 'active')|selectattr('participation_type', 'equalto', 'regular')|list|length %}
                 {% set feeder_count = area_participants|selectattr('status', 'equalto', 'active')|selectattr('participation_type', 'equalto', 'FEEDER')|list|length %}
