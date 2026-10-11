@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2025-12-18
+# Updated by Claude AI on 2026-10-11
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response, g, current_app, session
 from config.database import get_db_session
 from config.email_settings import is_test_server
@@ -1536,6 +1536,11 @@ def cleanup_blocks():
 
 CIRCLE_SLUG_PATTERN_MESSAGE = 'Slug must be lowercase letters, numbers, and hyphens only.'
 
+# Slugs that map to hostnames used for something other than a circle. 'acme' is the
+# deSEC-hosted zone (acme.birdcount.ca) that serves TLS certificate challenges - a circle
+# with that slug would be unreachable (see docs/TLS_CERT_RENEWAL.md).
+RESERVED_CIRCLE_SLUGS = frozenset({'acme'})
+
 
 def _valid_circle_slug(slug):
     import re as _re
@@ -1639,6 +1644,8 @@ def new_circle():
     field_errors = {}
     if not _valid_circle_slug(slug):
         field_errors['slug'] = f'Invalid slug: {CIRCLE_SLUG_PATTERN_MESSAGE}'
+    elif slug in RESERVED_CIRCLE_SLUGS:
+        field_errors['slug'] = f'The slug "{slug}" is reserved and cannot be used for a circle.'
     elif CircleModel(g.db).get_by_slug(slug):
         field_errors['slug'] = f'A circle with slug "{slug}" already exists.'
 

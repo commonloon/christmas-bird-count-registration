@@ -1,119 +1,157 @@
 # TLS Certificate Renewal (FullHost, `*.cbc.birdcount.ca` + `*.birdcount.ca` + `birdcount.ca`)
-{# Updated by Claude AI on 2026-09-02 #}
+{# Updated by Claude AI on 2026-10-11 #}
+
+Renewal is automated by a cron job on the FullHost app node. This is new and still being proven: the first
+unattended run has not happened yet, so treat the alerts and the manual fallback below as part of the system.
 
 ## Background
 
-CBC (Christmas Bird Count) circles are reachable at `<circle>.cbc.birdcount.ca` (e.g. `vancouver.cbc.birdcount.ca`). Non-CBC counts (KBA surveys, spring counts, etc.) live one subdomain level up, directly at `<circle>.birdcount.ca` (e.g. `comox-spring.birdcount.ca`) — see `app.py`'s `CIRCLE_SUBDOMAIN_PATTERNS`. The bare apex `birdcount.ca` itself serves a third page - a landing page listing non-CBC counts and linking across to `cbc.birdcount.ca`'s CBC listing (`APEX_LANDING_HOST` in `app.py`). All of this is resolved via wildcard/apex DNS records pointing at a **public IP address attached directly to the app node** (`11294` on environment `env-5397859`). This bypasses FullHost's shared load balancer, which doesn't support wildcard custom-domain registration — see `REMINDER.md`/`hosting-migration` memory for the full reasoning.
+CBC (Christmas Bird Count) circles are reachable at `<circle>.cbc.birdcount.ca` (e.g. `vancouver.cbc.birdcount.ca`). Non-CBC counts (KBA surveys, spring counts, etc.) live one subdomain level up, directly at `<circle>.birdcount.ca` (e.g. `comox-spring.birdcount.ca`) - see `app.py`'s `CIRCLE_SUBDOMAIN_PATTERNS`. The bare apex `birdcount.ca` serves a landing page (`APEX_LANDING_HOST` in `app.py`). All of this is resolved via wildcard/apex DNS records pointing at a **public IP address attached directly to the app node** (`11294` on environment `env-5397859`). This bypasses FullHost's shared load balancer, which doesn't support wildcard custom-domain registration.
 
-Apache on that node has a single catch-all `<VirtualHost *:443>` in `ssl.conf` with one `SSLCertificateFile` (`/var/lib/jelastic/SSL/jelastic.crt`) — there's no per-hostname SNI vhost, so *every* hostname hitting this IP gets served from that one cert file. If a host you expect to work shows the wrong cert (e.g. Chrome says "certificate is from `*.cbc.birdcount.ca`" when visiting `birdcount.ca`), the fault is either a missing SAN or a stale file at that exact path (see the lineage-directory trap in step 3) - it is never a per-vhost config issue on this setup.
+Apache on that node has a single catch-all `<VirtualHost *:443>` with one certificate, so *every* hostname hitting this IP is served from that one cert. If a host shows the wrong cert, the fault is a missing SAN or a stale cert - never a per-vhost setting.
 
-Let's Encrypt only issues wildcard certificates via the **DNS-01 challenge** (HTTP-01 doesn't support wildcards at all — this is an ACID protocol restriction, not a FullHost or certbot limitation). Our DNS registrar (Squarespace, though the zone is actually served by Google Cloud DNS nameservers under the hood) has no API, so this **cannot be automated** — it's a manual process, needed roughly every 90 days.
+The certificate has exactly three names (no more, no fewer):
 
-## Prerequisites
+- `*.cbc.birdcount.ca` - CBC circle subdomains.
+- `*.birdcount.ca` - non-CBC circle subdomains; also covers `cbc.birdcount.ca` itself, which is why that host is not listed separately (requesting it as well is rejected as redundant).
+- `birdcount.ca` - the bare apex. A wildcard never covers its own parent, so this needs its own name.
 
-- WSL installed locally. **Do not run certbot natively on Windows** — it unconditionally refuses to run without Administrator rights, even in `--manual` mode where no elevated privilege is actually needed.
-- Access to Squarespace's DNS panel for `birdcount.ca`.
-- Access to the FullHost dashboard for `env-5397859`, node `11294` → **Custom SSL** form.
+Let's Encrypt only issues wildcards through the **DNS-01** challenge. Public CAs cap certificate life at 200 days (since 2026-03-15), 100 days from 2027-03-15 and 47 days from 2029, so a long-lived certificate is not an option; automation is the durable fix.
 
-## Procedure
+HSTS with `includeSubDomains` is on, so an **expired certificate makes every host unreachable** with no click-through.
 
-### 1. Request the certificate (in a WSL shell, not `wsl <command>` from Windows — `~` expansion breaks across that boundary)
+## How the automation works
 
-```bash
-wsl
-# now inside WSL:
-~/certbot-venv/bin/certbot certonly \
-  --manual --preferred-challenges dns \
-  --key-type rsa \
-  -d "*.cbc.birdcount.ca" \
-  -d "*.birdcount.ca" \
-  -d "birdcount.ca" \
-  --config-dir ~/letsencrypt-birdcount/config \
-  --work-dir ~/letsencrypt-birdcount/work \
-  --logs-dir ~/letsencrypt-birdcount/logs \
-  --force-renewal
+```
+cron (daily, quiet hours)
+  └─ services/tls_renewal/renew_certificate.py
+       1. live cert has > 30 days left?            -> exit quietly
+       2. certbot --manual, RSA key, DNS-01        -> hooks publish TXT records via the deSEC API
+            (a good certificate from an earlier run that failed to install is reused instead)
+       3. jelastic_deploy.py                       -> upload the 3 PEMs, BindSSL, confirm fingerprint
+       4. check all three hostnames now serve it   -> else alert
+  any failure -> alert email, non-zero exit
+
+cron (daily, separate entry)
+  └─ services/tls_renewal/check_expiry.py          -> alert if any host has < 14 days left or fails verification
 ```
 
-Exactly these three `-d` flags - no more, no fewer:
+**DNS delegation.** Squarespace serves `birdcount.ca` and has no API, so the challenge names are delegated by CNAME
+into a tiny zone hosted at deSEC, which does have one. Records at Squarespace (set once):
 
-- `*.cbc.birdcount.ca` - CBC circle subdomains (`vancouver.cbc.birdcount.ca`, etc.)
-- `*.birdcount.ca` - non-CBC circle subdomains (`comox-spring.birdcount.ca`, etc.) - this also happens to cover `cbc.birdcount.ca` itself (one label), which is why that host is **not** listed separately here even though it serves real content (the CBC landing page) - including it anyway gets rejected outright:
-  ```
-  Error creating new order :: Domain name "cbc.birdcount.ca" is redundant with a
-  wildcard domain in the same request. Remove one or the other from the certificate request.
-  ```
-- `birdcount.ca` - the bare apex (zero labels), which serves the non-CBC landing page. **Not** covered by `*.birdcount.ca` or anything else - a wildcard never covers its own bare parent, the same reason `cbc.birdcount.ca` needed its own SAN back when the cert only had `*.cbc.birdcount.ca`. Don't drop this one just because `*.birdcount.ca` is also in the list - they cover different things.
-
-(If `~/certbot-venv` doesn't exist yet: `python3 -m venv ~/certbot-venv && ~/certbot-venv/bin/pip install certbot` first.)
-
-**`--key-type rsa` is required.** FullHost's "Custom SSL" form validates the key/cert pairing with what appears to be an RSA-specific check — an ECDSA key (which newer certbot defaults may produce) will cryptographically match its certificate just fine, but FullHost's form will reject it with a misleading "server key does not match domain certificate" error. This cost significant debugging time to track down — don't skip this flag.
-
-**`--force-renewal` is required** once a non-expired cert for this exact name already exists, otherwise certbot refuses to reissue.
-
-### 2. Add the DNS TXT record(s)
-
-Follow whatever certbot itself prints rather than assuming a fixed number of prompts - in practice, issuing for all three domains above produced only **one** DNS-01 prompt, not the three you might expect from three `-d` flags (certbot appears to deduplicate by challenge name when domains share one, e.g. `*.birdcount.ca` and `birdcount.ca` both validate at `_acme-challenge.birdcount.ca`; don't assume this behavior is stable across certbot versions, just watch what it actually asks for).
-
-The two possible challenge hosts (relative, in Squarespace's DNS panel):
-
-| Challenge for | Host | Verify with |
+| Type | Host | Value |
 |---|---|---|
-| `*.cbc.birdcount.ca` | `_acme-challenge.cbc` | `nslookup -type=TXT _acme-challenge.cbc.birdcount.ca` |
-| `*.birdcount.ca` and/or `birdcount.ca` | `_acme-challenge` | `nslookup -type=TXT _acme-challenge.birdcount.ca` |
+| NS | `acme` | `ns1.desec.io` |
+| NS | `acme` | `ns2.desec.org` |
+| CNAME | `_acme-challenge` | `apex.acme.birdcount.ca` |
+| CNAME | `_acme-challenge.cbc` | `cbc.acme.birdcount.ca` |
 
-**Use the relative host certbot's prompt implies, not the full dotted name** - pasting the full `_acme-challenge.birdcount.ca` into Squarespace's "Host" field doubles up the domain suffix and creates the record at the wrong name (this bit us once already). Confirm propagation via `nslookup`/`dig` from a separate terminal before telling certbot to continue - continuing too early wastes an attempt against Let's Encrypt's rate limits.
+deSEC holds the zone `acme.birdcount.ca`. Its API token is limited by policy to TXT records in that zone. Do **not** enable
+DNSSEC on `birdcount.ca` (skip deSEC's DS/DNSSEC step). The slug `acme` is reserved in the circle form because
+`acme.birdcount.ca` no longer reaches the app.
 
-### 3. Retrieve the three files certbot needs to hand to FullHost
+**Install.** FullHost keeps the certificate in its legacy "Custom SSL" model and root owns the file, so the node cannot swap the
+file itself. `jelastic_deploy.py` uses the platform API instead: upload each PEM to the uploader service
+(`/1.0/storage/uploader/rest/upload`), then `BindSSL` with the three returned download links. Roles in the form:
+`privkey.pem` = Server Key, `chain.pem` = Intermediate Certificate (CA), `cert.pem` = Domain Certificate - never `fullchain.pem`.
+The installer refuses a certificate from the staging CA or one missing any of the three names.
 
-**⚠️ Before copying anything, check certbot's own final output for the actual `live/...` path it wrote to.** The lineage folder name is normally `cbc.birdcount.ca` (derived from the first `-d`, star stripped), but if certbot decides the domain list is different enough from an existing lineage of that name, it silently creates a *new* one instead - `cbc.birdcount.ca-0001`, `-0002`, etc. - without erroring or asking. Copying from the old path in that case doesn't fail either; it just quietly hands FullHost the **previous, stale cert** (this happened during the 2026-09-02 renewal - the upload "succeeded" and only revealed itself as wrong via a browser cert-mismatch error afterward). Certbot prints a line like `Certificate is saved at: /home/.../live/cbc.birdcount.ca-0001/fullchain.pem` near the end of its output - that path, not this doc, is the source of truth for step 3 and 4's file locations every single time.
+**Outage.** The swap makes HTTPS unreachable for roughly 30 seconds (measured once, 2026-10-11). That is why the job runs in quiet hours.
 
-Still in WSL, copy the certbot output to a plain Windows-visible path (avoids any WSL-symlink resolution issues — certbot's `live/` files are symlinks into `archive/`, and don't rely on browsing `\\wsl$\...` paths directly in a file picker). Adjust the `live/cbc.birdcount.ca` segment below to match whatever certbot actually printed:
+**Statelessness.** certbot's state lives in `/tmp/cbc-certbot` (override with `TLS_WORK_DIR`) and is rebuilt on demand, including its
+virtualenv, so a wiped `/tmp` costs only a few minutes at the next renewal. Staging uses a separate directory (`config-staging`).
 
-```bash
-mkdir -p /mnt/c/Users/harve/certs
-cp -L ~/letsencrypt-birdcount/config/live/cbc.birdcount.ca/privkey.pem /mnt/c/Users/harve/certs/
-cp -L ~/letsencrypt-birdcount/config/live/cbc.birdcount.ca/cert.pem /mnt/c/Users/harve/certs/
-cp -L ~/letsencrypt-birdcount/config/live/cbc.birdcount.ca/chain.pem /mnt/c/Users/harve/certs/
-```
+## One-time setup on the app node
 
-Sanity-check what you're about to upload actually has all three SANs before proceeding to step 4:
+**Environment variables** (FullHost Variables panel - never in the repo):
 
-```bash
-openssl x509 -in /mnt/c/Users/harve/certs/cert.pem -noout -ext subjectAltName
-# expect: DNS:*.cbc.birdcount.ca, DNS:*.birdcount.ca, DNS:birdcount.ca
-```
-
-### 4. Upload to FullHost
-
-FullHost dashboard → environment `env-5397859` → node `11294` → **Custom SSL** form. Upload from `C:\Users\harve\certs\`:
-
-| Form field | File |
+| Variable | Purpose |
 |---|---|
-| Server Key | `privkey.pem` |
-| Intermediate Certificate (CA) | `chain.pem` |
-| Domain Certificate | `cert.pem` |
+| `DESEC_TOKEN` | deSEC token (TXT records in `acme.birdcount.ca` only) |
+| `JELASTIC_CERT_TOKEN` | FullHost API token allowed `BindSSL`, `GetSSL` (and `RemoveSSL`) |
+| `ACME_EMAIL` | Let's Encrypt account / expiry-notice address (required for production issuance) |
+| `SMTP2GO_USERNAME` / `SMTP2GO_PASSWORD` | already set for the app; used to send alerts |
 
-**Do not use `fullchain.pem`** in the Domain Certificate field — it concatenates the leaf and intermediate certs into one file, which this form doesn't expect (it wants them split across the Intermediate/Domain fields separately) and will also produce a "key does not match" error.
+**Alert emails** go to every super-admin (`config/admins.py`, the same list the scheduler's alerts use) from the app's default from address
+(`FROM_EMAIL` if set, otherwise `config/organization.py`'s). Nothing alert-specific needs configuring. Only if the admin list cannot be loaded does it fall back to `ACME_EMAIL`.
 
-Click Save.
+**Cron.** Install in the `apache` user's crontab, one line each (see `docs/SCHEDULER.md` for why `bash -lc` and absolute paths are
+needed). The times are the node's clock - pick quiet hours for your timezone:
 
-### 5. Verify
-
-```bash
-curl -Iv https://vancouver.cbc.birdcount.ca/ 2>&1 | grep -i "expire\|subject\|issuer"
-curl -Iv https://comox-spring.birdcount.ca/ 2>&1 | grep -i "expire\|subject\|issuer"
-curl -Iv https://birdcount.ca/ 2>&1 | grep -i "expire\|subject\|issuer"
+```
+30 3 * * * /bin/bash -lc 'cd /var/www/webroot/ROOT/services/tls_renewal && /opt/jelastic-python314/bin/python3 renew_certificate.py >> /var/www/webroot/logs/tls_renewal.log 2>&1'
+45 8 * * * /bin/bash -lc 'cd /var/www/webroot/ROOT/services/tls_renewal && /opt/jelastic-python314/bin/python3 check_expiry.py >> /var/www/webroot/logs/tls_check.log 2>&1'
 ```
 
-Check one host per SAN, not just one — a working `*.cbc.birdcount.ca` host doesn't confirm `*.birdcount.ca` or bare `birdcount.ca` are also good. `curl`'s own TLS check is enough (it'll refuse to connect on a mismatch, same as a browser), but if you have SSH access to the app node, checking the cert file directly is more definitive than any single hostname test, since it shows every SAN at once regardless of DNS:
+Each run appends a line or two to its log, so no rotation is needed in practice. The code runs from the deployed repository (after a
+`git pull`), not from a copy in `/tmp`.
 
-```bash
-ssh -p 3022 11294-687@gate.vap.fullhost.cloud \
-  "openssl x509 -in /var/lib/jelastic/SSL/jelastic.crt -noout -subject -ext subjectAltName -enddate"
+**Prove the alert path works** before relying on it:
+
+```
+ssh cbc 'bash -lc "cd /var/www/webroot/ROOT/services/tls_renewal && /opt/jelastic-python314/bin/python3 check_expiry.py --test-alert"'
 ```
 
-Confirm the new expiry date is ~90 days out and all three SANs are present.
+## Day-to-day
 
-## Renewal cadence
+- **Is it healthy?** `check_expiry.py` prints days remaining per host; run it any time. The renewal log shows `birdcount.ca: NN days remaining` daily.
+- **Renew now** (e.g. after changing the domain list): `renew_certificate.py --force`. This swaps the certificate - about 30 s outage. `--no-install` issues
+  only; `--staging` tests issuance against Let's Encrypt's staging CA and never installs.
+- **Logs on the node:** `/tmp/cbc-certbot/logs/letsencrypt.log` (certbot) and `/tmp/cbc-certbot/logs/hook.log` (which TXT values the hook published/removed, with timestamps).
 
-There is no automated reminder for this yet — set a calendar reminder for roughly every 80 days (Let's Encrypt allows renewal up to 30 days before expiry, so this leaves margin). FullHost's own default certificate for the platform's shared hostname was found expired and unnoticed during this migration — don't let this one suffer the same fate.
+## When it fails
+
+You get an email "TLS certificate renewal FAILED" (or "TLS certificate needs attention" from the watchdog). The old certificate stays in place until it
+expires, so there are weeks to react. Look at the renewal log and certbot's log, then:
+
+| Symptom | Likely cause / action |
+|---|---|
+| `deSEC ... HTTP 502` | deSEC front-end hiccup; the hook retries for about 2.5 minutes. Rerun later. |
+| `Incorrect TXT record ... During secondary validation` | Let's Encrypt's other vantage points saw an older record set (DNS propagation or caching). The hook waits an extra 60 s after confirming propagation. **Wait at least an hour before retrying** - resolvers cache for the 3600 s TTL and failed validations are rate-limited (5 per hour). Compare `hook.log` against the failure. |
+| `NXDOMAIN looking up TXT` | Challenge TXT not published, or the CNAME/NS records at Squarespace are missing or changed. |
+| `refusing to install a certificate from the staging CA` | A staging run's files were passed to `install`. Reissue for production. |
+| `BindSSL failed` / upload errors | FullHost API change or token problem. Fall back to the dashboard upload below using the files in `/tmp/cbc-certbot/config/live/birdcount/`. |
+| Let's Encrypt rate limit | Duplicate certificates: 5 per week. The job reuses an already-issued certificate rather than reissuing, but repeated manual `--force` runs can hit it. |
+
+## Manual fallback
+
+Use this if automation is broken and time is short. **First remove the two `_acme-challenge` CNAME records at Squarespace** (a CNAME cannot
+coexist with the manual TXT records below); re-add them (and confirm the automated run works) afterwards.
+
+Prerequisites: WSL (**do not run certbot natively on Windows** - it demands Administrator rights even in `--manual` mode), Squarespace DNS access, and the FullHost dashboard
+(`env-5397859` → node `11294` → **Custom SSL**).
+
+1. In a WSL shell (not `wsl <command>` from Windows - `~` expansion breaks across that boundary):
+   ```bash
+   ~/certbot-venv/bin/certbot certonly \
+     --manual --preferred-challenges dns \
+     --key-type rsa \
+     -d "*.cbc.birdcount.ca" -d "*.birdcount.ca" -d "birdcount.ca" \
+     --config-dir ~/letsencrypt-birdcount/config \
+     --work-dir ~/letsencrypt-birdcount/work \
+     --logs-dir ~/letsencrypt-birdcount/logs \
+     --force-renewal
+   ```
+   (If `~/certbot-venv` is missing: `python3 -m venv ~/certbot-venv && ~/certbot-venv/bin/pip install certbot`.)
+   `--key-type rsa` is required: FullHost's form rejects an ECDSA key with a misleading "server key does not match domain certificate" error.
+   `--force-renewal` is required once a non-expired cert for this exact name exists.
+2. Add the TXT records certbot asks for in Squarespace, using the **relative** host (`_acme-challenge` or `_acme-challenge.cbc`, not the full dotted name, which doubles the domain suffix).
+   The apex name needs **two** TXT values (one for `*.birdcount.ca`, one for `birdcount.ca`). Confirm with
+   `nslookup -type=TXT _acme-challenge.birdcount.ca` before letting certbot continue. Each name's DNS cache lasts for its TTL, so after a failed attempt wait before retrying.
+3. **Check certbot's own final output for the actual `live/...` path.** The lineage folder is normally `cbc.birdcount.ca`, but certbot may silently create `cbc.birdcount.ca-0001` etc.;
+   copying from the old folder quietly hands FullHost the previous certificate. Then copy the files out of WSL's symlinked `live/` directory:
+   ```bash
+   mkdir -p /mnt/c/Users/harve/certs
+   cp -L ~/letsencrypt-birdcount/config/live/<lineage>/{privkey,cert,chain}.pem /mnt/c/Users/harve/certs/
+   openssl x509 -in /mnt/c/Users/harve/certs/cert.pem -noout -ext subjectAltName   # expect all three names
+   ```
+4. Upload in the dashboard's Custom SSL form: Server Key = `privkey.pem`, Intermediate Certificate (CA) = `chain.pem`, Domain Certificate = `cert.pem`. Click Save (about 20-30 s outage).
+5. Verify one host per name:
+   ```bash
+   curl -Iv https://vancouver.cbc.birdcount.ca/ 2>&1 | grep -i "expire\|subject\|issuer"
+   curl -Iv https://comox-spring.birdcount.ca/ 2>&1 | grep -i "expire\|subject\|issuer"
+   curl -Iv https://birdcount.ca/ 2>&1 | grep -i "expire\|subject\|issuer"
+   ```
+   Check each name, not just one - a working `*.cbc.birdcount.ca` host says nothing about the other two.
+
+Delete the copied key files from `C:\Users\harve\certs` when done; they contain the live private key.
