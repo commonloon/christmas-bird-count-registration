@@ -76,11 +76,11 @@ virtualenv, so a wiped `/tmp` costs only a few minutes at the next renewal. Stag
 (`FROM_EMAIL` if set, otherwise `config/organization.py`'s). Nothing alert-specific needs configuring. Only if the admin list cannot be loaded does it fall back to `ACME_EMAIL`.
 
 **Cron.** Install in the `apache` user's crontab, one line each (see `docs/SCHEDULER.md` for why `bash -lc` and absolute paths are
-needed). The times are the node's clock - pick quiet hours for your timezone:
+needed). The node's clock is UTC, so the times below are UTC: the renewal runs at 11:30 UTC (03:30 PST / 04:30 PDT, when traffic is lowest) and the watchdog at 17:00 UTC (09:00 PST / 10:00 PDT, so an alert lands during the working day):
 
 ```
-30 3 * * * /bin/bash -lc 'cd /var/www/webroot/ROOT/services/tls_renewal && /opt/jelastic-python314/bin/python3 renew_certificate.py >> /var/www/webroot/logs/tls_renewal.log 2>&1'
-45 8 * * * /bin/bash -lc 'cd /var/www/webroot/ROOT/services/tls_renewal && /opt/jelastic-python314/bin/python3 check_expiry.py >> /var/www/webroot/logs/tls_check.log 2>&1'
+30 11 * * * /bin/bash -lc 'cd /var/www/webroot/ROOT/services/tls_renewal && /opt/jelastic-python314/bin/python3 renew_certificate.py >> /var/www/webroot/logs/tls_renewal.log 2>&1'
+0 17 * * * /bin/bash -lc 'cd /var/www/webroot/ROOT/services/tls_renewal && /opt/jelastic-python314/bin/python3 check_expiry.py >> /var/www/webroot/logs/tls_check.log 2>&1'
 ```
 
 Each run appends a line or two to its log, so no rotation is needed in practice. The code runs from the deployed repository (after a
