@@ -1,10 +1,12 @@
 # Updated by Claude AI on 2026-10-11
 """Renew the wildcard certificate: certbot + the deSEC DNS-01 hook, then install it.
 
-Stateless by design: each run checks the live certificate's expiry and does nothing
-if more than RENEW_WITHIN_DAYS remain. Otherwise it issues a certificate (or reuses
-one a previous run issued but failed to install), installs it on the node through
-the platform API (jelastic_deploy.py), and verifies every hostname serves it. Any
+Stateless by design: each run reads the live certificate and does nothing if more
+than a third of its lifetime remains (Let's Encrypt's recommendation; the lifetime
+itself is read from the certificate, as it keeps shrinking: 90 -> 64 -> 45 days).
+Otherwise it issues a certificate (or reuses one a previous run issued but failed to
+install), installs it on the node through the platform API (jelastic_deploy.py), and
+verifies every hostname serves it. Any
 failure emails an alert and exits non-zero. Installing swaps the node's certificate,
 which interrupts HTTPS for roughly 30 seconds - run it in quiet hours.
 
@@ -20,19 +22,19 @@ import argparse
 import os
 import subprocess
 import sys
+import time
 import traceback
 from pathlib import Path
 
-from tls_common import CHECK_HOSTS, live_days_remaining, send_alert
+from tls_common import CHECK_HOSTS, live_cert_status, pem_status, renew_threshold_days, send_alert
 
 HOOK = Path(__file__).with_name('desec_hook.py')
 DOMAINS = ('*.cbc.birdcount.ca', '*.birdcount.ca', 'birdcount.ca')
 CHECK_HOST = CHECK_HOSTS[0]
-RENEW_WITHIN_DAYS = 30
-# A previously issued, not-yet-installed certificate with at least this many days left is
-# reused instead of asking Let's Encrypt again (duplicate-certificate limit: 5 per week).
-REUSE_IF_DAYS_LEFT = 60
-MIN_DAYS_AFTER_INSTALL = 60
+# After installing, each host is polled until it serves the new certificate (the web server
+# reloads a moment after the platform reports success).
+VERIFY_ATTEMPTS = 12
+VERIFY_DELAY = 10
 WORK_DIR = Path(os.environ.get('TLS_WORK_DIR', '/tmp/cbc-certbot'))
 CERT_NAME = 'birdcount'
 
@@ -52,16 +54,18 @@ def _config_dir(staging):
     return WORK_DIR / ('config-staging' if staging else 'config')
 
 
-def reusable_certificate():
-    """Directory of a production certificate issued earlier with plenty of life left, or None."""
+def reusable_certificate(served_fingerprint):
+    """Directory of a production certificate issued earlier but not yet installed that still
+    has more than a renewal window left, or None. A certificate identical to the one being
+    served is never reused: that is already installed, and reinstalling it renews nothing."""
     live = _config_dir(False) / 'live' / CERT_NAME
     cert = live / 'cert.pem'
     if not cert.exists():
         return None
-    still_valid = subprocess.run(
-        ['openssl', 'x509', '-in', str(cert), '-noout', '-checkend',
-         str(REUSE_IF_DAYS_LEFT * 86400)], capture_output=True).returncode == 0
-    return live if still_valid else None
+    status = pem_status(cert)
+    if status.fingerprint == served_fingerprint:
+        return None
+    return live if status.days_remaining > renew_threshold_days(status.lifetime_days) else None
 
 
 def issue(staging):
@@ -95,24 +99,41 @@ def install_and_verify(live):
     from jelastic_deploy import install
     expiry = install(*((live / name).read_text() for name in ('privkey.pem', 'cert.pem', 'chain.pem')))
     print(f'Installed; platform reports expiry {expiry}')
-    short = []
+    expected = pem_status(live / 'cert.pem').fingerprint
+    stale = []
     for host in CHECK_HOSTS:
-        days = live_days_remaining(host)
-        print(f'{host}: {days:.1f} days remaining after install')
-        if days < MIN_DAYS_AFTER_INSTALL:
-            short.append(host)
-    if short:
-        raise RuntimeError(f'after install these hosts still serve a short-lived certificate: '
-                           f'{", ".join(short)}')
+        for attempt in range(VERIFY_ATTEMPTS):
+            try:
+                status = live_cert_status(host)
+                if status.fingerprint == expected:
+                    print(f'{host}: serving the new certificate ({status.days_remaining:.1f} days remaining)')
+                    break
+            except Exception as exc:
+                print(f'{host}: not yet reachable ({type(exc).__name__}: {exc})')
+            time.sleep(VERIFY_DELAY)
+        else:
+            stale.append(host)
+    if stale:
+        raise RuntimeError(f'after install these hosts are not serving the new certificate: '
+                           f'{", ".join(stale)}')
 
 
 def run(args):
-    if not args.staging and not args.force:
-        days = live_days_remaining(CHECK_HOST)
-        print(f'{CHECK_HOST}: {days:.1f} days remaining')
-        if days > RENEW_WITHIN_DAYS:
+    status = None
+    if not args.staging:
+        try:
+            status = live_cert_status(CHECK_HOST)
+        except Exception as exc:
+            # An expired or broken certificate is exactly when renewal is needed.
+            print(f'Could not read the live certificate ({type(exc).__name__}: {exc}); '
+                  'assuming it needs renewal')
+    if status and not args.staging and not args.force:
+        threshold = renew_threshold_days(status.lifetime_days)
+        print(f'{CHECK_HOST}: {status.days_remaining:.1f} days remaining '
+              f'(renews below {threshold:.1f}; lifetime {status.lifetime_days:.0f} days)')
+        if status.days_remaining > threshold:
             return
-    live = None if args.staging else reusable_certificate()
+    live = None if args.staging else reusable_certificate(status.fingerprint if status else None)
     if live:
         print(f'Reusing the certificate already issued in {live}')
     else:

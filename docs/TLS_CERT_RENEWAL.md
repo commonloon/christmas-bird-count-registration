@@ -16,7 +16,9 @@ The certificate has exactly three names (no more, no fewer):
 - `*.birdcount.ca` - non-CBC circle subdomains; also covers `cbc.birdcount.ca` itself, which is why that host is not listed separately (requesting it as well is rejected as redundant).
 - `birdcount.ca` - the bare apex. A wildcard never covers its own parent, so this needs its own name.
 
-Let's Encrypt only issues wildcards through the **DNS-01** challenge. Public CAs cap certificate life at 200 days (since 2026-03-15), 100 days from 2027-03-15 and 47 days from 2029, so a long-lived certificate is not an option; automation is the durable fix.
+Let's Encrypt only issues wildcards through the **DNS-01** challenge. Public CAs cap certificate life at 200 days (since 2026-03-15), 100 days from 2027-03-15 and 47 days from 2029, so a long-lived certificate is not an option; automation is the durable fix. Let's Encrypt itself is moving its default from 90 days to 64 days on 2027-02-10 and to 45 days in 2028, and also shortens how long a successful validation can be reused (30 days now, 10 days, then hours); this job does a fresh validation on every run, so that doesn't affect it.
+
+**No threshold in the code is a fixed number of days.** The job reads the live certificate's own lifetime (`notBefore` to `notAfter`) and renews when **a third** of it remains (about 30 days at 90, 21 at 64, 15 at 45), which is Let's Encrypt's recommendation. The watchdog alerts below **a sixth** (about 15, 11 and 8 days). The constants are `RENEW_FRACTION` and `ALERT_FRACTION` in `services/tls_renewal/tls_common.py`. The job does not use ACME Renewal Information (ARI); it relies on this fixed fraction instead.
 
 HSTS with `includeSubDomains` is on, so an **expired certificate makes every host unreachable** with no click-through.
 
@@ -25,15 +27,15 @@ HSTS with `includeSubDomains` is on, so an **expired certificate makes every hos
 ```
 cron (daily, quiet hours)
   └─ services/tls_renewal/renew_certificate.py
-       1. live cert has > 30 days left?            -> exit quietly
+       1. more than 1/3 of the live cert's life left? -> exit quietly
        2. certbot --manual, RSA key, DNS-01        -> hooks publish TXT records via the deSEC API
-            (a good certificate from an earlier run that failed to install is reused instead)
+            (a good, different certificate from an earlier run that failed to install is reused instead)
        3. jelastic_deploy.py                       -> upload the 3 PEMs, BindSSL, confirm fingerprint
-       4. check all three hostnames now serve it   -> else alert
+       4. wait until all three hostnames serve it   -> else alert
   any failure -> alert email, non-zero exit
 
 cron (daily, separate entry)
-  └─ services/tls_renewal/check_expiry.py          -> alert if any host has < 14 days left or fails verification
+  └─ services/tls_renewal/check_expiry.py          -> alert if any host has < 1/6 of its life left or fails verification
 ```
 
 **DNS delegation.** Squarespace serves `birdcount.ca` and has no API, so the challenge names are delegated by CNAME
@@ -94,7 +96,7 @@ ssh cbc 'bash -lc "cd /var/www/webroot/ROOT/services/tls_renewal && /opt/jelasti
 
 ## Day-to-day
 
-- **Is it healthy?** `check_expiry.py` prints days remaining per host; run it any time. The renewal log shows `birdcount.ca: NN days remaining` daily.
+- **Is it healthy?** `check_expiry.py` prints days remaining per host; run it any time. The renewal log shows `birdcount.ca: NN days remaining (renews below NN; lifetime NN days)` daily.
 - **Renew now** (e.g. after changing the domain list): `renew_certificate.py --force`. This swaps the certificate - about 30 s outage. `--no-install` issues
   only; `--staging` tests issuance against Let's Encrypt's staging CA and never installs.
 - **Logs on the node:** `/tmp/cbc-certbot/logs/letsencrypt.log` (certbot) and `/tmp/cbc-certbot/logs/hook.log` (which TXT values the hook published/removed, with timestamps).

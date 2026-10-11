@@ -4,14 +4,17 @@
 Standard library only, on purpose: check_expiry.py must keep working (and be
 able to email an alert) even if certbot, its venv or the Jelastic code is broken.
 """
+import hashlib
 import os
 import smtplib
 import socket
 import ssl
+import subprocess
 import sys
 import time
 from email.message import EmailMessage
 from pathlib import Path
+from typing import NamedTuple
 
 # One host per SAN: the apex (birdcount.ca), a one-label host (covered by *.birdcount.ca)
 # and a two-label host (covered by *.cbc.birdcount.ca). The node serves one cert for every
@@ -24,14 +27,53 @@ SMTP_SERVER = 'mail.smtp2go.com'
 SMTP_PORT = 587
 
 
-def live_days_remaining(host):
-    """Days until the certificate served for `host` expires. Raises if the handshake or
-    hostname/chain verification fails - an expired or mismatched cert counts as failure."""
+# Certificate lifetimes keep shrinking (90 -> 64 days in 2027, 45 in 2028, 47-day maximum
+# for all public CAs by 2029), so no threshold below is a fixed number of days: they are
+# fractions of the certificate's own lifetime. Renewing with a third of the lifetime left
+# is what Let's Encrypt recommends.
+RENEW_FRACTION = 1 / 3
+ALERT_FRACTION = 1 / 6
+
+
+def renew_threshold_days(lifetime_days):
+    return lifetime_days * RENEW_FRACTION
+
+
+def alert_threshold_days(lifetime_days):
+    return lifetime_days * ALERT_FRACTION
+
+
+class CertStatus(NamedTuple):
+    days_remaining: float
+    lifetime_days: float
+    fingerprint: str  # sha256 of the DER certificate, hex
+
+
+def _status(not_before, not_after, der):
+    start = ssl.cert_time_to_seconds(not_before)
+    end = ssl.cert_time_to_seconds(not_after)
+    return CertStatus((end - time.time()) / 86400, (end - start) / 86400,
+                      hashlib.sha256(der).hexdigest())
+
+
+def live_cert_status(host):
+    """Validity and fingerprint of the certificate served for `host`. Raises if the
+    handshake or hostname/chain verification fails - an expired or mismatched cert counts
+    as failure."""
     ctx = ssl.create_default_context()
     with socket.create_connection((host, 443), timeout=15) as sock:
         with ctx.wrap_socket(sock, server_hostname=host) as tls:
-            not_after = ssl.cert_time_to_seconds(tls.getpeercert()['notAfter'])
-    return (not_after - time.time()) / 86400
+            cert = tls.getpeercert()
+            return _status(cert['notBefore'], cert['notAfter'], tls.getpeercert(binary_form=True))
+
+
+def pem_status(cert_path):
+    """The same information for a certificate file (leaf only, i.e. cert.pem)."""
+    out = subprocess.run(['openssl', 'x509', '-in', str(cert_path), '-noout', '-startdate',
+                          '-enddate'], capture_output=True, text=True, check=True).stdout
+    fields = dict(line.split('=', 1) for line in out.strip().splitlines())
+    return _status(fields['notBefore'], fields['notAfter'],
+                   ssl.PEM_cert_to_DER_cert(Path(cert_path).read_text()))
 
 
 def _repo_root_on_path():

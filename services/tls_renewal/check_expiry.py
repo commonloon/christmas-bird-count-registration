@@ -1,5 +1,6 @@
 # Updated by Claude AI on 2026-10-11
-"""Daily watchdog: alert if the certificate served on any hostname is close to expiry,
+"""Daily watchdog: alert if the certificate served on any hostname is close to expiry
+(under a sixth of its lifetime left),
 expired, or fails verification. Deliberately independent of the renewal job, so it
 still fires if renewal (or cron for renewal) has silently stopped.
 
@@ -10,9 +11,7 @@ Exit status is 1 when there is a problem (or the test alert could not be sent).
 """
 import sys
 
-from tls_common import CHECK_HOSTS, live_days_remaining, send_alert
-
-ALERT_DAYS = 14
+from tls_common import CHECK_HOSTS, alert_threshold_days, live_cert_status, send_alert
 
 
 def main(argv):
@@ -25,13 +24,15 @@ def main(argv):
     problems = []
     for host in CHECK_HOSTS:
         try:
-            days = live_days_remaining(host)
+            status = live_cert_status(host)
         except Exception as exc:
             problems.append(f'{host}: could not verify certificate ({type(exc).__name__}: {exc})')
             continue
-        print(f'{host}: {days:.1f} days remaining')
-        if days < ALERT_DAYS:
-            problems.append(f'{host}: only {days:.1f} days remaining')
+        limit = alert_threshold_days(status.lifetime_days)
+        print(f'{host}: {status.days_remaining:.1f} days remaining '
+              f'(alerts below {limit:.1f}; lifetime {status.lifetime_days:.0f} days)')
+        if status.days_remaining < limit:
+            problems.append(f'{host}: only {status.days_remaining:.1f} days remaining')
     if not problems:
         return 0
     send_alert('TLS certificate needs attention',
