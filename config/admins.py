@@ -9,7 +9,6 @@ import logging
 PRODUCTION_ADMIN_EMAILS = [
     'birdcount@naturevancouver.ca',       # deployment account owner
     'webmaster@naturevancouver.ca',       # webmaster
-    'kelvin@naturevancouver.ca',          # Count coordinator
     'michelle@naturevancouver.ca',        # Count coordinator
 ]
 
