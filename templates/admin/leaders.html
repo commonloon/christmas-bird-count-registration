@@ -29,10 +29,10 @@
         <h5 class="card-title">Admin Navigation</h5>
         <div class="btn-group" role="group" aria-label="Admin navigation">
             <a href="{{ url_for('admin.participants', year=selected_year) }}" class="btn btn-outline-primary">
-                <i class="fas fa-users"></i> View All Participants
+                <i class="bi bi-people"></i> View All Participants
             </a>
             <a href="{{ url_for('admin.dashboard', year=selected_year) }}" class="btn btn-outline-secondary">
-                <i class="fas fa-chart-bar"></i> Dashboard
+                <i class="bi bi-bar-chart"></i> Dashboard
             </a>
         </div>
     </div>
@@ -68,7 +68,7 @@
     <div class="card-header{% if is_historical %} bg-warning bg-opacity-25{% endif %} d-flex justify-content-between align-items-center">
         <h5 class="mb-0">Current Area Leaders ({{ all_leaders|length }})</h5>
         <a href="{{ url_for('admin.leaders', year=selected_year, format='csv') }}" class="btn btn-success btn-sm">
-            <i class="fas fa-download"></i> Export CSV
+            <i class="bi bi-download"></i> Export CSV
         </a>
     </div>
     <div class="card-body">
@@ -728,44 +728,5 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 <script src="{{ url_for('static', filename='js/leaders-map.js') }}"></script>
-<style>
-.map-legend {
-    background: rgba(255, 255, 255, 0.9);
-    padding: 10px;
-    border-radius: 5px;
-    border: 1px solid #ddd;
-}
 
-.legend-item {
-    display: inline-flex;
-    align-items: center;
-    margin-right: 20px;
-}
-
-.legend-color {
-    width: 20px;
-    height: 15px;
-    margin-right: 8px;
-    border: 1px solid #333;
-    border-radius: 3px;
-}
-
-.needs-leader-tooltip {
-    background-color: #dc3545 !important;
-    color: white !important;
-}
-
-.has-leader-tooltip {
-    background-color: #28a745 !important;
-    color: white !important;
-}
-
-#leaders-map {
-    cursor: pointer;
-}
-
-.leaflet-popup-content {
-    margin: 8px 12px;
-}
-</style>
 {% endblock %}

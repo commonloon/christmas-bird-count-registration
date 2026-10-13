@@ -242,8 +242,8 @@
 <!-- Withdrawn Participants -->
 {% if withdrawn_participants %}
 <div class="card mb-4">
-    <div class="card-header" style="background-color: #fff3cd; border-bottom: 2px solid #ffc107;">
-        <h5 class="mb-0" style="color: #856404;">Withdrawn Participants ({{ withdrawn_participants|length }})</h5>
+    <div class="card-header withdrawn-header">
+        <h5 class="mb-0 withdrawn-title">Withdrawn Participants ({{ withdrawn_participants|length }})</h5>
     </div>
     <div class="card-body">
         <div class="table-responsive">
@@ -262,7 +262,7 @@
                 </thead>
                 <tbody>
                     {% for participant in withdrawn_participants %}
-                    <tr style="background-color: #fff3cd;">
+                    <tr class="withdrawn-row">
                         <td>
                             <strong>{{ participant.first_name|e }} {{ participant.last_name|e }}</strong>
                             {% if participant.is_leader %}

@@ -284,13 +284,13 @@ function updateLeadersMapLegend(needingLeaders, withLeaders) {
         <div class="row">
             <div class="col-md-6">
                 <span class="legend-item">
-                    <span class="legend-color" style="background-color: #dc3545;"></span>
+                    <span class="legend-color needs-leader"></span>
                     Areas Needing Leaders (${needingLeaders})
                 </span>
             </div>
             <div class="col-md-6">
                 <span class="legend-item">
-                    <span class="legend-color" style="background-color: #28a745;"></span>
+                    <span class="legend-color has-leader"></span>
                     Areas with Leaders (${withLeaders})
                 </span>
             </div>

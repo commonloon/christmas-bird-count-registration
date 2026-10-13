@@ -6,6 +6,13 @@
     --map-color-med: #800000;   /* Maroon - 4-8 registered */
     --map-color-high: #000075;  /* Navy - 8+ registered */
     --map-color-selected: #ffe119; /* Yellow - selected area */
+    --map-color-needs-leader: #dc3545; /* Red - leaders map, area needs a leader */
+    --map-color-has-leader: #28a745;   /* Green - leaders map, area has a leader */
+
+    /* Withdrawn-participant highlight (in-app tables; emails keep inline colours) */
+    --withdrawn-bg: #fff3cd;
+    --withdrawn-border: #ffc107;
+    --withdrawn-text: #856404;
 }
 
 /* Map styling */
@@ -68,12 +75,65 @@
     margin-top: 0.5rem;
     padding: 0.5rem;
     background-color: #f8f9fa;
+    border: 1px solid #dee2e6;
     border-radius: 0.25rem;
     font-size: 0.875rem;
 }
 
 .legend-item {
+    display: inline-flex;
+    align-items: center;
     margin-right: 1rem;
+}
+
+/* Leaders map legend swatches */
+.legend-color {
+    width: 20px;
+    height: 15px;
+    margin-right: 8px;
+    border: 1px solid #333;
+    border-radius: 3px;
+}
+
+.legend-color.needs-leader {
+    background-color: var(--map-color-needs-leader);
+}
+
+.legend-color.has-leader {
+    background-color: var(--map-color-has-leader);
+}
+
+/* Leaders map tooltips and popups */
+.needs-leader-tooltip {
+    background-color: var(--map-color-needs-leader) !important;
+    color: white !important;
+}
+
+.has-leader-tooltip {
+    background-color: var(--map-color-has-leader) !important;
+    color: white !important;
+}
+
+#leaders-map {
+    cursor: pointer;
+}
+
+.leaflet-popup-content {
+    margin: 8px 12px;
+}
+
+/* Withdrawn participants */
+.withdrawn-header {
+    background-color: var(--withdrawn-bg);
+    border-bottom: 2px solid var(--withdrawn-border);
+}
+
+.withdrawn-title {
+    color: var(--withdrawn-text);
+}
+
+.withdrawn-row {
+    background-color: var(--withdrawn-bg);
 }
 
 .color-box {
@@ -160,6 +220,14 @@
 
 .alert-danger {
     border-left: 4px solid #dc3545;
+}
+
+.alert-warning {
+    border-left: 4px solid #ffc107;
+}
+
+.alert-info {
+    border-left: 4px solid #0dcaf0;
 }
 
 /* Navbar brand styling */
