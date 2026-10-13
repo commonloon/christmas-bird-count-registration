@@ -1,55 +1,24 @@
 {# Updated by Claude AI on 2025-10-26 #}
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, breadcrumbs, year_tabs, circle_crumbs with context %}
 
 {% block title %}Area {{ area_code }} - {{ count_event_name }}{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h1>
-        Area {{ area_code }}
-        {% if area_info %}
-        <small class="text-muted">- {{ area_info.name }}</small>
-        {% endif %}
-    </h1>
-    <div>
-        <span class="badge bg-secondary">{{ selected_year }}</span>
-        {% if current_user.email %}
-        <span class="text-muted">{{ current_user.email }}</span>
-        <a href="{{ url_for('auth.logout') }}" class="btn btn-sm btn-outline-secondary ms-2">Logout</a>
-        {% endif %}
-    </div>
-</div>
+{{ page_header('Area ' ~ area_code, selected_year, area_info.name if area_info else none) }}
 
-<!-- Navigation breadcrumb -->
-<nav aria-label="breadcrumb">
-    <ol class="breadcrumb">
-        <li class="breadcrumb-item"><a href="{{ url_for('admin.dashboard', year=selected_year) }}">Dashboard</a></li>
-        <li class="breadcrumb-item"><a href="{{ url_for('admin.participants', year=selected_year) }}">Participants</a></li>
-        <li class="breadcrumb-item active" aria-current="page">Area {{ area_code }}</li>
-    </ol>
-</nav>
+{{ breadcrumbs([('Dashboard', url_for('admin.dashboard', year=selected_year)), ('Participants', url_for('admin.participants', year=selected_year)), ('Area ' ~ area_code, none)]) }}
 
-<!-- Year selector -->
+{{ year_tabs('admin.area_detail', available_years, selected_year, area_code=area_code, historical='true' if show_historical else none) }}
 {% if available_years and available_years|length > 1 %}
-<div class="card mb-4">
-    <div class="card-body">
-        <h5 class="card-title">Year Selection</h5>
-        <form method="GET" class="d-inline-block">
-            <select name="year" class="form-select d-inline-block w-auto" onchange="this.form.submit()">
-                {% for year in available_years %}
-                <option value="{{ year }}" {% if year == selected_year %}selected{% endif %}>{{ year }}</option>
-                {% endfor %}
-            </select>
-        </form>
-        
-        {% if not show_historical and available_years|length > 1 %}
-        <a href="{{ url_for('admin.area_detail', area_code=area_code, year=selected_year, historical='true') }}" 
-           class="btn btn-sm btn-outline-secondary ms-2">Show Historical Data</a>
-        {% elif show_historical %}
-        <a href="{{ url_for('admin.area_detail', area_code=area_code, year=selected_year) }}" 
-           class="btn btn-sm btn-outline-secondary ms-2">Hide Historical</a>
-        {% endif %}
-    </div>
+<div class="mb-4">
+    {% if not show_historical %}
+    <a href="{{ url_for('admin.area_detail', area_code=area_code, year=selected_year, historical='true') }}"
+       class="btn btn-sm btn-outline-secondary">Show Historical Data</a>
+    {% else %}
+    <a href="{{ url_for('admin.area_detail', area_code=area_code, year=selected_year) }}"
+       class="btn btn-sm btn-outline-secondary">Hide Historical</a>
+    {% endif %}
 </div>
 {% endif %}
 

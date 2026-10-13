@@ -1,13 +1,12 @@
 {# Updated by Claude AI on 2026-09-28 #}
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, breadcrumbs, year_tabs, circle_crumbs with context %}
 
 {% block title %}Email Schedule - {{ circle.circle_name|e }}{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 class="mb-0">Email Schedule - {{ circle.circle_name|e }}</h1>
-    <a href="{{ url_for('admin.edit_circle', slug=circle.slug) }}" class="btn btn-outline-secondary">Back to Circle Settings</a>
-</div>
+{{ circle_crumbs(circle, 'Email Schedule') }}
+{{ page_header('Email Schedule - ' ~ circle.circle_name) }}
 
 <div class="alert alert-info">
     Times are in this circle's timezone: <strong>{{ timezone_label|e }}</strong>.

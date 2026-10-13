@@ -1,10 +1,12 @@
 {# Updated by Claude AI on 2026-09-09 #}
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, breadcrumbs, year_tabs, circle_crumbs with context %}
 
 {% block title %}Email Content for {{ circle.circle_name|e }}{% endblock %}
 
 {% block content %}
-<h1 class="mb-1">Email Content for {{ circle.circle_name|e }}</h1>
+{{ circle_crumbs(circle, 'Email Content') }}
+{{ page_header('Email Content for ' ~ circle.circle_name) }}
 <p class="text-muted mb-4">Customize the wording of this circle's outgoing emails. Anything left as
     "Inherited default" uses the super-admin's global default text (or the built-in wording if no
     default has been set either) - nothing here changes until you save an override.</p>

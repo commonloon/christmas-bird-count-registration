@@ -1,44 +1,14 @@
 {# Updated by Claude AI on 2025-12-16 #}
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, breadcrumbs, year_tabs, circle_crumbs with context %}
 {% block title %}Recent Registrations - Admin{% endblock %}
 
 {% block content %}
 <div class="container-fluid mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1>Recent Registrations</h1>
-        <div>
-            <span class="badge bg-secondary">{{ selected_year }}</span>
-            <a href="{{ url_for('auth.logout') }}" class="btn btn-outline-secondary btn-sm ms-2">Logout</a>
-        </div>
-    </div>
+    {{ page_header('Recent Registrations', selected_year) }}
+    {{ breadcrumbs([('Dashboard', url_for('admin.dashboard', year=selected_year)), ('Registrations', none)]) }}
 
-    <nav aria-label="breadcrumb">
-        <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a href="{{ url_for('admin.dashboard', year=selected_year) }}">Dashboard</a></li>
-            <li class="breadcrumb-item active">Recent Registrations</li>
-        </ol>
-    </nav>
-
-    {% if available_years|length > 1 %}
-    <div class="card mb-4">
-        <div class="card-body">
-            <form method="GET" class="d-inline">
-                {% if filter_days %}
-                <input type="hidden" name="days" value="{{ filter_days }}">
-                {% endif %}
-                {% if filter_date %}
-                <input type="hidden" name="date" value="{{ filter_date }}">
-                {% endif %}
-                <label for="year-select" class="form-label">Select Year:</label>
-                <select name="year" id="year-select" class="form-select d-inline-block w-auto" onchange="this.form.submit()">
-                    {% for year in available_years %}
-                    <option value="{{ year }}" {% if year == selected_year %}selected{% endif %}>{{ year }}</option>
-                    {% endfor %}
-                </select>
-            </form>
-        </div>
-    </div>
-    {% endif %}
+    {{ year_tabs('admin.recent_registrations', available_years, selected_year, days=filter_days or none, date=filter_date or none) }}
 
     <div class="card mb-4">
         <div class="card-header"><h5 class="mb-0">Filter Registrations</h5></div>

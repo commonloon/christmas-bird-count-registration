@@ -1,43 +1,15 @@
 {# Updated by Claude AI on 2026-10-04 #}
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, breadcrumbs, year_tabs, circle_crumbs with context %}
 
 {% block title %}All Participants - {{ count_event_name }}{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h1>All Participants</h1>
-    <div>
-        <span class="badge bg-secondary">{{ selected_year }}</span>
-        {% if current_user.email %}
-        <span class="text-muted">{{ current_user.email }}</span>
-        <a href="{{ url_for('auth.logout') }}" class="btn btn-sm btn-outline-secondary ms-2">Logout</a>
-        {% endif %}
-    </div>
-</div>
+{{ page_header('All Participants', selected_year) }}
 
-<!-- Navigation breadcrumb -->
-<nav aria-label="breadcrumb">
-    <ol class="breadcrumb">
-        <li class="breadcrumb-item"><a href="{{ url_for('admin.dashboard', year=selected_year) }}">Dashboard</a></li>
-        <li class="breadcrumb-item active" aria-current="page">All Participants</li>
-    </ol>
-</nav>
+{{ breadcrumbs([('Dashboard', url_for('admin.dashboard', year=selected_year)), ('All Participants', none)]) }}
 
-<!-- Year Tabs Navigation -->
-{% if available_years and available_years|length > 1 %}
-<ul class="nav nav-tabs mb-4" role="tablist">
-    {% for year in available_years %}
-    <li class="nav-item" role="presentation">
-        <a class="nav-link {% if year == selected_year %}active{% endif %} {% if year < current_year %}text-warning{% endif %}"
-           href="{{ url_for('admin.participants', year=year) }}"
-           role="tab">
-            {{ year }}
-            {% if year < current_year %}<i class="bi bi-archive ms-1" title="Historical data"></i>{% endif %}
-        </a>
-    </li>
-    {% endfor %}
-</ul>
-{% endif %}
+{{ year_tabs('admin.participants', available_years, selected_year) }}
 
 <!-- Historical Data Warning Banner -->
 {% if is_historical %}

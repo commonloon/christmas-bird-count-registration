@@ -1,17 +1,13 @@
 {# Updated by Claude AI on 2026-08-30 #}
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, breadcrumbs, year_tabs, circle_crumbs with context %}
 
 {% block title %}Manage Circles{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h1>Count Circles</h1>
-    <div>
-        <a href="{{ url_for('admin.scheduler_console') }}" class="btn btn-outline-secondary">Scheduler</a>
-        <a href="{{ url_for('admin.email_content_defaults') }}" class="btn btn-outline-secondary">Email Defaults</a>
-        <a href="{{ url_for('admin.new_circle') }}" class="btn btn-primary">Add Circle</a>
-    </div>
-</div>
+{% call page_header('Count Circles') %}
+    <a href="{{ url_for('admin.new_circle') }}" class="btn btn-primary">Add Circle</a>
+{% endcall %}
 
 <div class="card">
     <div class="card-body">

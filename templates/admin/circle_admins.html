@@ -1,10 +1,12 @@
 {# Updated by Claude AI on 2026-08-30 #}
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, breadcrumbs, year_tabs, circle_crumbs with context %}
 
 {% block title %}Admins for {{ circle.circle_name|e }}{% endblock %}
 
 {% block content %}
-<h1 class="mb-4">Admins for {{ circle.circle_name|e }}</h1>
+{{ circle_crumbs(circle, 'Admins') }}
+{{ page_header('Admins for ' ~ circle.circle_name) }}
 
 <div class="card mb-4">
     <div class="card-body">
@@ -46,5 +48,5 @@
     </div>
 </div>
 
-<a href="{{ url_for('admin.list_circles') }}" class="btn btn-outline-secondary mt-3">Back to Circles</a>
+
 {% endblock %}

@@ -1,0 +1,64 @@
+{# Created by Claude AI on 2026-10-13 #}
+{# Shared page chrome: header, breadcrumbs, year tabs. Import with context:
+   {% from "_macros.html" import page_header, breadcrumbs, year_tabs, circle_crumbs with context %} #}
+
+{#- Title row. Optional {% call %} body holds page-level actions (buttons) shown
+    beside the year badge. The signed-in user and Logout live in the navbar. -#}
+{% macro page_header(title, year=none, subtitle=none) %}
+<div class="page-header d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+    <h1 class="mb-0">{{ title }}{% if subtitle %} <small class="text-muted">- {{ subtitle }}</small>{% endif %}</h1>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+        {% if caller %}{{ caller() }}{% endif %}
+        {% if year %}<span class="badge bg-secondary">{{ year }}</span>{% endif %}
+    </div>
+</div>
+{% endmacro %}
+
+{#- items: list of (label, url) pairs; the last pair's url is ignored. -#}
+{% macro breadcrumbs(items) %}
+<nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+        {% for label, url in items %}
+        {% if loop.last %}
+        <li class="breadcrumb-item active" aria-current="page">{{ label }}</li>
+        {% else %}
+        <li class="breadcrumb-item"><a href="{{ url }}">{{ label }}</a></li>
+        {% endif %}
+        {% endfor %}
+    </ol>
+</nav>
+{% endmacro %}
+
+{#- Breadcrumbs for circle-scoped pages. Super-admins arrive from the circles
+    console (Circles > circle > page); circle-admins from their own dashboard.
+    parent: optional (label, url) shown between the circle and the page. -#}
+{% macro circle_crumbs(circle, page, parent=none) %}
+{% if session.get('user_role') == 'super_admin' %}
+{% set trail = [('Circles', url_for('admin.list_circles'))] %}
+{% if page != 'Settings' %}{% set trail = trail + [(circle.circle_name, url_for('admin.edit_circle', slug=circle.slug))] %}{% endif %}
+{% else %}
+{% set trail = [('Dashboard', url_for('admin.dashboard'))] %}
+{% endif %}
+{% if parent %}{% set trail = trail + [parent] %}{% endif %}
+{{ breadcrumbs(trail + [(page, none)]) }}
+{% endmacro %}
+
+{#- One year control for every year-scoped page. Extra keyword args become URL
+    parameters (None values are dropped), e.g. year_tabs('admin.area_detail',
+    available_years, selected_year, area_code=area_code). -#}
+{% macro year_tabs(endpoint, years, selected) %}
+{% if years and years|length > 1 %}
+<ul class="nav nav-tabs mb-4" role="tablist" aria-label="Select year">
+    {% for year in years %}
+    <li class="nav-item" role="presentation">
+        <a class="nav-link {% if year == selected %}active{% endif %} {% if year < current_year %}text-warning{% endif %}"
+           href="{{ url_for(endpoint, year=year, **kwargs) }}"
+           role="tab">
+            {{ year }}
+            {% if year < current_year %}<i class="bi bi-archive ms-1" title="Historical data"></i>{% endif %}
+        </a>
+    </li>
+    {% endfor %}
+</ul>
+{% endif %}
+{% endmacro %}

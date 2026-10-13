@@ -1,10 +1,12 @@
 {# Updated by Claude AI on 2026-09-14 #}
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, breadcrumbs, year_tabs, circle_crumbs with context %}
 
 {% block title %}Areas for {{ circle.circle_name|e }}{% endblock %}
 
 {% block content %}
-<h1 class="mb-4">Areas for {{ circle.circle_name|e }}</h1>
+{{ circle_crumbs(circle, 'Areas') }}
+{{ page_header('Areas for ' ~ circle.circle_name) }}
 <p class="text-muted">Boundary (the map shape) and new areas come from the KML import below. Code can't be changed here - other records (participant assignments, leader assignments) reference it by value. Click the pencil to edit a row's other labels.</p>
 
 <div class="card mb-4">
@@ -98,7 +100,7 @@
     </div>
 </div>
 
-<a href="{{ url_for('admin.list_circles') }}" class="btn btn-outline-secondary mt-3">Back to Circles</a>
+
 {% endblock %}
 
 {% block scripts %}

@@ -1,10 +1,12 @@
 {# Updated by Claude AI on 2026-09-09 #}
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, breadcrumbs, year_tabs, circle_crumbs with context %}
 
 {% block title %}Email Content Defaults{% endblock %}
 
 {% block content %}
-<h1 class="mb-1">Email Content Defaults</h1>
+{{ breadcrumbs([('Circles', url_for('admin.list_circles')), ('Email Defaults', none)]) }}
+{{ page_header('Email Content Defaults') }}
 <p class="text-muted mb-4">Global default wording for every circle that hasn't set its own override
     for a given block. A circle's own admin can override any of these from that circle's
     "Email Content" page.</p>

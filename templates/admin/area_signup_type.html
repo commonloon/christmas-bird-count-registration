@@ -1,19 +1,12 @@
 {# Updated by Claude AI on 2025-11-30 #}
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, breadcrumbs, year_tabs, circle_crumbs with context %}
 
 {% block title %}Area Signup Type - {{ count_event_name }}{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h1>Area Signup Type</h1>
-    <div>
-        <span class="badge bg-secondary">{{ selected_year }}</span>
-        {% if current_user.email %}
-        <span class="text-muted ms-3">{{ current_user.email }}</span>
-        <a href="{{ url_for('auth.logout') }}" class="btn btn-sm btn-outline-secondary ms-2">Logout</a>
-        {% endif %}
-    </div>
-</div>
+{{ page_header('Area Signup Type', selected_year) }}
+{{ breadcrumbs([('Dashboard', url_for('admin.dashboard', year=selected_year)), ('Open/Close Areas', none)]) }}
 
 <!-- Information Card -->
 <div class="alert alert-info mb-4">

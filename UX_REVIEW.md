@@ -35,8 +35,14 @@ Status key: **Done** = fixed, **Open** = not yet addressed.
 
    **Status: Done** for the dashboard and Participants Quick Actions rows (now `d-flex flex-wrap gap-2`; dashboard has one primary, and Manage Unassigned turns warning only when there are unassigned participants). The Leaders page's Admin Navigation `btn-group` is unchanged.
 7. **Page headers are built differently on each page.** Title, year badge, email and Logout are arranged differently, with Logout styled `btn-sm btn-outline-secondary ms-2` on most pages and `btn-outline-secondary btn-sm` on Recent Registrations. Recommendation: put the user email and Logout in the navbar once, and use a shared `page_header` macro for title, year and actions.
+
+    **Status: Done.** `templates/_macros.html` provides `page_header` (title, optional action buttons, year badge). The signed-in email and Logout now appear once, in the navbar.
 8. **Year switching comes in three forms:** an auto-submitting `<select>` (dashboard, area detail, Recent Registrations), a tab strip (Participants, Leaders), and nothing on Super-Admin pages. Pick one control. The `<select>` also lacks a visible label on some pages.
+
+    **Status: Done.** Every year-scoped page uses the same `year_tabs` strip (dashboard, Participants, Leaders, Registrations, Area detail, leader dashboard). Unassigned and Open/Close Areas have no year control, as before.
 9. **Breadcrumbs exist on some pages and not others.** Participants, Leaders and Unassigned have them; Super-Admin pages use ad hoc "Back to Circles" buttons; Login uses a grey `btn-secondary` "Back to Registration". Use breadcrumbs or one consistent back link.
+
+    **Status: Done.** `breadcrumbs` and `circle_crumbs` macros on every admin page; the "Back to ..." buttons are gone. Super-admins get Circles > circle > page; circle-admins get Dashboard > page. Login's "Back to Registration" is left as is.
 10. **Badge colours mean different things on different pages.** `bg-info` is used for year, FEEDER and general status; `bg-warning` is used with and without `text-dark` (poor contrast without); skill level uses green/blue/cyan/grey, colliding with status meanings. Recommendation: a small semantic set (status = success/warning/danger, attributes = neutral secondary), and always pair `bg-warning` with `text-dark`.
 
     **Status: Done.** Year badge, skill level and the Participant/Moderate badges are neutral `bg-secondary`; success/warning/danger keep their status meanings; `main.css` forces dark text on `bg-warning`/`bg-info` badges. Skill level is no longer colour-coded, which also removed the colour-update JS in the inline editor.
@@ -64,6 +70,8 @@ Status key: **Done** = fixed, **Open** = not yet addressed.
 22. **Small touch targets.** `btn-sm` is used for primary row actions, and the mobile `.btn-lg` rule is the only touch optimisation.
 23. **Accessibility gaps.** `.sr-only` is a Bootstrap 4 class (BS5 uses `visually-hidden`); many `<select>`/`<input>` controls lack a `<label>` or `aria-label`; `btn-close` has no `aria-label`; the custom focus outline duplicates Bootstrap's box-shadow, so focus is doubled on form fields.
 24. **The navbar is nearly empty.** Only a brand, plus "Manage Circles" for super-admins. No active-state links and no way to move between Participants, Leaders and Areas except via the dashboard. A real admin nav would remove most per-page button rows.
+
+    **Status: Done.** The navbar now has a collapse toggler (it had none, so links were hidden below the `lg` breakpoint), role-aware links with active state and the selected year carried through, a Circle menu (Settings, Email Content, Email Schedule) for circle-admins, and a separate console nav (Circles, Scheduler, Email Defaults) for super-admins. The Leaders page's Admin Navigation card is removed as redundant.
 25. **Error pages are bare.** 404/403/500 have a heading and a button, with no circle context or contact (`count_contact` is available).
 26. **Empty and loading states are inconsistent.** Some tables show a message when empty, others an empty table. `.loading` is defined but not used consistently.
 
@@ -71,5 +79,5 @@ Status key: **Done** = fixed, **Open** = not yet addressed.
 
 1. Real bugs (A1-A4). **Done.**
 2. Define button, badge and table conventions (B5, B6, B10-B12) and apply in one pass. **Done** (see per-item notes).
-3. Shared page header and navbar (B7-B9, D24).
+3. Shared page header and navbar (B7-B9, D24). **Done.**
 4. Theming, library versions, accessibility (C14, C15, C18, D23).

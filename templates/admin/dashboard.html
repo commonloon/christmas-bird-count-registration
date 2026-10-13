@@ -1,45 +1,18 @@
 {# Updated by Claude AI on 2025-12-18 #}
 
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, breadcrumbs, year_tabs, circle_crumbs with context %}
 
 {% block title %}Admin Dashboard - {{ count_event_name }}{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h1>Admin Dashboard</h1>
-    <div>
-        {% if session.get('user_role') == 'admin' and g.get('circle_slug') %}
-        <a href="{{ url_for('admin.edit_circle', slug=g.circle_slug) }}" class="btn btn-sm btn-outline-secondary">Circle Settings</a>
-        <a href="{{ url_for('admin.circle_email_content', slug=g.circle_slug) }}" class="btn btn-sm btn-outline-secondary">Email Content</a>
-        <a href="{{ url_for('admin.circle_email_schedule', slug=g.circle_slug) }}" class="btn btn-sm btn-outline-secondary">Email Schedule</a>
-        {% endif %}
-        <span class="badge bg-secondary">{{ selected_year }}</span>
-        {% if current_user.email %}
-        <span class="text-muted">{{ current_user.email }}</span>
-        <a href="{{ url_for('auth.logout') }}" class="btn btn-sm btn-outline-secondary ms-2">Logout</a>
-        {% endif %}
-    </div>
-</div>
+{{ page_header('Admin Dashboard', selected_year) }}
 
 {% if error %}
 <div class="alert alert-danger">{{ error }}</div>
 {% else %}
 
-<!-- Year selector -->
-{% if available_years and available_years|length > 1 %}
-<div class="card mb-4">
-    <div class="card-body">
-        <h5 class="card-title">Year Selection</h5>
-        <form method="GET" class="d-inline-block">
-            <select name="year" class="form-select d-inline-block w-auto" onchange="this.form.submit()">
-                {% for year in available_years %}
-                <option value="{{ year }}" {% if year == selected_year %}selected{% endif %}>{{ year }}</option>
-                {% endfor %}
-            </select>
-        </form>
-    </div>
-</div>
-{% endif %}
+{{ year_tabs('admin.dashboard', available_years, selected_year) }}
 
 <!-- Registration Status -->
 {% if registration_status %}

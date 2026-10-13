@@ -1,26 +1,14 @@
 {# Updated by Claude AI on 2025-12-09 #}
 
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, breadcrumbs, year_tabs, circle_crumbs with context %}
 
 {% block title %}Blocked IPs - Admin{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h1>Blocked IP Addresses</h1>
-    <div>
-        {% if current_user.email %}
-        <span class="text-muted">{{ current_user.email }}</span>
-        <a href="{{ url_for('auth.logout') }}" class="btn btn-sm btn-outline-secondary ms-2">Logout</a>
-        {% endif %}
-    </div>
-</div>
+{{ page_header('Blocked IP Addresses') }}
 
-<nav aria-label="breadcrumb" class="mb-4">
-    <ol class="breadcrumb">
-        <li class="breadcrumb-item"><a href="{{ url_for('admin.dashboard') }}">Dashboard</a></li>
-        <li class="breadcrumb-item active" aria-current="page">Blocked IPs</li>
-    </ol>
-</nav>
+{{ breadcrumbs([('Dashboard', url_for('admin.dashboard')), ('Blocked IPs', none)]) }}
 
 <!-- Statistics Cards -->
 <div class="row mb-4">

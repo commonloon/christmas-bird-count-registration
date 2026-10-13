@@ -18,6 +18,7 @@ from datetime import datetime
 
 import pytest
 from bs4 import BeautifulSoup
+from sqlalchemy import text
 
 from config.database import get_db_session
 from models.participant import ParticipantModel
@@ -59,13 +60,12 @@ class TestLeadersPageIcons:
         assert re.search(r'class="[^"]*\bfa[srb]?\b', html) is None
         assert 'fa-' not in re.sub(r'<script.*?</script>', '', html, flags=re.S)
 
-    def test_bootstrap_icons_used_for_nav_buttons(self, super_admin_client):
+    def test_bootstrap_icons_used_for_export_button(self, super_admin_client):
         soup = BeautifulSoup(
-            super_admin_client.get(LEADERS_URL).get_data(as_text=True), 'html.parser')
-        nav = soup.select_one('[aria-label="Admin navigation"]')
-        assert nav is not None
-        assert nav.select_one('i.bi.bi-people') is not None
-        assert nav.select_one('i.bi.bi-bar-chart') is not None
+            super_admin_client.get(LEADERS_URL).get_data(as_text=True), "html.parser")
+        export = soup.select_one('a[href*="format=csv"]')
+        assert export is not None
+        assert export.select_one("i.bi.bi-download") is not None
 
     def test_no_template_references_font_awesome(self):
         templates = os.path.join(PROJECT_ROOT, 'templates')
@@ -256,3 +256,174 @@ class TestTableConventions:
                 assert {'table', 'table-striped', 'table-hover', 'align-middle'} <= set(classes), (path, classes)
                 assert 'table-info' not in classes, path
         assert checked >= 20
+
+
+# --- B7-B9, D24: shared page header, navbar, breadcrumbs, year tabs --------
+
+ADMIN_PAGES = {
+    'Dashboard': f'/bigbird/?year={YEAR}',
+    'Participants': f'/bigbird/participants?year={YEAR}',
+    'Unassigned': f'/bigbird/unassigned?year={YEAR}',
+    'Leaders': f'/bigbird/leaders?year={YEAR}',
+    'Registrations': f'/bigbird/recent-registrations?year={YEAR}',
+    'Open/Close Areas': f'/bigbird/area-signup-type?year={YEAR}',
+}
+CIRCLE_PAGES = [
+    f'/bigbird/circles/{TEST_CIRCLE_SLUG}/edit',
+    f'/bigbird/circles/{TEST_CIRCLE_SLUG}/admins',
+    f'/bigbird/circles/{TEST_CIRCLE_SLUG}/areas',
+    f'/bigbird/circles/{TEST_CIRCLE_SLUG}/email-content',
+    f'/bigbird/circles/{TEST_CIRCLE_SLUG}/email-schedule',
+]
+CONSOLE_PAGES = ['/bigbird/circles', '/bigbird/circles/new', '/bigbird/scheduler',
+                 '/bigbird/email-content/defaults'] + CIRCLE_PAGES
+
+
+def _soup(client, url):
+    response = client.get(url)
+    assert response.status_code == 200, url
+    return BeautifulSoup(response.get_data(as_text=True), 'html.parser')
+
+
+def _nav_labels(soup):
+    return [a.get_text(strip=True) for a in soup.select('#mainNav .navbar-nav.me-auto a.nav-link')]
+
+
+class TestNavbar:
+    @pytest.mark.parametrize('label,url', list(ADMIN_PAGES.items()))
+    def test_admin_nav_links_and_active_state(self, super_admin_client, label, url):
+        soup = _soup(super_admin_client, url)
+        assert _nav_labels(soup) == list(ADMIN_PAGES)
+        active = [a.get_text(strip=True) for a in soup.select('#mainNav a.nav-link.active')]
+        assert active == [label]
+
+    def test_nav_links_carry_the_selected_year(self, super_admin_client):
+        soup = _soup(super_admin_client, f'/bigbird/participants?year={YEAR}')
+        hrefs = [a['href'] for a in soup.select('#mainNav .navbar-nav.me-auto a.nav-link')]
+        assert all(f'year={YEAR}' in h for h in hrefs)
+
+    def test_email_and_logout_live_in_the_navbar_only(self, super_admin_client):
+        soup = _soup(super_admin_client, f'/bigbird/participants?year={YEAR}')
+        logout = soup.select('a[href*="/auth/logout"]')
+        assert len(logout) == 1
+        assert logout[0].find_parent(class_='navbar') is not None
+        assert 'cbc-test-admin1@naturevancouver.ca' in soup.select_one('.navbar-text').get_text()
+
+    def test_collapsible_on_small_screens(self, super_admin_client):
+        soup = _soup(super_admin_client, f'/bigbird/?year={YEAR}')
+        toggler = soup.select_one('button.navbar-toggler')
+        assert toggler['data-bs-target'] == '#mainNav'
+        assert soup.select_one('#mainNav.navbar-collapse') is not None
+
+    def test_circle_admin_gets_circle_menu(self, admin_client):
+        soup = _soup(admin_client, f'/bigbird/?year={YEAR}')
+        menu = soup.select_one('#mainNav .dropdown-menu')
+        assert [a.get_text(strip=True) for a in menu.select('a')] == [
+            'Circle Settings', 'Email Content', 'Email Schedule']
+
+    def test_super_admin_has_no_circle_menu_on_circle_pages(self, super_admin_client):
+        soup = _soup(super_admin_client, f'/bigbird/?year={YEAR}')
+        assert soup.select_one('#mainNav .dropdown-menu') is None
+
+    @pytest.mark.parametrize('url', CONSOLE_PAGES)
+    def test_console_pages_get_console_nav(self, super_admin_client, url):
+        soup = _soup(super_admin_client, url)
+        assert _nav_labels(soup) == ['Circles', 'Scheduler', 'Email Defaults']
+        assert soup.select_one('.navbar-brand').get_text(strip=True) == 'Count Super-Admin'
+        assert soup.select_one('#mainNav a.nav-link.active') is not None
+
+    def test_public_page_has_no_admin_nav_or_logout(self, client):
+        soup = _soup(client, '/')
+        assert _nav_labels(soup) == []
+        assert soup.select_one('a[href*="/auth/logout"]') is None
+
+
+class TestPageHeader:
+    @pytest.mark.parametrize('url', list(ADMIN_PAGES.values()) + CONSOLE_PAGES)
+    def test_header_has_no_user_chrome(self, super_admin_client, url):
+        soup = _soup(super_admin_client, url)
+        header = soup.select_one('main .page-header')
+        assert header is not None, url
+        assert header.select_one('h1') is not None
+        assert header.select_one('a[href*="/auth/logout"]') is None
+
+    @pytest.mark.parametrize('url', list(ADMIN_PAGES.values()))
+    def test_year_scoped_pages_show_year_badge(self, super_admin_client, url):
+        header = _soup(super_admin_client, url).select_one('main .page-header')
+        assert header.select_one('.badge.bg-secondary').get_text(strip=True) == str(YEAR)
+
+
+class TestBreadcrumbs:
+    @pytest.mark.parametrize('url', list(ADMIN_PAGES.values())[1:] + ['/bigbird/blocked-ips'])
+    def test_circle_admin_pages_lead_back_to_dashboard(self, super_admin_client, url):
+        soup = _soup(super_admin_client, url)
+        crumbs = soup.select('main nav[aria-label="breadcrumb"] li.breadcrumb-item')
+        assert len(crumbs) >= 2, url
+        assert crumbs[0].get_text(strip=True) == 'Dashboard'
+        assert 'active' in crumbs[-1]['class']
+
+    @pytest.mark.parametrize('url', CIRCLE_PAGES)
+    def test_super_admin_circle_pages_trail_through_circles(self, super_admin_client, url):
+        soup = _soup(super_admin_client, url)
+        crumbs = [c.get_text(strip=True) for c in
+                  soup.select('main nav[aria-label="breadcrumb"] li.breadcrumb-item')]
+        assert crumbs[0] == 'Circles'
+        assert len(crumbs) >= 2
+
+    def test_circle_admin_trail_starts_at_dashboard(self, admin_client):
+        soup = _soup(admin_client, f'/bigbird/circles/{TEST_CIRCLE_SLUG}/email-schedule')
+        crumbs = [c.get_text(strip=True) for c in
+                  soup.select('main nav[aria-label="breadcrumb"] li.breadcrumb-item')]
+        assert crumbs == ['Dashboard', 'Email Schedule']
+
+    def test_no_template_uses_a_back_button_instead(self):
+        offenders = [os.path.basename(p) for p in _template_files()
+                     if re.search(r'>\s*Back to (Circles|Circle Settings|Email Content)\s*<',
+                                  open(p, encoding='utf-8').read())]
+        assert offenders == []
+
+
+class TestYearTabs:
+    def test_no_template_has_a_year_dropdown(self):
+        for path in _template_files():
+            text = open(path, encoding='utf-8').read()
+            assert '<select name="year"' not in text, path
+            assert 'Year Selection' not in text, path
+
+    @pytest.fixture
+    def two_years(self, cleanup_participants):
+        # cleanup_participants only clears the current year (and a fixed historical
+        # one), so this prior-year row is removed explicitly, before and after.
+        def remove():
+            session = get_db_session()
+            session.execute(text(
+                'DELETE FROM participants WHERE circle_slug = :c AND year = :y AND email = :e'),
+                {'c': TEST_CIRCLE_SLUG, 'y': YEAR - 1, 'e': 'past.yeartab@example.com'})
+            session.commit()
+        remove()
+        previous = ParticipantModel(get_db_session(), YEAR - 1, TEST_CIRCLE_SLUG)
+        previous.add_participant({
+            'first_name': 'Past', 'last_name': 'YearTab', 'email': 'past.yeartab@example.com',
+            'preferred_area': 'A', 'participation_type': 'regular',
+        })
+        yield
+        remove()
+
+    @pytest.mark.parametrize('path', ['/bigbird/', '/bigbird/participants', '/bigbird/leaders',
+                                      '/bigbird/recent-registrations', '/bigbird/area/A'])
+    def test_tabs_render_with_historical_marker(self, super_admin_client, two_years, path):
+        soup = _soup(super_admin_client, f'{path}?year={YEAR}')
+        tabs = soup.select('main ul.nav-tabs[aria-label="Select year"] a.nav-link')
+        years = [t.get_text(strip=True) for t in tabs]
+        assert str(YEAR) in years and str(YEAR - 1) in years, path
+        current = [t for t in tabs if t.get_text(strip=True) == str(YEAR)][0]
+        assert 'active' in current['class']
+        previous = [t for t in tabs if t.get_text(strip=True) == str(YEAR - 1)][0]
+        assert previous.select_one('i.bi-archive') is not None
+        assert f'year={YEAR - 1}' in previous['href']
+
+    def test_area_detail_year_tab_keeps_the_area(self, super_admin_client, two_years):
+        soup = _soup(super_admin_client, f'/bigbird/area/A?year={YEAR}')
+        previous = [t for t in soup.select('ul.nav-tabs a.nav-link')
+                    if t.get_text(strip=True) == str(YEAR - 1)][0]
+        assert '/area/A' in previous['href']

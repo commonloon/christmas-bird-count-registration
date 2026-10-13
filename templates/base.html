@@ -16,29 +16,78 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
 </head>
 <body>
+    {% set role = session.get('user_role') %}
+    {% set endpoint = request.endpoint or '' %}
+    {% set nav_year = selected_year if selected_year is defined else none %}
+    {% set console_endpoints = ('admin.list_circles', 'admin.new_circle', 'admin.edit_circle',
+                                'admin.circle_admins', 'admin.circle_areas_manage',
+                                'admin.circle_areas_import_kml', 'admin.email_content_defaults',
+                                'admin.circle_email_content', 'admin.circle_email_content_preview',
+                                'admin.circle_email_schedule', 'admin.scheduler_console') %}
+    {% set on_console = endpoint in console_endpoints and role == 'super_admin' %}
+    {% set show_admin_nav = endpoint.startswith('admin.') and role in ('admin', 'super_admin')
+                            and not on_console and not g.get('is_landing_host') and g.get('circle_slug') %}
+    {% macro nav_item(ep, label, current, year, also=()) %}
+    <li class="nav-item">
+        <a class="nav-link{% if current == ep or current in also %} active{% endif %}"
+           {% if current == ep or current in also %}aria-current="page"{% endif %}
+           href="{{ url_for(ep, year=year) if year else url_for(ep) }}">{{ label }}</a>
+    </li>
+    {% endmacro %}
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary" aria-label="Main navigation">
         <div class="container">
             {% if g.get('is_landing_host') %}
                 <a class="navbar-brand" href="{{ url_for('main.index') }}">
                     {% if g.get('is_apex_landing_host') %}Bird Counts{% else %}Christmas Bird Count Circles{% endif %}
                 </a>
-            {% elif request.endpoint in ('admin.list_circles', 'admin.new_circle', 'admin.edit_circle',
-                                          'admin.circle_admins', 'admin.circle_areas_manage',
-                                          'admin.circle_areas_import_kml', 'admin.email_content_defaults',
-                                          'admin.scheduler_console')
-                     and session.get('user_role') == 'super_admin' %}
+            {% elif on_console %}
                 <a class="navbar-brand" href="{{ url_for('admin.list_circles') }}">Count Super-Admin</a>
-            {% elif request.endpoint and request.endpoint.startswith('admin.') %}
+            {% elif endpoint.startswith('admin.') %}
                 <a class="navbar-brand" href="{{ url_for('admin.dashboard', year=selected_year) }}">{{ count_event_name }} Admin</a>
-            {% elif request.endpoint and request.endpoint.startswith('leader.') %}
+            {% elif endpoint.startswith('leader.') %}
                 <a class="navbar-brand" href="{{ url_for('leader.dashboard') }}">{{ count_event_name }} Area Leader</a>
             {% else %}
                 <a class="navbar-brand" href="{{ url_for('main.index') }}">{{ count_event_name }} Registration</a>
             {% endif %}
-            <div class="navbar-nav ms-auto">
-                {% if session.get('user_role') == 'super_admin' %}
-                <a class="nav-link" href="{{ url_for('admin.list_circles') }}">Manage Circles</a>
-                {% endif %}
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav"
+                    aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="mainNav">
+                <ul class="navbar-nav me-auto">
+                    {% if on_console %}
+                    {{ nav_item('admin.list_circles', 'Circles', endpoint, none, ('admin.new_circle', 'admin.edit_circle', 'admin.circle_admins', 'admin.circle_areas_manage', 'admin.circle_areas_import_kml', 'admin.circle_email_content', 'admin.circle_email_content_preview', 'admin.circle_email_schedule')) }}
+                    {{ nav_item('admin.scheduler_console', 'Scheduler', endpoint, none) }}
+                    {{ nav_item('admin.email_content_defaults', 'Email Defaults', endpoint, none) }}
+                    {% elif show_admin_nav %}
+                    {{ nav_item('admin.dashboard', 'Dashboard', endpoint, nav_year) }}
+                    {{ nav_item('admin.participants', 'Participants', endpoint, nav_year, ('admin.area_detail',)) }}
+                    {{ nav_item('admin.unassigned', 'Unassigned', endpoint, nav_year) }}
+                    {{ nav_item('admin.leaders', 'Leaders', endpoint, nav_year) }}
+                    {{ nav_item('admin.recent_registrations', 'Registrations', endpoint, nav_year) }}
+                    {{ nav_item('admin.area_signup_type', 'Open/Close Areas', endpoint, nav_year) }}
+                    {% if role == 'admin' %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle{% if endpoint in ('admin.edit_circle', 'admin.circle_email_content', 'admin.circle_email_content_preview', 'admin.circle_email_schedule') %} active{% endif %}"
+                           href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Circle</a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('admin.edit_circle', slug=g.circle_slug) }}">Circle Settings</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.circle_email_content', slug=g.circle_slug) }}">Email Content</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('admin.circle_email_schedule', slug=g.circle_slug) }}">Email Schedule</a></li>
+                        </ul>
+                    </li>
+                    {% endif %}
+                    {% endif %}
+                </ul>
+                <ul class="navbar-nav ms-auto align-items-lg-center">
+                    {% if role == 'super_admin' and not on_console %}
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.list_circles') }}">Manage Circles</a></li>
+                    {% endif %}
+                    {% if session.get('user_email') %}
+                    <li class="nav-item"><span class="navbar-text me-lg-2">{{ session.get('user_email')|e }}</span></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('auth.logout') }}">Logout</a></li>
+                    {% endif %}
+                </ul>
             </div>
         </div>
     </nav>

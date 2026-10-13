@@ -1,13 +1,12 @@
 {# Updated by Claude AI on 2026-09-28 #}
 {% extends "base.html" %}
+{% from "_macros.html" import page_header, breadcrumbs, year_tabs, circle_crumbs with context %}
 
 {% block title %}Scheduler{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 class="mb-0">Scheduled Emails</h1>
-    <a href="{{ url_for('admin.list_circles') }}" class="btn btn-outline-secondary">Back to Circles</a>
-</div>
+{{ breadcrumbs([('Circles', url_for('admin.list_circles')), ('Scheduler', none)]) }}
+{{ page_header('Scheduled Emails') }}
 
 <div class="card mb-4">
     <div class="card-body">
