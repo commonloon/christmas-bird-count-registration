@@ -7,7 +7,7 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1>Unassigned Participants</h1>
     <div>
-        <span class="badge bg-info">{{ selected_year }}</span>
+        <span class="badge bg-secondary">{{ selected_year }}</span>
         {% if current_user.email %}
         <span class="text-muted">{{ current_user.email }}</span>
         <a href="{{ url_for('auth.logout') }}" class="btn btn-sm btn-outline-secondary ms-2">Logout</a>
@@ -69,7 +69,7 @@
         {% endif %}
         
         <div class="table-responsive">
-            <table class="table table-striped">
+            <table class="table table-striped table-hover align-middle">
                 <thead>
                     <tr>
                         <th>Name</th>
@@ -104,7 +104,7 @@
                             {% endif %}
                         </td>
                         <td>
-                            <span class="badge bg-{% if participant.skill_level == 'Expert' %}success{% elif participant.skill_level == 'Intermediate' %}primary{% elif participant.skill_level == 'Beginner' %}info{% else %}secondary{% endif %}">
+                            <span class="badge bg-secondary">
                                 {{ participant.skill_level|skill_label|e }}
                             </span>
                         </td>

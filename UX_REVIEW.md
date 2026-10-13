@@ -29,13 +29,23 @@ Status key: **Done** = fixed, **Open** = not yet addressed.
    | Leader dashboard | `btn-primary`, `bi-download`, label "Export Team CSV" |
 
    Recommendation: one pattern everywhere, `btn btn-outline-secondary` with `bi-download` and the label "Export CSV". It is a utility action and should not compete with primary actions.
+
+   **Status: Done.** All four use outline-secondary with `bi-download`. The leader dashboard keeps its label "Export Team CSV" because it exports one team, not the whole year.
 6. **Quick Actions rows use colour inconsistently.** Dashboard: all six buttons are `btn-primary`, so nothing stands out. Participants: Unassigned is yellow, Leaders cyan, Export green, with no meaning, and "Manage Leaders" is a different colour on each page. Leaders: a `btn-group` of outline buttons, a third pattern for the same navigation. Recommendation: reserve primary for the one main action per page, outline-secondary for navigation, warning for attention items.
+
+   **Status: Done** for the dashboard and Participants Quick Actions rows (now `d-flex flex-wrap gap-2`; dashboard has one primary, and Manage Unassigned turns warning only when there are unassigned participants). The Leaders page's Admin Navigation `btn-group` is unchanged.
 7. **Page headers are built differently on each page.** Title, year badge, email and Logout are arranged differently, with Logout styled `btn-sm btn-outline-secondary ms-2` on most pages and `btn-outline-secondary btn-sm` on Recent Registrations. Recommendation: put the user email and Logout in the navbar once, and use a shared `page_header` macro for title, year and actions.
 8. **Year switching comes in three forms:** an auto-submitting `<select>` (dashboard, area detail, Recent Registrations), a tab strip (Participants, Leaders), and nothing on Super-Admin pages. Pick one control. The `<select>` also lacks a visible label on some pages.
 9. **Breadcrumbs exist on some pages and not others.** Participants, Leaders and Unassigned have them; Super-Admin pages use ad hoc "Back to Circles" buttons; Login uses a grey `btn-secondary` "Back to Registration". Use breadcrumbs or one consistent back link.
 10. **Badge colours mean different things on different pages.** `bg-info` is used for year, FEEDER and general status; `bg-warning` is used with and without `text-dark` (poor contrast without); skill level uses green/blue/cyan/grey, colliding with status meanings. Recommendation: a small semantic set (status = success/warning/danger, attributes = neutral secondary), and always pair `bg-warning` with `text-dark`.
+
+    **Status: Done.** Year badge, skill level and the Participant/Moderate badges are neutral `bg-secondary`; success/warning/danger keep their status meanings; `main.css` forces dark text on `bg-warning`/`bg-info` badges. Skill level is no longer colour-coded, which also removed the colour-update JS in the inline editor.
 11. **Table styles vary.** About 10 combinations of `table-striped`, `table-sm`, `table-hover`, `align-middle`, plus a custom `.participant-table`, and one table with `table-info`. Standardise on one or two.
+
+    **Status: Done.** Standard: `table table-striped table-hover align-middle`; compact adds `table-sm`. The stray `table-info` is gone. `.participant-table` (emails only) is untouched.
 12. **Button variants are scattered.** `btn-secondary` and `btn-outline-secondary` are mixed for Cancel/Back; `btn-info` and `btn-warning` are used as solid fills for non-status actions; Save/Edit differ between pages (`btn-success btn-save` vs `btn-primary`).
+
+    **Status: Partly done.** Page-level Back is outline-secondary; guide and historical-data links no longer use info; the dashboard's test-email buttons are outline-secondary. Left as is: inline row editors (Save = success, Cancel = secondary, consistent across pages), modal Cancel (`btn-secondary`), and the two solid `btn-info`/`btn-warning` buttons inside the dashboard's attention cards.
 13. **Heading scale is not shared.** `index.html` overrides the `<h1>` size inline (1.75rem), Registration Success uses an `<h2>`, and the stat cards use `<h2 class="text-primary/success/warning/info">`; cyan `text-info` on white has poor contrast.
 
 ## C. Visual and theming
@@ -59,7 +69,7 @@ Status key: **Done** = fixed, **Open** = not yet addressed.
 
 ## Suggested order
 
-1. Real bugs (A1-A4).
-2. Define button, badge and table conventions (B5, B6, B10-B12) and apply in one pass.
+1. Real bugs (A1-A4). **Done.**
+2. Define button, badge and table conventions (B5, B6, B10-B12) and apply in one pass. **Done** (see per-item notes).
 3. Shared page header and navbar (B7-B9, D24).
 4. Theming, library versions, accessibility (C14, C15, C18, D23).

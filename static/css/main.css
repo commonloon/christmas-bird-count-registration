@@ -258,6 +258,12 @@
     border-color: #0a58ca;
 }
 
+/* Badge contrast: Bootstrap 5.1 leaves white text on the light warning/info fills */
+.badge.bg-warning,
+.badge.bg-info {
+    color: #000;
+}
+
 /* Form validation styles */
 .is-invalid {
     border-color: #dc3545;

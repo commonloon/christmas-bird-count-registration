@@ -167,3 +167,92 @@ class TestWithdrawnStyling:
             assert re.search(rf'{var}\s*:\s*#[0-9a-fA-F]{{6}}', css), var
         for selector in ('.withdrawn-header', '.withdrawn-title', '.withdrawn-row'):
             assert selector in css
+
+
+# --- B5, B6, B10-B12: button, badge and table conventions ------------------
+
+def _template_files():
+    templates = os.path.join(PROJECT_ROOT, 'templates')
+    for root, _dirs, files in os.walk(templates):
+        if os.sep + 'emails' in root:
+            continue
+        for name in files:
+            if name.endswith('.html'):
+                yield os.path.join(root, name)
+
+
+class TestButtonConventions:
+    @pytest.mark.parametrize('url', [f'/bigbird/?year={YEAR}', f'/bigbird/participants?year={YEAR}'])
+    def test_export_csv_is_outline_secondary_with_icon(self, super_admin_client, url):
+        soup = BeautifulSoup(super_admin_client.get(url).get_data(as_text=True), 'html.parser')
+        link = soup.select_one('a[href*="export_csv"], a[href*="export-csv"], a[href*="/export"]')
+        assert link is not None, url
+        assert 'btn-outline-secondary' in link['class']
+        assert not {'btn-primary', 'btn-success'} & set(link['class'])
+        assert link.select_one('i.bi.bi-download') is not None
+
+    def test_leaders_and_leader_dashboard_export_buttons(self):
+        leaders = _read('templates', 'admin', 'leaders.html')
+        assert re.search(r"format='csv'\) \}\}\" class=\"btn btn-outline-secondary", leaders)
+        leader = _read('templates', 'leader', 'dashboard.html')
+        assert re.search(r'id="exportCsvBtn" class="btn btn-outline-secondary', leader)
+
+    def test_dashboard_has_one_primary_quick_action(self, super_admin_client):
+        soup = BeautifulSoup(
+            super_admin_client.get(f'/bigbird/?year={YEAR}').get_data(as_text=True), 'html.parser')
+        header = next(h for h in soup.select('.card-header h5') if h.get_text(strip=True) == 'Quick Actions')
+        body = header.find_parent(class_='card').select_one('.card-body')
+        assert {'d-flex', 'flex-wrap', 'gap-2'} <= set(body['class'])
+        primaries = [a for a in body.select('a.btn') if 'btn-primary' in a['class']]
+        assert len(primaries) == 1
+
+    def test_participants_quick_actions_use_no_status_colours(self, super_admin_client):
+        soup = BeautifulSoup(
+            super_admin_client.get(f'/bigbird/participants?year={YEAR}').get_data(as_text=True),
+            'html.parser')
+        header = next(h for h in soup.select('.card-header h5') if h.get_text(strip=True) == 'Quick Actions')
+        buttons = header.find_parent(class_='card').select('.card-body a.btn')
+        assert len(buttons) == 3
+        assert all('btn-outline-secondary' in b['class'] for b in buttons)
+
+    def test_no_solid_info_buttons_outside_attention_cards(self):
+        offenders = []
+        for path in _template_files():
+            text = open(path, encoding='utf-8').read()
+            for match in re.finditer(r'class="[^"]*\bbtn-(?:outline-)?info\b[^"]*"', text):
+                offenders.append((os.path.basename(path), match.group(0)))
+        # The two solid btn-info buttons live inside bg-info/border-info cards on the dashboard
+        assert [o for o in offenders if o[0] != 'dashboard.html'] == []
+
+
+class TestBadgeConventions:
+    def test_year_badge_is_neutral_everywhere(self):
+        for path in _template_files():
+            text = open(path, encoding='utf-8').read()
+            assert not re.search(r'badge bg-info">\{\{ selected_year', text), path
+
+    def test_skill_level_badge_is_not_colour_coded(self):
+        for path in _template_files():
+            text = open(path, encoding='utf-8').read()
+            assert "badge bg-{% if participant.skill_level" not in text, path
+        participants = _read('templates', 'admin', 'participants.html')
+        assert "skillDisplay.className" not in participants
+
+    def test_warning_and_info_badges_get_dark_text(self):
+        css = _read('static', 'css', 'main.css')
+        assert re.search(r'\.badge\.bg-warning,\s*\.badge\.bg-info\s*\{\s*color:\s*#000', css)
+
+
+class TestTableConventions:
+    def test_every_table_uses_the_standard_classes(self):
+        checked = 0
+        for path in _template_files():
+            text = open(path, encoding='utf-8').read()
+            for match in re.finditer(r'<table class="([^"]*)"', text):
+                classes = match.group(1).split()
+                if 'participant-table' in classes:
+                    continue
+                checked += 1
+                assert {'table', 'table-striped', 'table-hover', 'align-middle'} <= set(classes), (path, classes)
+                assert 'table-info' not in classes, path
+        assert checked >= 20

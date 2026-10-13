@@ -7,7 +7,7 @@
 <div class="d-flex justify-content-between align-items-center mb-4">
     <h1>Area Signup Type</h1>
     <div>
-        <span class="badge bg-info">{{ selected_year }}</span>
+        <span class="badge bg-secondary">{{ selected_year }}</span>
         {% if current_user.email %}
         <span class="text-muted ms-3">{{ current_user.email }}</span>
         <a href="{{ url_for('auth.logout') }}" class="btn btn-sm btn-outline-secondary ms-2">Logout</a>
@@ -57,7 +57,7 @@
     </div>
     <div class="card-body p-0">
         <div class="table-responsive">
-            <table class="table table-sm table-hover mb-0">
+            <table class="table table-sm table-striped table-hover align-middle mb-0">
                 <thead class="table-light">
                     <tr>
                         <th style="width: 8%;">Area</th>

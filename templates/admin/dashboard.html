@@ -13,7 +13,7 @@
         <a href="{{ url_for('admin.circle_email_content', slug=g.circle_slug) }}" class="btn btn-sm btn-outline-secondary">Email Content</a>
         <a href="{{ url_for('admin.circle_email_schedule', slug=g.circle_slug) }}" class="btn btn-sm btn-outline-secondary">Email Schedule</a>
         {% endif %}
-        <span class="badge bg-info">{{ selected_year }}</span>
+        <span class="badge bg-secondary">{{ selected_year }}</span>
         {% if current_user.email %}
         <span class="text-muted">{{ current_user.email }}</span>
         <a href="{{ url_for('auth.logout') }}" class="btn btn-sm btn-outline-secondary ms-2">Logout</a>
@@ -120,15 +120,15 @@
             <div class="card-header">
                 <h5 class="mb-0">Quick Actions</h5>
             </div>
-            <div class="card-body">
-                <a href="{{ url_for('admin.participants', year=selected_year) }}" class="btn btn-primary me-2">View All Participants</a>
-                <a href="{{ url_for('admin.unassigned', year=selected_year) }}" class="btn btn-primary me-2">Manage Unassigned ({{ total_unassigned|default(0) }})</a>
-                <a href="{{ url_for('admin.leaders', year=selected_year) }}" class="btn btn-primary me-2">Manage Leaders</a>
-                <a href="{{ url_for('admin.recent_registrations', year=selected_year) }}" class="btn btn-primary me-2">
+            <div class="card-body d-flex flex-wrap gap-2">
+                <a href="{{ url_for('admin.participants', year=selected_year) }}" class="btn btn-primary">View All Participants</a>
+                <a href="{{ url_for('admin.unassigned', year=selected_year) }}" class="btn {% if total_unassigned|default(0) > 0 %}btn-warning{% else %}btn-outline-secondary{% endif %}">Manage Unassigned ({{ total_unassigned|default(0) }})</a>
+                <a href="{{ url_for('admin.leaders', year=selected_year) }}" class="btn btn-outline-secondary">Manage Leaders</a>
+                <a href="{{ url_for('admin.recent_registrations', year=selected_year) }}" class="btn btn-outline-secondary">
                     <i class="bi bi-clock-history"></i> Recent Registrations
                 </a>
-                <a href="{{ url_for('admin.area_signup_type', year=selected_year) }}" class="btn btn-primary me-2">Open/Close Areas</a>
-                <a href="{{ url_for('admin.export_csv', year=selected_year) }}" class="btn btn-primary">Export CSV</a>
+                <a href="{{ url_for('admin.area_signup_type', year=selected_year) }}" class="btn btn-outline-secondary">Open/Close Areas</a>
+                <a href="{{ url_for('admin.export_csv', year=selected_year) }}" class="btn btn-outline-secondary"><i class="bi bi-download"></i> Export CSV</a>
             </div>
         </div>
     </div>
@@ -142,7 +142,7 @@
     </div>
     <div class="card-body">
         <div class="table-responsive">
-            <table class="table table-sm">
+            <table class="table table-sm table-striped table-hover align-middle">
                 <thead>
                     <tr>
                         <th>Name</th>
@@ -187,7 +187,7 @@
                             {% endif %}
                         </td>
                         <td>
-                            <span class="badge bg-{% if participant.skill_level == 'Expert' %}success{% elif participant.skill_level == 'Intermediate' %}primary{% elif participant.skill_level == 'Beginner' %}info{% else %}secondary{% endif %}">
+                            <span class="badge bg-secondary">
                                 {{ participant.skill_level|skill_label }}
                             </span>
                         </td>
@@ -278,13 +278,13 @@
         <p class="text-muted mb-3">Trigger email generation on demand for testing purposes. All emails will be sent to {{ test_recipient|e }} on the test server.</p>
         
         <div class="d-flex flex-wrap gap-2">
-            <button type="button" class="btn btn-outline-primary" onclick="triggerTestEmail('team-updates')">
+            <button type="button" class="btn btn-outline-secondary" onclick="triggerTestEmail('team-updates')">
                 <i class="bi bi-people"></i> Trigger Team Updates
             </button>
-            <button type="button" class="btn btn-outline-info" onclick="triggerTestEmail('weekly-summaries')">
+            <button type="button" class="btn btn-outline-secondary" onclick="triggerTestEmail('weekly-summaries')">
                 <i class="bi bi-calendar-week"></i> Trigger Weekly Summaries
             </button>
-            <button type="button" class="btn btn-outline-warning" onclick="triggerTestEmail('admin-digest')">
+            <button type="button" class="btn btn-outline-secondary" onclick="triggerTestEmail('admin-digest')">
                 <i class="bi bi-person-gear"></i> Trigger Admin Digest
             </button>
         </div>
