@@ -351,7 +351,12 @@ def verify(token):
             flash('That login link has expired. Please request a new one.', 'error')
             return redirect(url_for('auth.login'))
 
-        if request.method == 'GET':
+        # Updated by Claude AI on 2026-10-14: HEAD must be treated like GET. Flask
+        # routes HEAD to this function with request.method == 'HEAD', which fell
+        # through to the token-consuming UPDATE below; mail scanners that probe
+        # links with HEAD (seen from Microsoft/AWS hosts, 2026-10-13) burned the
+        # token within seconds of delivery.
+        if request.method in ('GET', 'HEAD'):
             if record.used_at is not None:
                 flash('That login link has already been used. Please request a new one.', 'error')
                 return redirect(url_for('auth.login'))

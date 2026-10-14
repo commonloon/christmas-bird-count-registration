@@ -180,6 +180,24 @@ class TestMagicLinkSingleUse:
         record = db_session.query(MagicLinkToken).filter_by(token_hash=token_hash).first()
         assert record.used_at is None
 
+    def test_head_does_not_consume_token(self, client, db_session, magic_link_token):
+        """Mail scanners probe links with HEAD (production, 2026-10-13: a HEAD
+        marked the token used within seconds of delivery). HEAD must behave
+        like GET - no consumption, no session - so the recipient's own click
+        still works."""
+        resp = client.head(f'/auth/verify/{magic_link_token}')
+        assert resp.status_code == 200
+        with client.session_transaction() as sess:
+            assert 'user_email' not in sess
+
+        token_hash = hashlib.sha256(magic_link_token.encode('utf-8')).hexdigest()
+        record = db_session.query(MagicLinkToken).filter_by(token_hash=token_hash).first()
+        assert record.used_at is None
+
+        real = client.post(f'/auth/verify/{magic_link_token}')
+        assert real.status_code == 302
+        assert '/auth/login' not in real.headers['Location']
+
     def test_first_redemption_succeeds(self, client, magic_link_token):
         resp = client.post(f'/auth/verify/{magic_link_token}')
         assert resp.status_code == 302
