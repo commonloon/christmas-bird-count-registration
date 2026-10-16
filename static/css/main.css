@@ -411,6 +411,14 @@
     border: 0;
 }
 
+/* Clicking an area on a Leaflet map focuses its SVG path, and Chrome draws its default focus
+   ring around the path's bounding box (a rectangle, not the area's outline). The shapes are
+   not keyboard-operable (no tabindex, click handler only), and selection is already shown by
+   the yellow highlight, so the ring is suppressed. */
+.leaflet-container path.leaflet-interactive:focus {
+    outline: none;
+}
+
 /* Focus indicators */
 .btn:focus,
 .form-control:focus,
