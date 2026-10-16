@@ -57,6 +57,8 @@ Status key: **Done** = fixed, **Open** = not yet addressed.
 ## C. Visual and theming
 
 14. **`main.css` re-declares Bootstrap defaults and adds no brand.** `.btn-primary` sets `#0d6efd`, identical to Bootstrap's value. The result is the stock Bootstrap blue navbar. Recommendation: define CSS variables (`--brand-primary` etc.) and override `--bs-primary`; circles could theme from `circle_slug`.
+
+    **Status: Done** (2026-10-15). `main.css` defines `--brand-primary` (deep teal `#17607a`) with RGB, hover and active variants, and sets `--bs-primary`/`--bs-primary-rgb` from them, so the navbar, `.bg-primary`, `.text-primary`, buttons, links, form focus and the landing-map circles all follow it. `<body>` carries `data-circle="<slug>"`, so a circle can override the variables under `body[data-circle="..."]`; no per-circle theme is defined yet. Not yet confirmed in a browser.
 15. **Colours are hard-coded** (`#28a745`, `#ffc107`, `#dc3545` are Bootstrap 4 values; the app uses Bootstrap 5.1.3). Use `var(--bs-success)` and the other variables.
 16. **Map colours are not shared.** The registration map uses orange/maroon/navy for low/medium/high counts; the Leaders map uses red/green for needs-leader/has-leader. Each is fine alone, but there is no shared legend component.
 17. **Inline styles and `<style>` blocks are widespread** (16 inline `style=` attributes in `participants.html` alone, 58 across non-email templates). Move to utility classes or `main.css`.

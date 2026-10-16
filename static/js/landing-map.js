@@ -32,7 +32,7 @@ function initializeLandingMap(circles) {
 
         const circleShape = L.circle([circle.latitude, circle.longitude], {
             radius: CIRCLE_RADIUS_METERS,
-            color: '#0d6efd',
+            color: getComputedStyle(document.documentElement).getPropertyValue('--brand-primary').trim() || '#17607a',
             weight: 2,
             fillOpacity: 0.15
         }).addTo(map);

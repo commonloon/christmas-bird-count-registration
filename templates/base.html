@@ -15,7 +15,7 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
 </head>
-<body>
+<body{% if g.get('circle_slug') %} data-circle="{{ g.circle_slug|e }}"{% endif %}>
     {% set role = session.get('user_role') %}
     {% set endpoint = request.endpoint or '' %}
     {% set nav_year = selected_year if selected_year is defined else none %}

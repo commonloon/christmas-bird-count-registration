@@ -1,5 +1,23 @@
 /* Main stylesheet for Vancouver CBC Registration */
 
+/* Updated by Claude AI on 2026-10-15 */
+
+/* Brand colours. Everything that was Bootstrap blue is driven from these.
+   To theme one circle, override them under body[data-circle="<slug>"] (see
+   the data-circle attribute on <body> in base.html), e.g.:
+     body[data-circle="nanaimo"] { --brand-primary: #...; --brand-primary-rgb: r, g, b; ... } */
+:root {
+    --brand-primary: #17607a;
+    --brand-primary-rgb: 23, 96, 122;
+    --brand-primary-hover: #124d63;
+    --brand-primary-active: #0f4254;
+    --brand-link-hover: #0f4254;
+
+    /* Bootstrap 5.1 reads these for .bg-primary, .text-primary, .border-primary */
+    --bs-primary: var(--brand-primary);
+    --bs-primary-rgb: var(--brand-primary-rgb);
+}
+
 /* CSS Custom Properties for Map Colors */
 :root {
     --map-color-low: #f58231;   /* Orange - 0-3 registered */
@@ -53,14 +71,10 @@
 }
 
 /* Form styling */
-.form-control:focus {
-    border-color: #0d6efd;
-    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
-}
-
+.form-control:focus,
 .form-select:focus {
-    border-color: #0d6efd;
-    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+    border-color: var(--brand-primary);
+    box-shadow: 0 0 0 0.2rem rgba(var(--brand-primary-rgb), 0.25);
 }
 
 /* Notes field placeholder styling - make example text more distinct */
@@ -249,13 +263,66 @@
 
 /* Button styling */
 .btn-primary {
-    background-color: #0d6efd;
-    border-color: #0d6efd;
+    background-color: var(--brand-primary);
+    border-color: var(--brand-primary);
 }
 
 .btn-primary:hover {
-    background-color: #0b5ed7;
-    border-color: #0a58ca;
+    background-color: var(--brand-primary-hover);
+    border-color: var(--brand-primary-hover);
+}
+
+.btn-primary:focus,
+.btn-check:focus + .btn-primary {
+    background-color: var(--brand-primary-hover);
+    border-color: var(--brand-primary-hover);
+    box-shadow: 0 0 0 0.25rem rgba(var(--brand-primary-rgb), 0.5);
+}
+
+.btn-primary:active,
+.btn-primary.active,
+.show > .btn-primary.dropdown-toggle {
+    background-color: var(--brand-primary-active);
+    border-color: var(--brand-primary-active);
+}
+
+.btn-primary:disabled,
+.btn-primary.disabled {
+    background-color: var(--brand-primary);
+    border-color: var(--brand-primary);
+}
+
+.btn-outline-primary {
+    color: var(--brand-primary);
+    border-color: var(--brand-primary);
+}
+
+.btn-outline-primary:hover,
+.btn-outline-primary:focus,
+.btn-outline-primary:active,
+.btn-outline-primary.active {
+    color: #fff;
+    background-color: var(--brand-primary);
+    border-color: var(--brand-primary);
+}
+
+.btn-outline-primary:focus {
+    box-shadow: 0 0 0 0.25rem rgba(var(--brand-primary-rgb), 0.5);
+}
+
+.btn-link,
+a {
+    color: var(--brand-primary);
+}
+
+.btn-link:hover,
+a:hover {
+    color: var(--brand-link-hover);
+}
+
+.form-check-input:checked {
+    background-color: var(--brand-primary);
+    border-color: var(--brand-primary);
 }
 
 /* Badge contrast: Bootstrap 5.1 leaves white text on the light warning/info fills */
@@ -290,7 +357,7 @@
 .btn:focus,
 .form-control:focus,
 .form-select:focus {
-    outline: 2px solid #0d6efd;
+    outline: 2px solid var(--brand-primary);
     outline-offset: 2px;
 }
 
