@@ -29,3 +29,8 @@ node_modules/
 package-lock.json
 *.log
 npm-debug.log*
+# Working document during development, not for the repo
+UX_REVIEW.md
+EMAIL_CUSTOMIZATION_PLAN.txt
+SCHEDULER_ARCHITECTURE_PLAN.txt
+DOC_REFRESH.md
