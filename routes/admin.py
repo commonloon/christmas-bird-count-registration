@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2026-10-15
+# Updated by Claude AI on 2026-10-16
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response, g, current_app, session
 from config.database import get_db_session
 from config.email_settings import is_test_server
@@ -430,6 +430,12 @@ def area_detail(area_code):
     area_leaders = participant_model.get_leaders_by_area(area_code)
     area_info = get_area_info(area_code)
 
+    # Previous year's team size for this area (None when the circle has no data for that year)
+    previous_year = selected_year - 1
+    previous_year_team_size = None
+    if previous_year in available_years:
+        previous_year_team_size = len(ParticipantModel(g.db, previous_year).get_participants_by_area(area_code))
+
     # Get historical participants if requested
     show_historical = request.args.get('historical') == 'true'
     historical_participants = []
@@ -441,6 +447,8 @@ def area_detail(area_code):
                            participants=participants,
                            area_leaders=area_leaders,
                            area_info=area_info,
+                           previous_year=previous_year,
+                           previous_year_team_size=previous_year_team_size,
                            historical_participants=historical_participants,
                            show_historical=show_historical,
                            selected_year=selected_year,

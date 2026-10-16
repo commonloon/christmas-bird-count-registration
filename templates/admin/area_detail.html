@@ -1,4 +1,4 @@
-{# Updated by Claude AI on 2025-10-26 #}
+{# Updated by Claude AI on 2026-10-16 #}
 {% extends "base.html" %}
 {% from "_macros.html" import page_header, breadcrumbs, year_tabs, circle_crumbs with context %}
 
@@ -24,7 +24,7 @@
 
 <!-- Area Overview -->
 <div class="row mb-4">
-    <div class="col-md-4">
+    <div class="col-md-6">
         <div class="card text-center">
             <div class="card-body">
                 <h2 class="text-primary">{{ participants|length }}</h2>
@@ -32,19 +32,11 @@
             </div>
         </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-6">
         <div class="card text-center">
             <div class="card-body">
                 <h2 class="text-{% if area_leaders %}success{% else %}warning{% endif %}">{{ area_leaders|length }}</h2>
                 <p class="card-text">Area Leader{% if area_leaders|length != 1 %}s{% endif %}</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card text-center">
-            <div class="card-body">
-                <h2 class="text-info">{{ area_info.description if area_info else 'N/A' }}</h2>
-                <p class="card-text">Habitat Type</p>
             </div>
         </div>
     </div>
@@ -293,7 +285,9 @@
                         <span class="badge bg-secondary">Moderate</span>
                     {% endif %}
                 </p>
-                <p><strong>Recommended Team Size:</strong> 3-6 participants</p>
+                <p><strong>{{ previous_year }} Team Size:</strong>
+                    {% if previous_year_team_size is none %}no {{ previous_year }} data{% else %}{{ previous_year_team_size }} participant{% if previous_year_team_size != 1 %}s{% endif %}{% endif %}
+                </p>
             </div>
         </div>
     </div>
