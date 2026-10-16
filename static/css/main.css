@@ -163,6 +163,18 @@
     margin: 8px 12px;
 }
 
+/* Area section header on the Participants page when the area has a leader: the same pale
+   green as .alert-info. */
+.card-header.area-header-led {
+    background-color: var(--brand-subtle-bg);
+    border-bottom-color: var(--brand-subtle-border);
+    color: var(--brand-subtle-text);
+}
+
+.card-header.area-header-led .text-muted {
+    color: var(--brand-subtle-text) !important;
+}
+
 /* Withdrawn participants */
 .withdrawn-header {
     background-color: var(--withdrawn-bg);

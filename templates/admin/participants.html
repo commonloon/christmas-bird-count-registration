@@ -66,7 +66,7 @@
     {% set area_participants = participants | selectattr('preferred_area', 'equalto', area_code) | list %}
     {% if area_participants %}
     <div id="area-{{ area_code }}" class="card mb-4{% if is_historical %} bg-warning bg-opacity-10{% elif area_code == 'UNASSIGNED' %} border-warning{% endif %}">
-        <div class="card-header{% if is_historical %} bg-warning bg-opacity-25{% elif area_code == 'UNASSIGNED' %} bg-warning bg-opacity-25{% endif %}">
+        <div class="card-header{% if is_historical %} bg-warning bg-opacity-25{% elif area_code == 'UNASSIGNED' %} bg-warning bg-opacity-25{% elif area_leaders.get(area_code) %} area-header-led{% else %} bg-warning bg-opacity-25{% endif %}">
             <h5 class="mb-0">
                 {% set field_count = area_participants|selectattr('status', 'equalto', 'active')|selectattr('participation_type', 'equalto', 'regular')|list|length %}
                 {% set feeder_count = area_participants|selectattr('status', 'equalto', 'active')|selectattr('participation_type', 'equalto', 'FEEDER')|list|length %}
