@@ -98,6 +98,12 @@
 let signupTypeMap;
 let signupTypeAreaLayers = {};
 
+// Leaflet needs literal colours, so read Bootstrap's theme values from CSS
+function signupColor(adminOnly) {
+    const name = adminOnly ? '--bs-warning' : '--bs-success';
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
 // area.letter_code comes from the DB (admin-entered, or KML-imported) and isn't
 // guaranteed free of HTML - bindTooltip renders string content as raw markup.
 function escapeHtml(text) {
@@ -156,11 +162,11 @@ function loadSignupTypeMap() {
                         const leafletCoords = coordinates.map(coord => [coord[1], coord[0]]);
 
                         const style = {
-                            color: isAdminOnly ? '#ffc107' : '#28a745',
+                            color: signupColor(isAdminOnly),
                             weight: 2,
                             opacity: 0.9,
                             fillOpacity: 0.6,
-                            fillColor: isAdminOnly ? '#ffc107' : '#28a745'
+                            fillColor: signupColor(isAdminOnly)
                         };
 
                         const polygon = L.polygon(leafletCoords, style)
@@ -203,7 +209,7 @@ function updateAreaSignupType(areaCode, adminOnly) {
 
             // Update map color
             if (signupTypeAreaLayers[areaCode]) {
-                const newColor = adminOnly ? '#ffc107' : '#28a745';
+                const newColor = signupColor(adminOnly);
                 signupTypeAreaLayers[areaCode].setStyle({
                     color: newColor,
                     fillColor: newColor

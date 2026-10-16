@@ -24,12 +24,13 @@
     --map-color-med: #800000;   /* Maroon - 4-8 registered */
     --map-color-high: #000075;  /* Navy - 8+ registered */
     --map-color-selected: #ffe119; /* Yellow - selected area */
+    /* Kept as literal hex, not --bs-danger/--bs-success: the red/green pair may change for colour-blind users (UX_REVIEW D23) */
     --map-color-needs-leader: #dc3545; /* Red - leaders map, area needs a leader */
     --map-color-has-leader: #28a745;   /* Green - leaders map, area has a leader */
 
     /* Withdrawn-participant highlight (in-app tables; emails keep inline colours) */
     --withdrawn-bg: #fff3cd;
-    --withdrawn-border: #ffc107;
+    --withdrawn-border: var(--bs-warning);
     --withdrawn-text: #856404;
 }
 
@@ -174,12 +175,12 @@
     background-color: transparent;
     background-image: repeating-linear-gradient(
         45deg,
-        #6c757d,
-        #6c757d 2px,
+        var(--bs-secondary),
+        var(--bs-secondary) 2px,
         transparent 2px,
         transparent 5px
     );
-    border: 1px solid #6c757d;
+    border: 1px solid var(--bs-secondary);
 }
 
 /* Selection feedback */
@@ -229,19 +230,19 @@
 
 /* Alert customizations */
 .alert-success {
-    border-left: 4px solid #28a745;
+    border-left: 4px solid var(--bs-success);
 }
 
 .alert-danger {
-    border-left: 4px solid #dc3545;
+    border-left: 4px solid var(--bs-danger);
 }
 
 .alert-warning {
-    border-left: 4px solid #ffc107;
+    border-left: 4px solid var(--bs-warning);
 }
 
 .alert-info {
-    border-left: 4px solid #0dcaf0;
+    border-left: 4px solid var(--bs-info);
 }
 
 /* Navbar brand styling */
@@ -333,7 +334,7 @@ a:hover {
 
 /* Form validation styles */
 .is-invalid {
-    border-color: #dc3545;
+    border-color: var(--bs-danger);
 }
 
 .invalid-feedback {
