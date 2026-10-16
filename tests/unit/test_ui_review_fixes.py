@@ -31,6 +31,11 @@ LEADERS_URL = f'/bigbird/leaders?year={YEAR}'
 LEADER_EMAIL = 'ui.review.leader@example.com'
 
 
+def _read_bytes(*parts):
+    with open(os.path.join(PROJECT_ROOT, *parts), 'rb') as f:
+        return f.read()
+
+
 def _read(*parts):
     with open(os.path.join(PROJECT_ROOT, *parts), encoding='utf-8') as f:
         return f.read()
@@ -460,3 +465,42 @@ class TestSelfHostedLibraries:
         for rel in ('vendor/bootstrap/css/bootstrap.min.css', 'vendor/leaflet/leaflet.js'):
             assert rel in html
             assert client.get('/static/' + rel).status_code == 200
+
+
+class TestPrecompressedVendorFiles:
+    CSS = '/static/vendor/bootstrap/css/bootstrap.min.css'
+
+    def test_gzip_served_to_clients_that_accept_it(self, client):
+        import gzip
+        resp = client.get(self.CSS, headers={'Accept-Encoding': 'gzip, deflate'})
+        assert resp.status_code == 200
+        assert resp.headers['Content-Encoding'] == 'gzip'
+        assert resp.headers['Content-Type'].startswith('text/css')
+        assert 'Accept-Encoding' in resp.headers['Vary']
+        assert gzip.decompress(resp.data) == _read_bytes('static', 'vendor', 'bootstrap', 'css', 'bootstrap.min.css')
+
+    def test_plain_file_served_without_gzip_support(self, client):
+        resp = client.get(self.CSS, headers={'Accept-Encoding': 'identity'})
+        assert resp.status_code == 200
+        assert 'Content-Encoding' not in resp.headers
+        assert resp.data == _read_bytes('static', 'vendor', 'bootstrap', 'css', 'bootstrap.min.css')
+
+    def test_fonts_and_other_static_files_are_not_gzipped(self, client):
+        for path in ('/static/vendor/bootstrap-icons/fonts/bootstrap-icons.woff2', '/static/css/main.css'):
+            resp = client.get(path, headers={'Accept-Encoding': 'gzip'})
+            assert resp.status_code == 200
+            assert 'Content-Encoding' not in resp.headers
+
+    def test_every_gz_matches_its_source_file(self):
+        import gzip
+        vendor = os.path.join(PROJECT_ROOT, 'static', 'vendor')
+        found = 0
+        for root, _dirs, files in os.walk(vendor):
+            for name in files:
+                if name.endswith(('.css', '.js')):
+                    found += 1
+                    path = os.path.join(root, name)
+                    with open(path + '.gz', 'rb') as gz, open(path, 'rb') as src:
+                        assert gzip.decompress(gz.read()) == src.read(), f'{name}.gz is stale; run utils/gzip_vendor.py'
+        assert found == 5
+

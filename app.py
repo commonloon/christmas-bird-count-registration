@@ -1,13 +1,15 @@
 # app.py - Flask application entry point
 # Updated by Claude AI on 2026-09-28
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session, g, send_file, abort, has_request_context
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, session, g, send_file, send_from_directory, abort, has_request_context
 from flask_wtf.csrf import CSRFProtect
+from werkzeug.security import safe_join
 from config.database import get_db_session, teardown_db_session
 from config.organization import get_organization_variables, get_registration_url, get_admin_url, get_leader_url, DISPLAY_TIMEZONE
 from config.fields import get_skill_level_label
 from services.limiter import limiter
 from services.ip_blocker import IPBlockerService, get_client_ip
 from models.circle import CircleModel, CircleAreaModel
+import mimetypes
 import os
 import re
 import sys
@@ -112,8 +114,35 @@ if os.environ.get('ENABLE_COVERAGE') == 'true' and os.environ.get('TEST_MODE') =
     except Exception as e:
         logging.warning(f"Could not start coverage: {e}")
 
+class PrecompressedStaticFlask(Flask):
+    """Flask app that serves a pre-gzipped copy of a static file when one exists.
+
+    For static/vendor/<file> it looks for <file>.gz (made by utils/gzip_vendor.py) and
+    sends that, with Content-Encoding: gzip, to clients that accept gzip. The endpoint
+    stays 'static', so the request hooks that skip static files still apply. Nothing is
+    compressed per request.
+    """
+
+    def send_static_file(self, filename):
+        # Updated by Claude AI on 2026-10-15
+        if filename.startswith('vendor/'):
+            gz_path = safe_join(self.static_folder, filename + '.gz')
+            if gz_path and os.path.isfile(gz_path):
+                if 'gzip' not in request.headers.get('Accept-Encoding', '').lower():
+                    response = super().send_static_file(filename)
+                else:
+                    mimetype = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+                    response = send_from_directory(
+                        self.static_folder, filename + '.gz',
+                        mimetype=mimetype, max_age=self.get_send_file_max_age(filename))
+                    response.headers['Content-Encoding'] = 'gzip'
+                response.headers['Vary'] = 'Accept-Encoding'
+                return response
+        return super().send_static_file(filename)
+
+
 # Initialize Flask app
-app = Flask(__name__)
+app = PrecompressedStaticFlask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-key-change-in-production').strip()
 
 # Initialize CSRF protection

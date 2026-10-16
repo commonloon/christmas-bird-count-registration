@@ -1,0 +1,2 @@
+# Vendored libraries and their .gz copies must stay byte-identical on every checkout
+static/vendor/** -text
