@@ -68,7 +68,7 @@ Status key: **Done** = fixed, **Open** = not yet addressed.
 17. **Inline styles and `<style>` blocks are widespread** (16 inline `style=` attributes in `participants.html` alone, 58 across non-email templates). Move to utility classes or `main.css`.
 18. **Library versions are old.** Bootstrap 5.1.3 (current is 5.3.x, with colour modes and better variables) and Bootstrap Icons 1.10.0, loaded from third-party CDNs without SRI hashes. Consider self-hosting.
 
-    **Status: Partly done** (2026-10-15). Bootstrap is now 5.3.3 and Bootstrap Icons 1.11.3. The brand overrides in `main.css` now use Bootstrap 5.3's own variables (`--bs-btn-*`, `--bs-link-color`) instead of re-declaring button and link rules, and the withdrawn highlight uses `--bs-warning-bg-subtle`/`--bs-warning-text-emphasis`. Self-hosting and SRI hashes are still open. Not yet checked in a browser.
+    **Status: Done** (2026-10-15). Bootstrap is now 5.3.3 and Bootstrap Icons 1.11.3. The brand overrides in `main.css` now use Bootstrap 5.3's own variables (`--bs-btn-*`, `--bs-link-color`) instead of re-declaring button and link rules, and the withdrawn highlight uses `--bs-warning-bg-subtle`/`--bs-warning-text-emphasis`. Bootstrap, Bootstrap Icons and Leaflet are now self-hosted under `static/vendor/` (see its README), so SRI hashes no longer apply, and the Content-Security-Policy in `app.py` no longer allows `cdn.jsdelivr.net` or `unpkg.com`. Not yet checked in a browser.
 
 ## D. Usability and accessibility
 

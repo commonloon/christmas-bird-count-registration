@@ -427,3 +427,36 @@ class TestYearTabs:
         previous = [t for t in soup.select('ul.nav-tabs a.nav-link')
                     if t.get_text(strip=True) == str(YEAR - 1)][0]
         assert '/area/A' in previous['href']
+
+
+# --- C18: self-hosted libraries --------------------------------------------
+
+class TestSelfHostedLibraries:
+    VENDOR_FILES = (
+        'bootstrap/css/bootstrap.min.css',
+        'bootstrap/js/bootstrap.bundle.min.js',
+        'bootstrap-icons/bootstrap-icons.min.css',
+        'bootstrap-icons/fonts/bootstrap-icons.woff2',
+        'leaflet/leaflet.css',
+        'leaflet/leaflet.js',
+        'leaflet/images/marker-icon.png',
+    )
+
+    def test_vendor_files_exist(self):
+        for rel in self.VENDOR_FILES:
+            assert os.path.isfile(os.path.join(PROJECT_ROOT, 'static', 'vendor', *rel.split('/'))), rel
+
+    def test_templates_do_not_load_from_cdns(self):
+        for root, _dirs, files in os.walk(os.path.join(PROJECT_ROOT, 'templates')):
+            if os.path.basename(root) == 'emails':
+                continue
+            for name in files:
+                with open(os.path.join(root, name), encoding='utf-8') as f:
+                    html = f.read()
+                assert 'cdn.jsdelivr.net' not in html and 'unpkg.com' not in html, name
+
+    def test_pages_serve_vendor_assets(self, client):
+        html = client.get('/').get_data(as_text=True)
+        for rel in ('vendor/bootstrap/css/bootstrap.min.css', 'vendor/leaflet/leaflet.js'):
+            assert rel in html
+            assert client.get('/static/' + rel).status_code == 200

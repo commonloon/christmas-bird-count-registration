@@ -221,10 +221,10 @@ def set_security_headers(response):
     # Note: Allows Bootstrap CDN and Leaflet map resources
     response.headers['Content-Security-Policy'] = (
         "default-src 'self'; "
-        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; "
-        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data: https:; "
-        "font-src 'self' https://cdn.jsdelivr.net; "
+        "font-src 'self'; "
         "connect-src 'self';"
     )
 
