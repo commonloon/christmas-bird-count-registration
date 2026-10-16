@@ -17,6 +17,7 @@ Note: Flask extensions (flask_wtf, flask_limiter) are mocked to avoid
 requiring their installation for unit tests.
 """
 
+import re
 import sys
 import os
 from unittest.mock import Mock, MagicMock
@@ -415,8 +416,9 @@ class TestRegistrationFormUI:
         map_div = soup.find('div', {'id': 'count-area-map'})
         assert map_div is not None, "Map div not found"
 
-        # Should have style attribute for height
-        assert map_div.get('style'), "Map div should have inline style for height"
+        # Height comes from main.css (no inline style)
+        css = client.get('/static/css/main.css').get_data(as_text=True)
+        assert re.search(r'#count-area-map\s*\{[^}]*height:', css), "main.css should set the map height"
 
     # Form Validation Attributes Tests (Priority 2)
 

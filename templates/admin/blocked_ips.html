@@ -94,12 +94,12 @@
                             <span class="badge bg-secondary">{{ block.total_violations }}</span>
                         </td>
                         <td>
-                            <small class="text-muted text-truncate" style="max-width: 200px; display: inline-block;" title="{{ block.last_violation_url }}">
+                            <small class="text-muted text-truncate d-inline-block max-w-200" title="{{ block.last_violation_url }}">
                                 {{ block.last_violation_url if block.last_violation_url else 'N/A' }}
                             </small>
                         </td>
                         <td>
-                            <form method="POST" action="{{ url_for('admin.unblock_ip', ip_address=block.ip_address) }}" style="display:inline;">
+                            <form method="POST" action="{{ url_for('admin.unblock_ip', ip_address=block.ip_address) }}" class="d-inline">
                                 {{ csrf_token() }}
                                 <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('Unblock {{ block.ip_address }}?')">
                                     <i class="bi bi-unlock"></i> Unblock

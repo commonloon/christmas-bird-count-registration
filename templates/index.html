@@ -10,14 +10,13 @@
                  alt="{{ count_event_name }} Logo"
                  class="registration-logo me-3">
             {% else %}
-            <div class="registration-logo me-3 d-flex align-items-center justify-content-center text-muted border rounded"
-                 style="aspect-ratio: 1;">
+            <div class="registration-logo me-3 d-flex align-items-center justify-content-center text-muted border rounded logo-placeholder">
                 <small>No logo</small>
             </div>
             {% endif %}
             <div>
-                <h1 class="mb-2" style="font-size: 1.75rem;">Register for the {% if count_info_url %}<a href="{{ count_info_url|e }}" target="_blank" rel="noopener">{{ count_event_name|e }}</a>{% else %}{{ count_event_name|e }}{% endif %}</h1>
-                <p class="lead mb-0" style="font-size: 1.1rem;">Join {% if organization_website %}<a href="{{ organization_website|e }}" target="_blank" rel="noopener">{{ organization_name|e }}</a>{% else %}{{ organization_name|e }}{% endif %}'s annual {{ count_event_name }} and help us track bird populations in the area.</p>
+                <h1 class="registration-title mb-2">Register for the {% if count_info_url %}<a href="{{ count_info_url|e }}" target="_blank" rel="noopener">{{ count_event_name|e }}</a>{% else %}{{ count_event_name|e }}{% endif %}</h1>
+                <p class="lead registration-lead mb-0">Join {% if organization_website %}<a href="{{ organization_website|e }}" target="_blank" rel="noopener">{{ organization_name|e }}</a>{% else %}{{ organization_name|e }}{% endif %}'s annual {{ count_event_name }} and help us track bird populations in the area.</p>
             </div>
         </div>
         <div class="alert alert-info" role="alert">
@@ -175,7 +174,7 @@
     <div class="col-lg-6">
         <h3>Select Area on Map</h3>
         <p>Click on an area below to select it automatically:</p>
-        <div id="count-area-map" style="height: 400px; border: 1px solid #ccc;"></div>
+        <div id="count-area-map"></div>
         <div class="mt-2">
             <small class="text-muted">
                 <span class="color-box low-count"></span> 0-3 registered

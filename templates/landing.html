@@ -7,11 +7,11 @@
 <div class="row">
     <div class="col-12 mb-4">
         {% if is_apex %}
-        <p class="lead mb-0" style="font-size: 1.1rem;">Find a bird count near you and register to take part.
+        <p class="lead registration-lead mb-0">Find a bird count near you and register to take part.
             Looking for a <strong>Christmas Bird Count</strong> specifically?
             <a href="{{ other_listing_url }}">See the full list here</a>.</p>
         {% else %}
-        <p class="lead mb-0" style="font-size: 1.1rem;">Find a count circle near you and register to take part in this year's count.
+        <p class="lead registration-lead mb-0">Find a count circle near you and register to take part in this year's count.
             Looking for a count that <strong>isn't</strong> a Christmas Bird Count?
             <a href="{{ other_listing_url }}">See the full list here</a>.</p>
         {% endif %}
@@ -20,7 +20,7 @@
 
 <div class="row">
     <div class="col-lg-7 mb-4">
-        <div id="circles-map" style="height: 500px; border: 1px solid #ccc;"></div>
+        <div id="circles-map"></div>
     </div>
 
     <div class="col-lg-5">

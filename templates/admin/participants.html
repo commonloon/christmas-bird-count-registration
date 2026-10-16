@@ -126,7 +126,7 @@
                                         <div class="small text-warning fw-bold">WITHDRAWN</div>
                                     {% endif %}
                                 </div>
-                                <div class="name-edit" style="display: none;">
+                                <div class="name-edit initially-hidden">
                                     <div class="d-flex gap-1">
                                         <input type="text" class="form-control form-control-sm first-name-input" value="{{ participant.first_name|e }}" placeholder="First name">
                                         <input type="text" class="form-control form-control-sm last-name-input" value="{{ participant.last_name|e }}" placeholder="Last name">
@@ -143,7 +143,7 @@
                                 <div class="email-display">
                                     <a href="mailto:{{ participant.email|e }}">{{ participant.email|e }}</a>
                                 </div>
-                                <div class="email-edit" style="display: none;">
+                                <div class="email-edit initially-hidden">
                                     <input type="email" class="form-control form-control-sm email-input" value="{{ participant.email|e }}">
                                 </div>
                             </td>
@@ -154,9 +154,9 @@
                                         <div class="small text-muted">{{ participant.phone2|e }}</div>
                                     {% endif %}
                                 </div>
-                                <div class="phone-edit" style="display: none;">
-                                    <input type="tel" class="form-control form-control-sm phone-input mb-1" style="min-width: 140px;" value="{{ participant.phone or '' }}" placeholder="Cell phone">
-                                    <input type="tel" class="form-control form-control-sm phone2-input" style="min-width: 140px;" value="{{ participant.phone2 or '' }}" placeholder="Secondary phone">
+                                <div class="phone-edit initially-hidden">
+                                    <input type="tel" class="form-control form-control-sm phone-input mb-1" value="{{ participant.phone or '' }}" placeholder="Cell phone">
+                                    <input type="tel" class="form-control form-control-sm phone2-input" value="{{ participant.phone2 or '' }}" placeholder="Secondary phone">
                                 </div>
                             </td>
                             <td>
@@ -165,7 +165,7 @@
                                         {{ participant.skill_level|skill_label }}
                                     </span>
                                 </div>
-                                <div class="skill-edit" style="display: none;">
+                                <div class="skill-edit initially-hidden">
                                     <select class="form-select form-select-sm skill-input">
                                         <option value="Newbie" {% if participant.skill_level == 'Newbie' %}selected{% endif %}>Novice</option>
                                         <option value="Beginner" {% if participant.skill_level == 'Beginner' %}selected{% endif %}>Beginner</option>
@@ -176,7 +176,7 @@
                             </td>
                             <td>
                                 <div class="experience-display">{{ participant.experience }}</div>
-                                <div class="experience-edit" style="display: none;">
+                                <div class="experience-edit initially-hidden">
                                     <select class="form-select form-select-sm experience-input">
                                         <option value="None" {% if participant.experience == 'None' %}selected{% endif %}>None</option>
                                         <option value="1-2 counts" {% if participant.experience == '1-2 counts' %}selected{% endif %}>1-2 counts</option>
@@ -187,10 +187,10 @@
                             <td>
                                 <div class="equipment-display">
                                     {% if participant.has_binoculars %}<i class="bi bi-binoculars" title="Has binoculars"></i>{% endif %}
-                                    {% if participant.spotting_scope %}<img src="{{ url_for('static', filename='icons/scope.svg') }}" alt="Spotting scope" title="Can bring spotting scope" class="scope-icon ms-1" style="width: 16px; height: 16px; vertical-align: text-bottom;">{% endif %}
+                                    {% if participant.spotting_scope %}<img src="{{ url_for('static', filename='icons/scope.svg') }}" alt="Spotting scope" title="Can bring spotting scope" class="scope-icon ms-1">{% endif %}
                                     {% if not participant.has_binoculars and not participant.spotting_scope %}<span class="text-muted">None</span>{% endif %}
                                 </div>
-                                <div class="equipment-edit" style="display: none;">
+                                <div class="equipment-edit initially-hidden">
                                     <div class="form-check form-check-sm">
                                         <input class="form-check-input has-binoculars-input" type="checkbox" {% if participant.has_binoculars %}checked{% endif %}>
                                         <label class="form-check-label small">Binoculars</label>
@@ -209,7 +209,7 @@
                                         <span class="text-muted">None</span>
                                     {% endif %}
                                 </div>
-                                <div class="notes-edit" style="display: none;">
+                                <div class="notes-edit initially-hidden">
                                     <textarea class="form-control form-control-sm notes-input" rows="2" placeholder="Notes to organizers">{{ participant.notes_to_organizers or '' }}</textarea>
                                 </div>
                             </td>
@@ -221,7 +221,7 @@
                                         <span class="text-muted">No</span>
                                     {% endif %}
                                 </div>
-                                <div class="leadership-edit" style="display: none;">
+                                <div class="leadership-edit initially-hidden">
                                     <div class="form-check form-check-sm">
                                         <input class="form-check-input leadership-input" type="checkbox" {% if participant.interested_in_leadership %}checked{% endif %}>
                                         <label class="form-check-label small">Interested</label>
@@ -247,7 +247,7 @@
                                     </button>
                                     {% endif %}
                                     {% if participant.get('status') == 'withdrawn' %}
-                                    <form method="POST" action="{{ url_for('admin.reactivate_participant', participant_id=participant.id) }}" style="display: inline;">
+                                    <form method="POST" action="{{ url_for('admin.reactivate_participant', participant_id=participant.id) }}" class="d-inline">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                         <input type="hidden" name="year" value="{{ selected_year }}">
                                         <button type="submit" class="btn btn-outline-success btn-sm" title="Reactivate participant">
@@ -268,7 +268,7 @@
                                         <i class="bi bi-trash"></i>
                                     </button>
                                 </div>
-                                <div class="btn-group btn-group-sm edit-buttons" style="display: none;" role="group">
+                                <div class="btn-group btn-group-sm edit-buttons initially-hidden" role="group">
                                     <button type="button" class="btn btn-success btn-save" title="Save">
                                         <i class="bi bi-check"></i>
                                     </button>
@@ -276,8 +276,8 @@
                                         <i class="bi bi-x"></i>
                                     </button>
                                 </div>
-                                <div class="reassign-controls" style="display: none;">
-                                    <select class="form-select form-select-sm d-inline-block reassign-area-select" style="width: auto;">
+                                <div class="reassign-controls initially-hidden">
+                                    <select class="form-select form-select-sm d-inline-block reassign-area-select w-auto">
                                         <option value="">Select Area</option>
                                         {% for area in all_areas %}
                                         <option value="{{ area }}">Area {{ area }}</option>
@@ -577,7 +577,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     equipmentHtml += '<i class="bi bi-binoculars" title="Has binoculars"></i>';
                 }
                 if (formData.spotting_scope) {
-                    equipmentHtml += '<img src="{{ url_for("static", filename="icons/scope.svg") }}" alt="Spotting scope" title="Can bring spotting scope" class="scope-icon ms-1" style="width: 16px; height: 16px; vertical-align: text-bottom;">';
+                    equipmentHtml += '<img src="{{ url_for("static", filename="icons/scope.svg") }}" alt="Spotting scope" title="Can bring spotting scope" class="scope-icon ms-1">';
                 }
                 if (!formData.has_binoculars && !formData.spotting_scope) {
                     equipmentHtml = '<span class="text-muted">None</span>';

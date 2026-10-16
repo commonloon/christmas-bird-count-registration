@@ -19,13 +19,13 @@
 {% if is_html %}
 <div class="card">
     <div class="card-body">
-        <iframe srcdoc="{{ html_content|e }}" style="width: 100%; height: 80vh; border: 1px solid #ccc;"></iframe>
+        <iframe srcdoc="{{ html_content|e }}" class="email-preview-frame"></iframe>
     </div>
 </div>
 {% else %}
 <div class="card">
     <div class="card-body">
-        <pre style="white-space: pre-wrap;">{{ body|e }}</pre>
+        <pre class="pre-wrap">{{ body|e }}</pre>
     </div>
 </div>
 {% endif %}

@@ -48,7 +48,7 @@
                             <div class="area-display">
                                 <strong>{{ leader.assigned_area_leader }}</strong>
                             </div>
-                            <div class="area-edit" style="display: none;">
+                            <div class="area-edit initially-hidden">
                                 <select class="form-select form-select-sm area-select">
                                     {% for area in all_areas %}
                                     <option value="{{ area }}" {% if area == leader.assigned_area_leader %}selected{% endif %}>{{ area }} - {{ get_area_info(area).name }}</option>
@@ -61,7 +61,7 @@
                                 <span class="leader-name">{{ leader.first_name|e }} {{ leader.last_name|e }}</span>
                                 <span class="badge bg-secondary ms-1" title="All leaders are participants in single-table design">Participant</span>
                             </div>
-                            <div class="name-edit" style="display: none;">
+                            <div class="name-edit initially-hidden">
                                 <div class="d-flex gap-1">
                                     {% if leader.first_name and leader.last_name %}
                                         <input type="text" class="form-control form-control-sm first-name-input" placeholder="First" value="{{ leader.first_name|e }}">
@@ -77,7 +77,7 @@
                             <div class="email-display">
                                 <a href="mailto:{{ leader.email|e }}">{{ leader.email|e }}</a>
                             </div>
-                            <div class="email-edit" style="display: none;">
+                            <div class="email-edit initially-hidden">
                                 <input type="email" class="form-control form-control-sm email-input" value="{{ leader.email|e }}">
                             </div>
                         </td>
@@ -85,7 +85,7 @@
                             <div class="phone-display">
                                 {{ leader.phone or 'N/A' }}
                             </div>
-                            <div class="phone-edit" style="display: none;">
+                            <div class="phone-edit initially-hidden">
                                 <input type="tel" class="form-control form-control-sm phone-input" value="{{ leader.phone or '' }}" placeholder="(604) 555-1234">
                             </div>
                         </td>
@@ -93,7 +93,7 @@
                             <div class="phone2-display">
                                 {{ leader.phone2 or 'N/A' }}
                             </div>
-                            <div class="phone2-edit" style="display: none;">
+                            <div class="phone2-edit initially-hidden">
                                 <input type="tel" class="form-control form-control-sm phone2-input" value="{{ leader.phone2 or '' }}" placeholder="(604) 555-1234">
                             </div>
                         </td>
@@ -107,7 +107,7 @@
                                     <i class="bi bi-trash"></i>
                                 </button>
                             </div>
-                            <div class="btn-group btn-group-sm edit-buttons" style="display: none;">
+                            <div class="btn-group btn-group-sm edit-buttons initially-hidden">
                                 <button class="btn btn-success btn-save" title="Save">
                                     <i class="bi bi-check"></i>
                                 </button>
@@ -231,7 +231,7 @@
     </div>
     <div class="card-body">
         <p>Click on the red areas below to see which areas need leaders:</p>
-        <div id="leaders-map" style="height: 400px; border: 1px solid #ccc; border-radius: 5px;"></div>
+        <div id="leaders-map"></div>
         
         <!-- Fallback list for areas without leaders -->
         <div class="mt-3">

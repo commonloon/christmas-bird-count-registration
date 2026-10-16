@@ -196,7 +196,7 @@
         <h5 class="card-title">Logo</h5>
         {% if circle.logo_content_type %}
         <p><img src="{{ url_for('api.get_circle_logo', slug=circle.slug) }}" alt="{{ circle.circle_name|e }} logo"
-                style="max-height: 100px;" class="mb-2 border rounded p-1"></p>
+                class="logo-preview mb-2 border rounded p-1"></p>
         <form method="POST" action="{{ url_for('admin.circle_logo_delete', slug=circle.slug) }}" class="mb-3">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn btn-outline-danger btn-sm">Remove current logo</button>

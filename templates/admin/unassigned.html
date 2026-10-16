@@ -97,7 +97,7 @@
                         <td>{{ participant.experience|e }}</td>
                         <td>
                             {% if participant.has_binoculars %}<i class="bi bi-binoculars" title="Has binoculars"></i>{% endif %}
-                            {% if participant.spotting_scope %}<img src="{{ url_for('static', filename='icons/scope.svg') }}" alt="Spotting scope" title="Can bring spotting scope" class="scope-icon ms-1" style="width: 16px; height: 16px; vertical-align: text-bottom;">{% endif %}
+                            {% if participant.spotting_scope %}<img src="{{ url_for('static', filename='icons/scope.svg') }}" alt="Spotting scope" title="Can bring spotting scope" class="scope-icon ms-1">{% endif %}
                             {% if not participant.has_binoculars and not participant.spotting_scope %}<span class="text-muted">None</span>{% endif %}
                         </td>
                         <td>
@@ -127,7 +127,7 @@
                                 <input type="hidden" name="participant_id" value="{{ participant.id }}">
                                 <input type="hidden" name="year" value="{{ selected_year }}">
 
-                                <select name="area_code" class="form-select form-select-sm me-2" style="width: 120px;" required>
+                                <select name="area_code" class="form-select form-select-sm me-2 area-select-narrow" required>
                                     <option value="">Select...</option>
                                     {% for area in all_areas %}
                                     <option value="{{ area }}"
