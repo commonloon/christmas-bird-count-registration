@@ -1,17 +1,23 @@
 /* Main stylesheet for Vancouver CBC Registration */
 
-/* Updated by Claude AI on 2026-10-15 */
+/* Updated by Claude AI on 2026-10-16 */
 
 /* Brand colours. Everything that was Bootstrap blue is driven from these.
    To theme one circle, override them under body[data-circle="<slug>"] (see
    the data-circle attribute on <body> in base.html), e.g.:
      body[data-circle="nanaimo"] { --brand-primary: #...; --brand-primary-rgb: r, g, b; ... } */
 :root {
-    --brand-primary: #17607a;
-    --brand-primary-rgb: 23, 96, 122;
-    --brand-primary-hover: #124d63;
-    --brand-primary-active: #0f4254;
-    --brand-link-hover: #0f4254;
+    /* Nature Vancouver logo green. White text on it is ~5:1 (AA). */
+    --brand-primary: #008072;
+    --brand-primary-rgb: 0, 128, 114;
+    --brand-primary-hover: #006d61;
+    --brand-primary-active: #00665b;
+    --brand-link-hover: #00665b;
+
+    /* Pale tints of the brand green, used for informational alerts */
+    --brand-subtle-bg: #cce6e3;
+    --brand-subtle-border: #99ccc7;
+    --brand-subtle-text: #00332d;
 
     /* Bootstrap 5.3 reads these for .bg-primary, .text-primary, .border-primary and links */
     --bs-primary: var(--brand-primary);
@@ -19,7 +25,23 @@
     --bs-link-color: var(--brand-primary);
     --bs-link-color-rgb: var(--brand-primary-rgb);
     --bs-link-hover-color: var(--brand-link-hover);
-    --bs-link-hover-color-rgb: 15, 66, 84;
+    --bs-link-hover-color-rgb: 0, 102, 91;
+}
+
+/* Informational alerts use the brand green tints instead of Bootstrap's cyan */
+.alert-info {
+    --bs-alert-color: var(--brand-subtle-text);
+    --bs-alert-bg: var(--brand-subtle-bg);
+    --bs-alert-border-color: var(--brand-subtle-border);
+    --bs-alert-link-color: var(--brand-subtle-text);
+}
+
+/* Status badges: pale green with dark text, so they don't read as the solid brand-green buttons.
+   Scoped to .badge - solid bg-success on cards/toasts is left alone. */
+.badge.bg-success {
+    background-color: var(--bs-success-bg-subtle) !important;
+    color: var(--bs-success-text-emphasis);
+    border: 1px solid var(--bs-success-border-subtle);
 }
 
 /* CSS Custom Properties for Map Colors */
