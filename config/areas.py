@@ -193,15 +193,16 @@ def get_area_info(letter_code):
     circle_areas = _get_circle_areas()
     area = circle_areas.get(letter_code.upper())
     if area:
+        # NULL columns become '' so templates never print the word "None"
         return {
             'name': area['name'],
-            'description': area['description'],
-            'terrain': area['terrain'],
+            'description': area['description'] or '',
+            'terrain': area['terrain'] or '',
         }
     return {
         'name': f'Area {letter_code}',
-        'description': 'Area description not available',
-        'terrain': 'Unknown'
+        'description': '',
+        'terrain': '',
     }
 
 def get_all_areas():

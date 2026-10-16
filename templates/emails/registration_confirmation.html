@@ -168,8 +168,8 @@
         <div class="area-info">
             <h4>🗺️ Area: {{ assigned_area }}</h4>
             <p><strong>{{ area_info.name }}</strong></p>
-            <p><strong>Description:</strong> {{ area_info.description }}</p>
-            <p><strong>Terrain:</strong> {{ area_info.terrain }}</p>
+            {% if area_info.description %}<p><strong>Description:</strong> {{ area_info.description }}</p>{% endif %}
+            {% if area_info.terrain %}<p><strong>Terrain:</strong> {{ area_info.terrain }}</p>{% endif %}
 
             {% if area_leaders %}
             <div style="margin-top: 15px;">

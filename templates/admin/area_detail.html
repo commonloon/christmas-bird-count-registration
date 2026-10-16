@@ -273,7 +273,8 @@
         <div class="row">
             <div class="col-md-6">
                 <p><strong>Full Name:</strong> {{ area_info.name }}</p>
-                <p><strong>Habitat:</strong> {{ area_info.description or 'General urban/suburban' }}</p>
+                {% if area_info.description %}<p><strong>Description:</strong> {{ area_info.description }}</p>{% endif %}
+                {% if area_info.terrain %}<p><strong>Terrain:</strong> {{ area_info.terrain }}</p>{% endif %}
             </div>
             <div class="col-md-6">
                 <p><strong>{{ previous_year }} Team Size:</strong>

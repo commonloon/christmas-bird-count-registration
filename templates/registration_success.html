@@ -23,10 +23,9 @@
             </div>
             <div class="card-body">
                 {% if area != 'UNASSIGNED' %}
-                    <p><strong>Description:</strong> {{ area_info.description }}</p>
-                    <p><strong>Terrain:</strong> {{ area_info.terrain }}</p>
-
-                    <hr>
+                    {% if area_info.description %}<p><strong>Description:</strong> {{ area_info.description }}</p>{% endif %}
+                    {% if area_info.terrain %}<p><strong>Terrain:</strong> {{ area_info.terrain }}</p>{% endif %}
+                    {% if area_info.description or area_info.terrain %}<hr>{% endif %}
                 {% endif %}
                 
                 <h4>What's Next?</h4>

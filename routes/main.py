@@ -353,15 +353,8 @@ def registration_success():
     area = request.args.get('area', 'Unknown')
     participant_id = request.args.get('participant_id')
 
-    if area == 'UNASSIGNED':
-        area_info = {
-            'name': 'Assignment Pending',
-            'description': 'You will be assigned to an area by the organizers based on volunteer needs and your experience level.',
-            'difficulty': 'To be determined',
-            'terrain': 'To be determined'
-        }
-    else:
-        area_info = get_area_info(area)
+    # The template doesn't use area_info for UNASSIGNED registrations
+    area_info = None if area == 'UNASSIGNED' else get_area_info(area)
 
     org_vars = get_organization_variables()
     return render_template('registration_success.html',
