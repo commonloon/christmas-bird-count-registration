@@ -2095,13 +2095,14 @@ def circle_areas_edit(slug):
     code = (data.get('code') or '').strip().upper()
     name = sanitize_text_input(data.get('name', ''), max_length=200)
     description = sanitize_notes(data.get('description', ''))
-    difficulty = sanitize_text_input(data.get('difficulty', ''), max_length=50)
+    # The UI no longer shows or sends difficulty; None leaves the stored value untouched
+    difficulty = sanitize_text_input(data['difficulty'], max_length=50) if 'difficulty' in data else None
     terrain = sanitize_text_input(data.get('terrain', ''), max_length=200)
 
     if not code or not name:
         return jsonify({'success': False, 'message': 'Area name is required.'}), 400
 
-    for text_input in (name, description, difficulty, terrain):
+    for text_input in (name, description, difficulty or '', terrain):
         if is_suspicious_input(text_input):
             log_security_event('Suspicious admin input', 'Edit circle area attempt with suspicious input', get_current_user().get('email'))
             return jsonify({'success': False, 'message': 'Invalid input detected.'}), 400

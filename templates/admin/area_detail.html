@@ -276,15 +276,6 @@
                 <p><strong>Habitat:</strong> {{ area_info.description or 'General urban/suburban' }}</p>
             </div>
             <div class="col-md-6">
-                <p><strong>Difficulty:</strong> 
-                    {% if area_code in ['A', 'B', 'W'] %}
-                        <span class="badge bg-warning">Challenging</span>
-                    {% elif area_code in ['L', 'K', 'P'] %}
-                        <span class="badge bg-success">Beginner Friendly</span>
-                    {% else %}
-                        <span class="badge bg-secondary">Moderate</span>
-                    {% endif %}
-                </p>
                 <p><strong>{{ previous_year }} Team Size:</strong>
                     {% if previous_year_team_size is none %}no {{ previous_year }} data{% else %}{{ previous_year_team_size }} participant{% if previous_year_team_size != 1 %}s{% endif %}{% endif %}
                 </p>

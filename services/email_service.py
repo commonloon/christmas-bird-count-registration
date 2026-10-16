@@ -265,7 +265,6 @@ This is an automated notification from the CBC registration system.
             area_info = {
                 'name': 'Area A - Sample Neighbourhood',
                 'description': 'Sample area description for preview purposes.',
-                'difficulty': 'Moderate',
                 'terrain': 'Urban parks and residential streets',
             }
             area_leaders = [{

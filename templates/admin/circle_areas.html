@@ -14,7 +14,7 @@
         <div class="table-responsive">
             <table class="table table-striped table-hover align-middle" id="areas-table">
                 <thead>
-                    <tr><th>Code</th><th>Name</th><th>Description</th><th>Difficulty</th><th>Terrain</th><th>Boundary</th><th></th></tr>
+                    <tr><th>Code</th><th>Name</th><th>Description</th><th>Terrain</th><th>Boundary</th><th></th></tr>
                 </thead>
                 <tbody>
                     {% for area in areas %}
@@ -30,12 +30,6 @@
                             <div class="description-display">{{ area.description|e }}</div>
                             <div class="description-edit initially-hidden">
                                 <textarea class="form-control form-control-sm description-input" rows="2" maxlength="1000">{{ area.description or '' }}</textarea>
-                            </div>
-                        </td>
-                        <td>
-                            <div class="difficulty-display">{{ area.difficulty|e }}</div>
-                            <div class="difficulty-edit initially-hidden">
-                                <input type="text" class="form-control form-control-sm difficulty-input" value="{{ area.difficulty or '' }}" maxlength="50">
                             </div>
                         </td>
                         <td>
@@ -82,7 +76,7 @@
         <p class="text-muted small">
             Upload a KML export from Google My Maps. Each placemark whose name contains an area
             code (e.g. "Area A", "1 - Name") is matched to that area's code, and its name,
-            description, and boundary shape are updated - existing difficulty/terrain labels are
+            description, and boundary shape are updated - existing terrain labels are
             left alone. Areas not mentioned in the file are untouched; areas mentioned but not
             already defined are created. The circle's map center is also refreshed from the
             imported shapes.
@@ -106,7 +100,7 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const FIELD_CLASSES = ['name', 'description', 'difficulty', 'terrain'];
+    const FIELD_CLASSES = ['name', 'description', 'terrain'];
 
     document.querySelectorAll('#areas-table .btn-edit').forEach(button => {
         button.addEventListener('click', function() {
@@ -150,7 +144,6 @@ document.addEventListener('DOMContentLoaded', function() {
             code: code,
             name: row.querySelector('.name-input').value.trim(),
             description: row.querySelector('.description-input').value.trim(),
-            difficulty: row.querySelector('.difficulty-input').value.trim(),
             terrain: row.querySelector('.terrain-input').value.trim(),
             csrf_token: '{{ csrf_token() }}'
         };
@@ -178,7 +171,6 @@ document.addEventListener('DOMContentLoaded', function() {
             if (data.success) {
                 row.querySelector('.name-display').textContent = payload.name;
                 row.querySelector('.description-display').textContent = payload.description;
-                row.querySelector('.difficulty-display').textContent = payload.difficulty;
                 row.querySelector('.terrain-display').textContent = payload.terrain;
                 disableEditMode(row);
             } else {

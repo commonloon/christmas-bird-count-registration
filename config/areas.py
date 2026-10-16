@@ -196,13 +196,11 @@ def get_area_info(letter_code):
         return {
             'name': area['name'],
             'description': area['description'],
-            'difficulty': area['difficulty'],
             'terrain': area['terrain'],
         }
     return {
         'name': f'Area {letter_code}',
         'description': 'Area description not available',
-        'difficulty': 'Unknown',
         'terrain': 'Unknown'
     }
 
