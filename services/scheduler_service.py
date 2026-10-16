@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2026-09-28
+# Updated by Claude AI on 2026-10-15
 """
 Cron-driven email scheduling (SCHEDULER_ARCHITECTURE_PLAN.txt).
 
@@ -25,6 +25,7 @@ from sqlalchemy import text
 from config.admins import get_admin_emails
 from config.database import get_db_session
 from config.email_content_blocks import SCHEDULABLE_EMAIL_TYPES
+from config.email_settings import ADMINLESS_CIRCLES_DIGEST_HOUR, ADMINLESS_CIRCLES_DIGEST_TIMEZONE
 from models.app_settings import AppSettingsModel
 from models.circle import CircleAdminModel, CircleModel
 from models.db import get_engine
@@ -39,6 +40,11 @@ RETRY_WINDOW = timedelta(hours=3)
 TICK_ADVISORY_LOCK_KEY = 7_261_800_112
 ERROR_SUMMARY_MAX_CHARS = 2000
 MISSED_WINDOW_MESSAGE = 'did not run within the 3h retry window'
+
+# Not a circle_email_schedules email type (it has no circle), so its last attempt
+# lives in app_settings instead of the per-circle run log.
+ADMINLESS_DIGEST_LAST_ATTEMPT_KEY = 'adminless_circles_digest_last_attempt'
+ADMINLESS_DIGEST_EMAIL_TYPE = 'adminless_circles_digest'
 
 MANUAL_RUN_OUT_OF_SEASON_MESSAGE = "This circle is outside its email season (registration opening through the count date)."
 
@@ -267,6 +273,75 @@ def send_failure_notifications(db, failures, circles_by_slug):
     return sent
 
 
+def find_adminless_circles(db):
+    """Every circle (in any season) that has no circle-admin configured, as
+    [{'slug', 'circle_name'}, ...] ordered by slug."""
+    admin_model = CircleAdminModel(db)
+    return [
+        {'slug': c['slug'], 'circle_name': c.get('circle_name') or c['slug']}
+        for c in CircleModel(db).get_all()
+        if not admin_model.get_admins_for_circle(c['slug'])
+    ]
+
+
+def adminless_digest_is_due(last_attempt_iso, now_utc):
+    """True if today's occurrence (ADMINLESS_CIRCLES_DIGEST_HOUR in
+    ADMINLESS_CIRCLES_DIGEST_TIMEZONE) is within RETRY_WINDOW and has not been
+    attempted yet. Same attempt-once rule as the per-circle schedules: a failed
+    attempt is reported, not retried."""
+    occurrence = most_recent_occurrence(
+        ADMINLESS_CIRCLES_DIGEST_HOUR, None, now_utc, ADMINLESS_CIRCLES_DIGEST_TIMEZONE)
+    if now_utc - occurrence > RETRY_WINDOW:
+        return False
+    if last_attempt_iso:
+        try:
+            if datetime.fromisoformat(last_attempt_iso) >= occurrence:
+                return False
+        except ValueError:
+            pass
+    return True
+
+
+def run_adminless_circles_digest(db, now_utc):
+    """Daily alert to the super-admins only, naming every circle with no
+    circle-admins (the circle admins are who normally act on a circle's
+    unassigned-participants digest, so a circle without any needs fixing).
+    Sends nothing when every circle has an admin. Returns None if not due now,
+    else (sent, failure) where failure is a dict for send_failure_notifications
+    or None."""
+    settings = AppSettingsModel(db)
+    if not adminless_digest_is_due(settings.get(ADMINLESS_DIGEST_LAST_ATTEMPT_KEY), now_utc):
+        return None
+    settings.set(ADMINLESS_DIGEST_LAST_ATTEMPT_KEY, now_utc.isoformat())
+
+    adminless = find_adminless_circles(db)
+    if not adminless:
+        return False, None
+
+    today = now_utc.astimezone(pytz.timezone(ADMINLESS_CIRCLES_DIGEST_TIMEZONE)).strftime('%Y-%m-%d')
+    lines = [f"- {c['circle_name']} ({c['slug']})" for c in adminless]
+    subject = f'[CBC Scheduler] {len(adminless)} circle(s) with no admins configured - {today}'
+    body = (
+        'The following circles have no circle admins configured, so nobody receives their '
+        'unassigned participants digest or can act on their registrations:\n\n' + '\n'.join(lines) +
+        '\n\nAdd a circle admin for each from the circle admin page. You will get this email '
+        'each day until every circle has at least one.\n'
+    )
+    try:
+        sent = email_service.send_email(
+            sorted(set(get_admin_emails())), subject, body,
+            from_email=settings.get_scheduler_alert_from_email())
+    except Exception as e:
+        logger.error(f'Could not send no-admins circle digest: {e}', exc_info=True)
+        sent = False
+    if sent:
+        return True, None
+    return False, {
+        'circle_slug': '(all circles)', 'email_type': ADMINLESS_DIGEST_EMAIL_TYPE,
+        'occurrence_local': today, 'error_summary': 'send failed',
+    }
+
+
 def tick(app, now_utc=None, generators=None, only_circles=None):
     """Run everything that is due right now. Returns a JSON-serializable summary.
     `now_utc` and `generators` are injectable for tests; `only_circles` (an
@@ -329,6 +404,15 @@ def tick(app, now_utc=None, generators=None, only_circles=None):
                 failures.append(_format_failure(
                     schedule['circle_slug'], schedule['email_type'], entry['occurrence'],
                     circle['display_timezone'], error_summary))
+
+        if only_circles is None:  # a global job: a hand-run for specific circles skips it
+            digest = run_adminless_circles_digest(get_db_session(), now_utc)
+            if digest is not None:
+                sent, digest_failure = digest
+                summary['adminless_digest_sent'] = sent
+                if digest_failure:
+                    summary['failed'] += 1
+                    failures.append(digest_failure)
 
         summary['notified'] = send_failure_notifications(get_db_session(), failures, circles_by_slug)
 

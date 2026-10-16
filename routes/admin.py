@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2026-10-11
+# Updated by Claude AI on 2026-10-15
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response, g, current_app, session
 from config.database import get_db_session
 from config.email_settings import is_test_server
@@ -13,7 +13,6 @@ from config.fields import (
     normalize_participant_record, get_participant_csv_fields,
     get_participant_field_default, get_participant_display_name
 )
-from config.admins import get_admin_emails
 from routes.auth import require_admin, require_super_admin, get_current_user
 from models.circle import CircleModel, CircleAreaModel, CircleAdminModel
 from models.email_content import EmailContentModel
@@ -980,33 +979,6 @@ def export_csv():
     response.headers['Content-type'] = 'text/csv'
 
     return response
-
-
-@admin_bp.route('/send_unassigned_digest', methods=['POST'])
-@require_admin
-def send_unassigned_digest():
-    """Manually trigger unassigned participant digest email."""
-    if not g.db:
-        flash('Database unavailable.', 'error')
-        return redirect(url_for('admin.dashboard'))
-
-    selected_year = int(request.form.get('year', datetime.now().year))
-    participant_model = ParticipantModel(g.db, selected_year)
-
-    unassigned_participants = participant_model.get_unassigned_participants()
-
-    if not unassigned_participants:
-        flash('No unassigned participants to report.', 'info')
-        return redirect(url_for('admin.dashboard', year=selected_year))
-
-    admin_emails = get_admin_emails()
-
-    if email_service.send_unassigned_digest(admin_emails, unassigned_participants):
-        flash(f'Unassigned participant digest sent to {len(admin_emails)} administrators.', 'success')
-    else:
-        flash('Failed to send digest email.', 'error')
-
-    return redirect(url_for('admin.dashboard', year=selected_year))
 
 
 @admin_bp.route('/edit_leader', methods=['POST'])

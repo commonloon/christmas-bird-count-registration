@@ -31,6 +31,8 @@ from services.email_service import email_service
 from services.scheduler_service import (
     MANUAL_RUN_OUT_OF_SEASON_MESSAGE, MISSED_WINDOW_MESSAGE, classify_schedule_rows, is_in_season,
     most_recent_occurrence, run_manual, tick, tick_lock,
+    ADMINLESS_DIGEST_LAST_ATTEMPT_KEY, adminless_digest_is_due, find_adminless_circles,
+    run_adminless_circles_digest,
 )
 from tests.test_config import TEST_CIRCLE_SLUG, TEST_CIRCLE_SLUG_2
 from tests.unit.conftest import CIRCLE_ADMIN_TEST_EMAIL
@@ -546,3 +548,78 @@ class TestAppSettings:
         finally:
             db.query(AppSetting).filter_by(key=SCHEDULER_ALERT_FROM_EMAIL_KEY).delete()
             db.commit()
+
+
+# 08:00 America/Vancouver (config/email_settings.py) on 2026-10-15 is 15:00 UTC (PDT).
+ADMINLESS_DUE_NOW = utc(2026, 10, 15, 15, 30)
+ADMINLESS_TOO_EARLY = utc(2026, 10, 15, 12, 0)    # 05:00 Vancouver, today's slot not reached
+ADMINLESS_PAST_WINDOW = utc(2026, 10, 15, 18, 30)  # 11:30 Vancouver, > 3h after the slot
+
+
+@pytest.fixture
+def clean_adminless_state(db):
+    db.query(AppSetting).filter_by(key=ADMINLESS_DIGEST_LAST_ATTEMPT_KEY).delete()
+    db.commit()
+    yield
+    db.query(AppSetting).filter_by(key=ADMINLESS_DIGEST_LAST_ATTEMPT_KEY).delete()
+    db.commit()
+
+
+class TestAdminlessCirclesDigest:
+    def test_due_only_in_the_window_after_the_configured_time(self):
+        assert adminless_digest_is_due(None, ADMINLESS_DUE_NOW) is True
+        assert adminless_digest_is_due(None, ADMINLESS_TOO_EARLY) is False
+        assert adminless_digest_is_due(None, ADMINLESS_PAST_WINDOW) is False
+
+    def test_not_due_again_once_attempted_today_but_due_again_tomorrow(self):
+        attempted = ADMINLESS_DUE_NOW.isoformat()
+        assert adminless_digest_is_due(attempted, ADMINLESS_DUE_NOW + timedelta(minutes=30)) is False
+        assert adminless_digest_is_due(attempted, ADMINLESS_DUE_NOW + timedelta(days=1)) is True
+
+    def test_lists_only_circles_with_no_admins_to_super_admins_only(
+            self, db, clean_adminless_state, sent_emails, circle_admin_row):
+        """circle_admin_row gives the test circle an admin; the other circles in the test DB have none."""
+        slugs = [c['slug'] for c in find_adminless_circles(db)]
+        assert TEST_CIRCLE_SLUG not in slugs
+        if not slugs:
+            pytest.skip('every circle in the test DB has an admin')
+
+        result = run_adminless_circles_digest(db, ADMINLESS_DUE_NOW)
+
+        assert result == (True, None)
+        assert len(sent_emails) == 1
+        email = sent_emails[0]
+        assert CIRCLE_ADMIN_TEST_EMAIL not in email['to']
+        assert 'cbc-test-admin1@naturevancouver.ca' in email['to']
+        assert f'({TEST_CIRCLE_SLUG})' not in email['body']
+        for slug in slugs:
+            assert f'({slug})' in email['body']
+        assert email['from'] == DEFAULT_SCHEDULER_ALERT_FROM_EMAIL
+
+    def test_attempted_once_per_day(self, db, clean_adminless_state, sent_emails):
+        run_adminless_circles_digest(db, ADMINLESS_DUE_NOW)
+        count = len(sent_emails)
+
+        assert run_adminless_circles_digest(db, ADMINLESS_DUE_NOW + timedelta(hours=1)) is None
+        assert len(sent_emails) == count
+
+    def test_nothing_sent_when_every_circle_has_an_admin(self, db, clean_adminless_state, sent_emails, monkeypatch):
+        monkeypatch.setattr(scheduler_service, 'find_adminless_circles', lambda db: [])
+
+        assert run_adminless_circles_digest(db, ADMINLESS_DUE_NOW) == (False, None)
+        assert sent_emails == []
+
+    def test_send_failure_is_returned_for_the_failure_alert_and_not_retried(self, db, clean_adminless_state, monkeypatch):
+        monkeypatch.setattr(scheduler_service, 'find_adminless_circles',
+                            lambda db: [{'slug': 'x', 'circle_name': 'X'}])
+        monkeypatch.setattr(email_service, 'send_email', lambda *a, **k: False)
+
+        sent, failure = run_adminless_circles_digest(db, ADMINLESS_DUE_NOW)
+
+        assert sent is False and failure['email_type'] == 'adminless_circles_digest'
+        assert run_adminless_circles_digest(db, ADMINLESS_DUE_NOW + timedelta(minutes=30)) is None
+
+    def test_tick_for_specific_circles_does_not_run_it(self, db, scheduled_circle, sent_emails, clean_adminless_state):
+        summary, _ = run_tick(now=ADMINLESS_DUE_NOW)
+
+        assert 'adminless_digest_sent' not in summary

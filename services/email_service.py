@@ -153,46 +153,6 @@ ORIGINAL MESSAGE:
             logger.error(f"Failed to send email via {self.config['provider_name']}: {e}")
             return False
 
-    def send_unassigned_digest(self, admin_emails: List[str],
-                               unassigned_participants: List[Dict]) -> bool:
-        """Send daily digest of unassigned participants to admins."""
-        if not unassigned_participants:
-            return True  # No unassigned participants, nothing to send
-
-        # Get organization variables from config
-        org_vars = get_organization_variables()
-
-        subject = f"CBC Registration: {len(unassigned_participants)} Unassigned Participants"
-
-        body = f"""
-{org_vars['count_event_name']} - Daily Digest
-
-There are {len(unassigned_participants)} participants who selected "Wherever I'm needed most" and need area assignment:
-
-"""
-
-        for i, participant in enumerate(unassigned_participants, 1):
-            body += f"""
-{i}. {participant.get('first_name', '')} {participant.get('last_name', '')}
-   Email: {participant.get('email', '')}
-   Phone: {participant.get('phone', 'Not provided')}
-   Skill Level: {participant.get('skill_level', 'Not specified')}
-   CBC Experience: {participant.get('experience', 'Not specified')}
-   Leadership Interest: {'Yes' if participant.get('interested_in_leadership') else 'No'}
-   Registered: {participant.get('created_at', 'Unknown').strftime('%Y-%m-%d %H:%M') if participant.get('created_at') else 'Unknown'}
-
-"""
-
-        body += f"""
-Please log into the admin interface to assign these participants to areas:
-{org_vars['admin_url']}
-
-This is an automated daily digest. You will receive this email each day until all participants are assigned.
-        """
-
-        return self.send_email(admin_emails, subject, body, from_email=org_vars['from_email'],
-                                test_recipient=org_vars['test_recipient'])
-
     def send_area_leader_update(self, leader_emails: List[str], area_code: str,
                                 added_participants: List[Dict],
                                 removed_participants: List[Dict]) -> bool:

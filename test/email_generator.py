@@ -23,7 +23,6 @@ import logging
 from config.database import get_db_session
 from config.organization import get_organization_variables
 from models.db import EmailTimestamp, resolve_default_circle_slug
-from config.admins import ADMIN_EMAILS
 from config.email_settings import (
     is_test_server, get_admin_unassigned_url, get_leader_dashboard_url,
     get_email_branding
@@ -764,14 +763,17 @@ def generate_admin_digest_email(app, circle_slug) -> Dict[str, Any]:
             # Fallback to basic text email
             html_content = None
 
-        # Recipients: union of this circle's own circle-admins and the global
-        # super-admin whitelist - backward-compatible (Vancouver's admins are
-        # already in ADMIN_EMAILS, so its behavior is unchanged) and ensures a
-        # circle with no self-service admins configured yet still gets its digest.
-        circle_admin_emails = [a['email'] for a in CircleAdminModel(db).get_admins_for_circle(circle_slug)]
-        recipients = sorted(set(circle_admin_emails) | set(ADMIN_EMAILS))
+        # Recipients: this circle's own circle-admins only. Super-admins are
+        # deliberately excluded - sorting out a circle's unassigned participants
+        # is the circle admins' job. A circle with no admins at all is reported
+        # to the super-admins by the daily no-admins digest
+        # (services/scheduler_service.py), not by copying them on this one.
+        recipients = sorted(a['email'] for a in CircleAdminModel(db).get_admins_for_circle(circle_slug))
+        if not recipients:
+            logger.warning(f"Circle {circle_slug} has no circle admins - unassigned participants digest not sent")
+            return results
 
-        # Send email to all admins
+        # Send email to the circle's admins
         if email_service.send_email(recipients, subject, '', html_content,
                                      from_email=org_vars['from_email'],
                                      test_recipient=org_vars['test_recipient']):

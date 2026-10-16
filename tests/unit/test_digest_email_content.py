@@ -3,7 +3,7 @@
 Tests for Stage 2 of the email content customization feature
 (EMAIL_CUSTOMIZATION_PLAN.txt): the three Task-Scheduler-driven digest emails
 (team_update, weekly_summary, admin_digest) becoming admin-customizable, and
-the admin_digest recipients fix (union of circle-admins + global ADMIN_EMAILS).
+the admin_digest recipients (this circle's own circle-admins only).
 
 See tests/unit/test_email_content.py for the Stage 1 (registration/withdrawal)
 tests this builds on - the underlying resolution/substitution/route mechanics
@@ -143,29 +143,27 @@ class TestDigestOverrideReachesPreview:
 
 
 class TestAdminDigestRecipients:
-    """The plan's recipients fix: admin_digest must go to the union of this
-    circle's own circle-admins AND the global super-admin whitelist, not just
-    the global list (which was the pre-existing behavior before this
-    session's change - backward-compatible for Vancouver since its admins
-    were already in that global list, but silently excluded a circle's own
-    self-service admins otherwise)."""
+    """admin_digest goes to this circle's own circle-admins ONLY. Super-admins
+    are deliberately excluded: sorting out a circle's unassigned participants
+    is the circle admins' job. A circle with no admins is reported to the
+    super-admins by the separate daily no-admins digest (test_scheduler_service)."""
 
-    def test_recipients_include_both_circle_admin_and_global_admins(self, db_session):
-        from config.admins import ADMIN_EMAILS
-        import app as app_module
-        from test.email_generator import generate_admin_digest_email
-
-        current_year = datetime.now().year
-        participant_model = ParticipantModel(db_session, current_year, TEST_CIRCLE_SLUG)
+    @pytest.fixture
+    def unassigned_participant(self, db_session):
+        participant_model = ParticipantModel(db_session, datetime.now().year, TEST_CIRCLE_SLUG)
         participant_id = participant_model.add_participant({
             'first_name': 'Digest', 'last_name': 'TestParticipant',
             'email': 'digest-test-participant@example.com',
             'preferred_area': 'UNASSIGNED', 'skill_level': 'Intermediate',
             'experience': '1-2 counts', 'participation_type': 'regular',
         })
-        circle_admin_model = CircleAdminModel(db_session)
-        circle_admin_email = 'digest-recipient-test@example.com'
-        circle_admin_model.add_admin(circle_admin_email, TEST_CIRCLE_SLUG)
+        yield participant_id
+        db_session.query(Participant).filter_by(id=participant_id).delete()
+        db_session.commit()
+
+    def _run_digest(self):
+        import app as app_module
+        from test.email_generator import generate_admin_digest_email
 
         captured = {}
 
@@ -173,15 +171,32 @@ class TestAdminDigestRecipients:
             captured['recipients'] = recipients
             return True
 
-        try:
-            with patch('services.email_service.email_service.send_email', side_effect=fake_send_email):
-                results = generate_admin_digest_email(app_module.app, TEST_CIRCLE_SLUG)
+        with patch('services.email_service.email_service.send_email', side_effect=fake_send_email):
+            results = generate_admin_digest_email(app_module.app, TEST_CIRCLE_SLUG)
+        return results, captured
 
-            assert results['emails_sent'] == 1
-            assert circle_admin_email in captured['recipients']
-            for admin_email in ADMIN_EMAILS:
-                assert admin_email in captured['recipients']
+    def test_recipients_are_the_circle_admins_and_exclude_super_admins(self, db_session, unassigned_participant):
+        from config.admins import get_admin_emails
+
+        circle_admin_model = CircleAdminModel(db_session)
+        circle_admin_email = 'digest-recipient-test@example.com'
+        circle_admin_model.add_admin(circle_admin_email, TEST_CIRCLE_SLUG)
+        try:
+            results, captured = self._run_digest()
         finally:
             circle_admin_model.remove_admin(circle_admin_email, TEST_CIRCLE_SLUG)
-            db_session.query(Participant).filter_by(id=participant_id).delete()
-            db_session.commit()
+
+        assert results['emails_sent'] == 1
+        assert captured['recipients'] == [circle_admin_email]
+        for super_admin in get_admin_emails():
+            assert super_admin not in captured['recipients']
+
+    def test_circle_without_admins_sends_nothing(self, db_session, unassigned_participant):
+        if CircleAdminModel(db_session).get_admins_for_circle(TEST_CIRCLE_SLUG):
+            pytest.skip('test circle unexpectedly has circle admins configured')
+
+        results, captured = self._run_digest()
+
+        assert results['emails_sent'] == 0
+        assert results['errors'] == []
+        assert 'recipients' not in captured

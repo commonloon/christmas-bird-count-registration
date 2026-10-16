@@ -63,17 +63,25 @@ The email system provides automated notifications to area leaders and administra
 - **Leader dashboard link**: Environment-appropriate URL
 - **Team statistics**: Grid layout showing total members, skill level breakdown, experience distribution
 
-**Frequency**: Manual triggers available on test server via admin dashboard (automated scheduling pending)
+**Frequency**: Per the circle's schedule rows; there is no manual-send endpoint.
+
+### 4. Circles with no admins (super-admins only)
+
+**Purpose**: Tell the super-admins which circles have no circle admins configured.
+
+**Recipients**: Super-admins only (`config/admins.py`).
+
+**Trigger Conditions**: Once per day at `ADMINLESS_CIRCLES_DIGEST_HOUR` in `ADMINLESS_CIRCLES_DIGEST_TIMEZONE` (`config/email_settings.py`), run from the hourly `tick-scheduled-emails`. Covers every circle regardless of season. Sent only when at least one circle has no admins. Attempted once per day (not retried; a failed send is reported like other scheduler failures).
 
 ### 3. Daily Admin Digest
 
 **Purpose**: Notify administrators of participants needing area assignment
 
 **Recipients**:
-- All admin emails from `config/admins.py`
+- The circle admins of the affected circle only (`circle_admins` table). Super-admins are not included. A circle with no admins sends nothing; see "Circles with no admins" below.
 
 **Trigger Conditions**:
-- Intended schedule daily at 5pm local time (use timezone from config.py)
+- Per-circle schedule (`circle_email_schedules`), in season only
 - Participants exist with `preferred_area="UNASSIGNED"`
 - Only sent when unassigned participants are present
 

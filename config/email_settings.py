@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2026-01-12
+# Updated by Claude AI on 2026-10-15
 # Email service configuration and SMTP settings
 import os
 from flask import request
@@ -16,6 +16,14 @@ from config.organization import ORGANIZATION_NAME
 # change + deploy, which is the right amount of friction for that trust
 # decision.
 ALLOWED_FROM_EMAIL_DOMAINS = ['naturevancouver.ca']
+
+
+# When the daily "circles with no admins configured" alert goes to the
+# super-admins (services/scheduler_service.py). It is not tied to any one
+# circle, so unlike the per-circle schedules it is fixed here rather than
+# admin-editable. Hour is 0-23 in the timezone named.
+ADMINLESS_CIRCLES_DIGEST_HOUR = 8
+ADMINLESS_CIRCLES_DIGEST_TIMEZONE = 'America/Vancouver'
 
 
 # Email provider configurations - provider-agnostic design
