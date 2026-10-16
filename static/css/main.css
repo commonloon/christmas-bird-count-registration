@@ -13,9 +13,13 @@
     --brand-primary-active: #0f4254;
     --brand-link-hover: #0f4254;
 
-    /* Bootstrap 5.1 reads these for .bg-primary, .text-primary, .border-primary */
+    /* Bootstrap 5.3 reads these for .bg-primary, .text-primary, .border-primary and links */
     --bs-primary: var(--brand-primary);
     --bs-primary-rgb: var(--brand-primary-rgb);
+    --bs-link-color: var(--brand-primary);
+    --bs-link-color-rgb: var(--brand-primary-rgb);
+    --bs-link-hover-color: var(--brand-link-hover);
+    --bs-link-hover-color-rgb: 15, 66, 84;
 }
 
 /* CSS Custom Properties for Map Colors */
@@ -29,9 +33,9 @@
     --map-color-has-leader: #28a745;   /* Green - leaders map, area has a leader */
 
     /* Withdrawn-participant highlight (in-app tables; emails keep inline colours) */
-    --withdrawn-bg: #fff3cd;
+    --withdrawn-bg: var(--bs-warning-bg-subtle);
     --withdrawn-border: var(--bs-warning);
-    --withdrawn-text: #856404;
+    --withdrawn-text: var(--bs-warning-text-emphasis);
 }
 
 /* Map styling */
@@ -264,61 +268,27 @@
 
 /* Button styling */
 .btn-primary {
-    background-color: var(--brand-primary);
-    border-color: var(--brand-primary);
-}
-
-.btn-primary:hover {
-    background-color: var(--brand-primary-hover);
-    border-color: var(--brand-primary-hover);
-}
-
-.btn-primary:focus,
-.btn-check:focus + .btn-primary {
-    background-color: var(--brand-primary-hover);
-    border-color: var(--brand-primary-hover);
-    box-shadow: 0 0 0 0.25rem rgba(var(--brand-primary-rgb), 0.5);
-}
-
-.btn-primary:active,
-.btn-primary.active,
-.show > .btn-primary.dropdown-toggle {
-    background-color: var(--brand-primary-active);
-    border-color: var(--brand-primary-active);
-}
-
-.btn-primary:disabled,
-.btn-primary.disabled {
-    background-color: var(--brand-primary);
-    border-color: var(--brand-primary);
+    --bs-btn-bg: var(--brand-primary);
+    --bs-btn-border-color: var(--brand-primary);
+    --bs-btn-hover-bg: var(--brand-primary-hover);
+    --bs-btn-hover-border-color: var(--brand-primary-hover);
+    --bs-btn-active-bg: var(--brand-primary-active);
+    --bs-btn-active-border-color: var(--brand-primary-active);
+    --bs-btn-disabled-bg: var(--brand-primary);
+    --bs-btn-disabled-border-color: var(--brand-primary);
+    --bs-btn-focus-shadow-rgb: var(--brand-primary-rgb);
 }
 
 .btn-outline-primary {
-    color: var(--brand-primary);
-    border-color: var(--brand-primary);
-}
-
-.btn-outline-primary:hover,
-.btn-outline-primary:focus,
-.btn-outline-primary:active,
-.btn-outline-primary.active {
-    color: #fff;
-    background-color: var(--brand-primary);
-    border-color: var(--brand-primary);
-}
-
-.btn-outline-primary:focus {
-    box-shadow: 0 0 0 0.25rem rgba(var(--brand-primary-rgb), 0.5);
-}
-
-.btn-link,
-a {
-    color: var(--brand-primary);
-}
-
-.btn-link:hover,
-a:hover {
-    color: var(--brand-link-hover);
+    --bs-btn-color: var(--brand-primary);
+    --bs-btn-border-color: var(--brand-primary);
+    --bs-btn-hover-bg: var(--brand-primary);
+    --bs-btn-hover-border-color: var(--brand-primary);
+    --bs-btn-active-bg: var(--brand-primary);
+    --bs-btn-active-border-color: var(--brand-primary);
+    --bs-btn-disabled-color: var(--brand-primary);
+    --bs-btn-disabled-border-color: var(--brand-primary);
+    --bs-btn-focus-shadow-rgb: var(--brand-primary-rgb);
 }
 
 .form-check-input:checked {
@@ -326,7 +296,7 @@ a:hover {
     border-color: var(--brand-primary);
 }
 
-/* Badge contrast: Bootstrap 5.1 leaves white text on the light warning/info fills */
+/* Badge contrast: Bootstrap leaves white text on the light warning/info fills */
 .badge.bg-warning,
 .badge.bg-info {
     color: #000;

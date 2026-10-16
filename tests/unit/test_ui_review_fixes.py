@@ -164,7 +164,7 @@ class TestWithdrawnStyling:
     def test_withdrawn_classes_defined_with_variables(self):
         css = _read('static', 'css', 'main.css')
         for var in ('--withdrawn-bg', '--withdrawn-border', '--withdrawn-text'):
-            assert re.search(rf'{var}\s*:\s*(#[0-9a-fA-F]{{6}}|var\(--bs-\w+\))', css), var
+            assert re.search(rf'{var}\s*:\s*(#[0-9a-fA-F]{{6}}|var\(--bs-[\w-]+\))', css), var
         for selector in ('.withdrawn-header', '.withdrawn-title', '.withdrawn-row'):
             assert selector in css
 
