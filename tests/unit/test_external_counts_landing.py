@@ -107,6 +107,46 @@ def _row(html, circle_name):
     return html[html.rindex('<tr>', 0, start):html.index('</tr>', start)]
 
 
+def _get_on(app, slug, path, method='GET'):
+    return app.test_client().open(path, method=method, headers={'Host': f'{slug}.cbc.test'})
+
+
+class TestExternalCircleRedirect:
+    def test_public_pages_redirect_to_external_url(self, app_any_host, listed_circles):
+        for path, method in (('/', 'GET'), ('/success', 'GET'), ('/area-leader-info', 'GET'),
+                             ('/register', 'POST')):
+            resp = _get_on(app_any_host, EXT_LINKED, path, method)
+            assert resp.status_code == 302, path
+            assert resp.headers['Location'] == 'https://reg.example/zz', path
+
+    def test_leader_pages_redirect_too(self, app_any_host, listed_circles):
+        resp = _get_on(app_any_host, EXT_LINKED, '/leader/')
+        assert resp.status_code == 302
+
+    def test_without_external_url_redirects_to_matching_landing_page(self, app_any_host, listed_circles):
+        resp = _get_on(app_any_host, EXT_NO_URL, '/')
+        assert resp.status_code == 302
+        assert resp.headers['Location'].startswith('http://cbc.test')
+
+    def test_unsafe_stored_url_is_not_followed(self, app_any_host, listed_circles):
+        db = get_db_session()
+        db.query(Circle).filter_by(slug=EXT_LINKED).update({'external_url': 'javascript:alert(1)'})
+        db.commit()
+        resp = _get_on(app_any_host, EXT_LINKED, '/')
+        assert resp.status_code == 302
+        assert 'javascript' not in resp.headers['Location']
+
+    def test_admin_and_auth_stay_available(self, app_any_host, listed_circles):
+        assert _get_on(app_any_host, EXT_LINKED, '/auth/login').status_code == 200
+        # not redirected to the external site (an anonymous admin hit is sent to log in)
+        resp = _get_on(app_any_host, EXT_LINKED, '/bigbird/')
+        assert 'reg.example' not in resp.headers.get('Location', '')
+
+    def test_internal_circle_is_not_redirected(self, app_any_host, listed_circles):
+        resp = _get_on(app_any_host, INTERNAL, '/')
+        assert resp.status_code == 200
+
+
 class TestLandingExternalCircles:
     def test_external_with_url_links_out_in_new_tab(self, app_any_host, listed_circles):
         row = _row(_landing(app_any_host), 'Zz Linked External')

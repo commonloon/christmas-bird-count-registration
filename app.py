@@ -7,6 +7,7 @@ from config.database import get_db_session, teardown_db_session
 from config.organization import get_organization_variables, get_registration_url, get_admin_url, get_leader_url, DISPLAY_TIMEZONE
 from config.fields import get_skill_level_label
 from services.limiter import limiter
+from services.security import sanitize_http_url
 from services.ip_blocker import IPBlockerService, get_client_ip
 from models.circle import CircleModel, CircleAreaModel
 import mimetypes
@@ -426,6 +427,43 @@ def resolve_circle():
     g.circle = circle
     g.circle_slug = slug
     return None
+
+
+def landing_url(is_cbc):
+    """Absolute URL of the landing page that lists this kind of circle:
+    cbc.birdcount.ca for CBC circles, the bare apex (birdcount.ca) otherwise.
+    Mirrors onto the .test dev hosts (and the dev server's port) under
+    is_test_dev_host(), same as routes/main.py's cross-listing link."""
+    if is_test_dev_host():
+        host = TEST_LANDING_HOST if is_cbc else TEST_APEX_LANDING_HOST
+        return f"{request_scheme()}://{host}{request_port_suffix()}/"
+    return f"https://{LANDING_HOST if is_cbc else APEX_LANDING_HOST}/"
+
+
+# The circle's own public pages. Everything else (/bigbird, /auth, /api, static,
+# robots.txt, the bot-trap routes) is deliberately NOT redirected: admins keep
+# access to the circle's historical data, and the trap routes keep feeding the
+# IP blocker.
+EXTERNAL_REDIRECT_ENDPOINTS = frozenset({
+    'main.index', 'main.register', 'main.registration_success', 'main.area_leader_info',
+})
+
+
+@app.before_request
+def redirect_external_circle():
+    """A circle whose registration is managed elsewhere (circles.is_external)
+    doesn't serve its own registration site: send visitors to its external_url
+    (a registration OR info page), or - when that is empty - to the landing page
+    listing it. 302, not 301: the URL changes, and a circle can be switched back
+    to internal, so browsers must not cache the redirect. Must run after
+    resolve_circle() so g.circle is set."""
+    circle = getattr(g, 'circle', None)
+    if not circle or not circle.get('is_external'):
+        return None
+    if request.endpoint not in EXTERNAL_REDIRECT_ENDPOINTS and request.blueprint != 'leader':
+        return None
+    external_url = sanitize_http_url(circle.get('external_url') or '')
+    return redirect(external_url or landing_url(circle['is_cbc']), code=302)
 
 
 def push_circle_context(circle_slug):
