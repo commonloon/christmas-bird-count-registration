@@ -123,6 +123,62 @@
 </div>
 {% endif %}
 
+{# Updated by Claude AI on 2026-10-16: Potential Leaders moved above Add New Area Leader #}
+<!-- Participants Interested in Leadership -->
+{% if leadership_interested and not is_historical %}
+<div class="card border-info mb-4">
+    <div class="card-header bg-info">
+        <h5 class="mb-0">Potential Leaders ({{ leadership_interested|length }})</h5>
+    </div>
+    <div class="card-body">
+        <p>These participants expressed interest in leadership roles:</p>
+        <div class="table-responsive">
+            <table class="table table-sm table-striped table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Skill Level</th>
+                        <th>Preferred Area</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for participant in leadership_interested %}
+                    <tr>
+                        <td>{{ participant.first_name|e }} {{ participant.last_name|e }}</td>
+                        <td>{{ participant.email|e }}</td>
+                        <td>{{ participant.skill_level|skill_label|e }}</td>
+                        <td>
+                            {% if participant.preferred_area == 'UNASSIGNED' %}
+                                <span class="badge bg-secondary">UNASSIGNED</span>
+                            {% else %}
+                                {{ participant.preferred_area }}
+                            {% endif %}
+                        </td>
+                        <td>
+                            <form method="POST" action="{{ url_for('admin.assign_leader') }}" class="d-inline">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <input type="hidden" name="participant_id" value="{{ participant.id }}">
+                                <input type="hidden" name="year" value="{{ selected_year }}">
+                                <select name="area_code" class="form-select form-select-sm d-inline w-auto" required>
+                                    <option value="">Select area...</option>
+                                    {% for area in all_areas %}
+                                    <option value="{{ area }}">{{ area }} - {{ get_area_info(area).name }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button type="submit" class="btn btn-sm btn-success ms-1">Assign</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <!-- Areas Without Leaders -->
 <!-- Manual Leader Entry Form -->
 {% if not is_historical %}
@@ -243,61 +299,6 @@
                 </div>
                 {% endfor %}
             </div>
-        </div>
-    </div>
-</div>
-{% endif %}
-
-<!-- Participants Interested in Leadership -->
-{% if leadership_interested and not is_historical %}
-<div class="card border-info mb-4">
-    <div class="card-header bg-info">
-        <h5 class="mb-0">Potential Leaders ({{ leadership_interested|length }})</h5>
-    </div>
-    <div class="card-body">
-        <p>These participants expressed interest in leadership roles:</p>
-        <div class="table-responsive">
-            <table class="table table-sm table-striped table-hover align-middle">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Email</th>
-                        <th>Skill Level</th>
-                        <th>Preferred Area</th>
-                        <th>Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for participant in leadership_interested %}
-                    <tr>
-                        <td>{{ participant.first_name|e }} {{ participant.last_name|e }}</td>
-                        <td>{{ participant.email|e }}</td>
-                        <td>{{ participant.skill_level|skill_label|e }}</td>
-                        <td>
-                            {% if participant.preferred_area == 'UNASSIGNED' %}
-                                <span class="badge bg-secondary">UNASSIGNED</span>
-                            {% else %}
-                                {{ participant.preferred_area }}
-                            {% endif %}
-                        </td>
-                        <td>
-                            <form method="POST" action="{{ url_for('admin.assign_leader') }}" class="d-inline">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <input type="hidden" name="participant_id" value="{{ participant.id }}">
-                                <input type="hidden" name="year" value="{{ selected_year }}">
-                                <select name="area_code" class="form-select form-select-sm d-inline w-auto" required>
-                                    <option value="">Select area...</option>
-                                    {% for area in all_areas %}
-                                    <option value="{{ area }}">{{ area }} - {{ get_area_info(area).name }}</option>
-                                    {% endfor %}
-                                </select>
-                                <button type="submit" class="btn btn-sm btn-success ms-1">Assign</button>
-                            </form>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
         </div>
     </div>
 </div>
