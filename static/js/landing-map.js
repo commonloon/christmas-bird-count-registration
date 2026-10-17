@@ -1,5 +1,5 @@
 // Landing page map - shows all count circles on one map
-/* Updated by Claude AI on 2026-10-16 */
+/* Updated by Claude AI on 2026-10-17 */
 
 // Official CBC circle size: 15 miles in diameter (~24km), i.e. 12km radius.
 const CIRCLE_RADIUS_METERS = 12000;
@@ -56,6 +56,61 @@ function initializeLandingMap(circles) {
     if (shapes.length > 0) {
         map.fitBounds(L.featureGroup(shapes).getBounds(), { padding: [30, 30] });
     }
+}
+
+function initializeProblemReports() {
+    const modalEl = document.getElementById('reportProblemModal');
+    const form = document.getElementById('report-problem-form');
+    if (!modalEl || !form) {
+        return;
+    }
+    const modal = new bootstrap.Modal(modalEl);
+    const status = document.getElementById('report-problem-status');
+    const submit = document.getElementById('report-problem-submit');
+
+    function setStatus(text, isError) {
+        status.textContent = text;
+        status.className = 'small ' + (isError ? 'text-danger' : 'text-success');
+    }
+
+    document.querySelectorAll('.report-problem-btn').forEach(function(button) {
+        button.addEventListener('click', function() {
+            document.getElementById('report-problem-slug').value = button.dataset.slug;
+            document.getElementById('report-problem-circle').textContent = button.dataset.name;
+            setStatus('', false);
+            submit.disabled = false;
+            modal.show();
+        });
+    });
+
+    form.addEventListener('submit', function(event) {
+        event.preventDefault();
+        if (!form.reportValidity()) {
+            return;
+        }
+        submit.disabled = true;
+        setStatus('Sending...', false);
+
+        fetch('/report-problem', { method: 'POST', body: new FormData(form) })
+            .then(function(response) {
+                return response.json().catch(function() { return {}; }).then(function(data) {
+                    return { ok: response.ok && data.ok, error: data.error };
+                });
+            })
+            .then(function(result) {
+                if (result.ok) {
+                    form.reset();
+                    setStatus('Thank you - your report has been sent.', false);
+                } else {
+                    submit.disabled = false;
+                    setStatus(result.error || 'Sorry, the report could not be sent.', true);
+                }
+            })
+            .catch(function() {
+                submit.disabled = false;
+                setStatus('Sorry, the report could not be sent.', true);
+            });
+    });
 }
 
 function initializeContactButtons() {

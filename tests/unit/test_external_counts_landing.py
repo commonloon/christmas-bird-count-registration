@@ -147,6 +147,61 @@ class TestExternalCircleRedirect:
         assert resp.status_code == 200
 
 
+class TestReportProblem:
+    ADMIN = 'birdcount+report-problem@naturevancouver.ca'
+
+    @pytest.fixture
+    def sent(self, monkeypatch):
+        import routes.main as main_module
+        sent = []
+        monkeypatch.setattr(main_module, 'get_admin_emails', lambda: [self.ADMIN])
+        monkeypatch.setattr(main_module.email_service, 'send_email',
+                            lambda to, subject, body, **kw: sent.append((to, subject, body)) or True)
+        return sent
+
+    def _post(self, app, host=LANDING_HOST, **form):
+        return app.test_client().post('/report-problem', data=form, headers={'Host': host})
+
+    def test_report_is_emailed_to_super_admins(self, app_any_host, listed_circles, sent):
+        resp = self._post(app_any_host, circle_slug=EXT_LINKED,
+                          message='The link is dead.', reporter_email='Someone@Example.org')
+        assert resp.status_code == 200 and resp.get_json() == {'ok': True}
+        (to, subject, body), = sent
+        assert to == [self.ADMIN]
+        assert 'Zz Linked External' in subject
+        assert 'The link is dead.' in body and 'someone@example.org' in body
+
+    def test_honeypot_sends_nothing_but_looks_successful(self, app_any_host, listed_circles, sent):
+        resp = self._post(app_any_host, circle_slug=EXT_LINKED, message='buy pills', website='http://spam')
+        assert resp.status_code == 200 and sent == []
+
+    @pytest.mark.parametrize('form', [
+        {'circle_slug': EXT_LINKED, 'message': ''},
+        {'circle_slug': EXT_LINKED, 'message': 'abc'},
+        {'circle_slug': 'no-such-circle', 'message': 'Something is wrong'},
+    ])
+    def test_invalid_reports_rejected(self, app_any_host, listed_circles, sent, form):
+        assert self._post(app_any_host, **form).status_code == 400
+        assert sent == []
+
+    def test_only_available_on_landing_hosts(self, app_any_host, listed_circles, sent):
+        resp = self._post(app_any_host, host=f'{INTERNAL}.cbc.test', circle_slug=INTERNAL,
+                          message='Something is wrong')
+        assert resp.status_code == 404 and sent == []
+
+    def test_send_failure_is_reported(self, app_any_host, listed_circles, monkeypatch):
+        import routes.main as main_module
+        monkeypatch.setattr(main_module, 'get_admin_emails', lambda: [self.ADMIN])
+        monkeypatch.setattr(main_module.email_service, 'send_email', lambda *a, **k: False)
+        resp = self._post(app_any_host, circle_slug=EXT_LINKED, message='The link is dead.')
+        assert resp.status_code == 500 and resp.get_json()['ok'] is False
+
+    def test_landing_page_has_report_button_and_disclaimer(self, app_any_host, listed_circles):
+        html = _landing(app_any_host)
+        assert 'report-problem-btn' in html and 'data-slug="zz-ext-linked"' in html
+        assert 'control or endorse those sites' in html
+
+
 class TestLandingExternalCircles:
     def test_external_with_url_links_out_in_new_tab(self, app_any_host, listed_circles):
         row = _row(_landing(app_any_host), 'Zz Linked External')

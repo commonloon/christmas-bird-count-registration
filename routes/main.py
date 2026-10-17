@@ -1,5 +1,5 @@
 # Updated by Claude AI on 2026-09-24
-from flask import Blueprint, render_template, request, redirect, url_for, flash, g, send_from_directory, abort
+from flask import Blueprint, render_template, request, redirect, url_for, flash, g, send_from_directory, abort, jsonify
 from config.database import get_db_session
 from models.participant import ParticipantModel, DuplicateParticipantError
 from models.area_signup_type import AreaSignupTypeModel
@@ -18,6 +18,8 @@ from config.ip_blocking import HONEYPOT_ENABLED
 from datetime import datetime
 import logging
 from services.count_dates import next_count_date
+from config.admins import get_admin_emails
+from models.circle import CircleModel
 from services.security import sanitize_http_url
 
 logger = logging.getLogger(__name__)
@@ -144,6 +146,47 @@ def index():
                          count_date=count_date,
                          registration_status=reg_status,
                          **org_vars)
+
+
+@main_bp.route('/report-problem', methods=['POST'])
+@limiter.limit(RATE_LIMITS['problem_report'], error_message=get_rate_limit_message('problem_report'))
+def report_problem():
+    """Landing-page "Report a problem with this listing" form: emails the message
+    to every super-admin. Super-admins rather than the circle's own contact, since
+    the problem may be that the circle's contact details are no longer valid.
+    Landing hosts only - there is no listing to report on a circle's own site."""
+    if not getattr(g, 'is_landing_host', False):
+        abort(404)
+
+    # Honeypot: real users never see this field, so any value means a bot.
+    # Reply as if it worked so the bot learns nothing.
+    if request.form.get('website'):
+        return jsonify({'ok': True})
+
+    message = sanitize_notes(request.form.get('message', ''))
+    reporter_email = sanitize_email(request.form.get('reporter_email', ''))
+    if reporter_email and not validate_email_format(reporter_email):
+        reporter_email = ''
+    circle = CircleModel(g.db).get_by_slug(request.form.get('circle_slug', '')) if g.db else None
+
+    if not circle or len(message) < 5:
+        return jsonify({'ok': False, 'error': 'Please describe the problem in a few words.'}), 400
+
+    subject = f"[CBC listing problem] {circle['circle_name']}"
+    body = (
+        f"A visitor reported a problem with the listing for \"{circle['circle_name']}\" "
+        f"(slug: {circle['slug']}, {'external' if circle.get('is_external') else 'internal'}).\n\n"
+        f"Message:\n{message}\n\n"
+        f"Reply-to address given: {reporter_email or '(none)'}\n"
+    )
+    try:
+        sent = email_service.send_email(sorted(set(get_admin_emails())), subject, body)
+    except Exception as e:
+        logger.error(f"Problem report email failed: {e}", exc_info=True)
+        sent = False
+    if not sent:
+        return jsonify({'ok': False, 'error': 'Sorry, the report could not be sent. Please try again later.'}), 500
+    return jsonify({'ok': True})
 
 
 @main_bp.route('/register', methods=['POST'])

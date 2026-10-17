@@ -1,4 +1,4 @@
-{# Updated by Claude AI on 2026-10-16 #}
+{# Updated by Claude AI on 2026-10-17 #}
 {% extends "base.html" %}
 
 {% block title %}{% if is_apex %}Bird Counts{% else %}Christmas Bird Count Circles{% endif %}{% endblock %}
@@ -58,6 +58,12 @@
                         <button type="button" class="btn btn-sm btn-outline-secondary show-contact-btn" data-slug="{{ circle.slug|e }}">
                             Show contact
                         </button>
+                        <div>
+                            <button type="button" class="btn btn-link btn-sm p-0 report-problem-btn"
+                                    data-slug="{{ circle.slug|e }}" data-name="{{ circle.circle_name|e }}">
+                                Report a problem
+                            </button>
+                        </div>
                     </td>
                 </tr>
                 {% endfor %}
@@ -71,6 +77,41 @@
         {% endif %}
     </div>
 </div>
+
+<p class="small text-muted mt-3 mb-0">Some counts are registered through other websites. We don't control or endorse those sites or their content. Count details are supplied by organizers and may change, so please confirm with the organizer. Use "Report a problem" if something looks wrong.</p>
+
+<div class="modal fade" id="reportProblemModal" tabindex="-1" aria-labelledby="reportProblemTitle" aria-hidden="true">
+    <div class="modal-dialog">
+        <form class="modal-content" id="report-problem-form" novalidate>
+            <div class="modal-header">
+                <h5 class="modal-title" id="reportProblemTitle">Report a problem</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-2">Listing: <strong id="report-problem-circle"></strong></p>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="circle_slug" id="report-problem-slug">
+                <div class="mb-3">
+                    <label for="report-problem-message" class="form-label">What is wrong? *</label>
+                    <textarea class="form-control" id="report-problem-message" name="message" rows="4" maxlength="1000" required></textarea>
+                </div>
+                <div class="mb-3">
+                    <label for="report-problem-email" class="form-label">Your email (optional, if you'd like a reply)</label>
+                    <input type="email" class="form-control" id="report-problem-email" name="reporter_email" maxlength="254">
+                </div>
+                <div style="position:absolute; left:-10000px;" aria-hidden="true">
+                    <label for="report-problem-website">Leave this field empty</label>
+                    <input type="text" id="report-problem-website" name="website" tabindex="-1" autocomplete="off">
+                </div>
+                <div id="report-problem-status" role="status" class="small"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="submit" class="btn btn-primary" id="report-problem-submit">Send report</button>
+            </div>
+        </form>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -80,6 +121,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const circles = {{ circles|tojson }};
     initializeLandingMap(circles);
     initializeContactButtons();
+    initializeProblemReports();
 });
 </script>
 {% endblock %}

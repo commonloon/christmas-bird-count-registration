@@ -23,6 +23,10 @@ RATE_LIMITS = {
     'admin_general': '30 per minute',     # Dashboard, participant lists, browsing
     'admin_modify': '30 per minute',      # Adding/editing leaders, assigning participants (fast admin work)
     
+    # Landing-page "Report a problem" form - emails every super-admin per submission,
+    # so deliberately much tighter than the other public endpoints
+    'problem_report': '20 per minute' if is_test_mode() else '3 per minute',
+
     # Authentication endpoints - higher in test mode: an automated browser suite can
     # legitimately trigger more than 5 login-related requests/minute (e.g. any
     # unauthenticated request to an admin/leader route redirects to /auth/login,
@@ -65,6 +69,7 @@ def get_rate_limit_message(endpoint_type: str) -> str:
         'admin_general': 'Too many requests. Please wait a moment.',
         'admin_modify': 'Too many changes. Please wait a moment before making more modifications.',
         'auth': 'Too many authentication attempts. Please wait before trying again.',
+        'problem_report': 'Too many reports. Please wait a minute before sending another.',
     }
     
     return messages.get(endpoint_type, 'Rate limit exceeded. Please wait before trying again.')
