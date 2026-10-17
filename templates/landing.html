@@ -1,4 +1,4 @@
-{# Updated by Claude AI on 2026-08-30 #}
+{# Updated by Claude AI on 2026-10-16 #}
 {% extends "base.html" %}
 
 {% block title %}{% if is_apex %}Bird Counts{% else %}Christmas Bird Count Circles{% endif %}{% endblock %}
@@ -29,6 +29,7 @@
             <thead>
                 <tr>
                     <th scope="col">Circle</th>
+                    <th scope="col">Date</th>
                     <th scope="col">Managing Organization</th>
                     <th scope="col">Contact</th>
                 </tr>
@@ -36,8 +37,23 @@
             <tbody>
                 {% for circle in circles|sort(attribute='circle_name') %}
                 <tr>
-                    <td><a href="{{ circle.url|e }}">{{ circle.circle_name|e }}</a></td>
-                    <td>{{ circle.organization_name|e }}</td>
+                    <td>
+                        {% if circle.url and circle.is_external %}
+                        <a href="{{ circle.url|e }}" target="_blank" rel="noopener noreferrer">{{ circle.circle_name|e }}<span aria-hidden="true"> &#8599;</span><span class="visually-hidden"> (external site, opens in a new tab)</span></a>
+                        {% elif circle.url %}
+                        <a href="{{ circle.url|e }}">{{ circle.circle_name|e }}</a>
+                        {% else %}
+                        {{ circle.circle_name|e }}
+                        {% endif %}
+                    </td>
+                    <td{% if circle.count_date_past %} class="text-muted"{% endif %}>{{ circle.count_date|e }}{% if circle.count_date_past %} <small>(past)</small>{% endif %}</td>
+                    <td>
+                        {% if circle.organization_name and circle.organization_url %}
+                        <a href="{{ circle.organization_url|e }}" target="_blank" rel="noopener noreferrer">{{ circle.organization_name|e }}</a>
+                        {% else %}
+                        {{ (circle.organization_name or '')|e }}
+                        {% endif %}
+                    </td>
                     <td>
                         <button type="button" class="btn btn-sm btn-outline-secondary show-contact-btn" data-slug="{{ circle.slug|e }}">
                             Show contact

@@ -1,5 +1,5 @@
 // Landing page map - shows all count circles on one map
-/* Updated by Claude AI on 2026-08-30 */
+/* Updated by Claude AI on 2026-10-16 */
 
 // Official CBC circle size: 15 miles in diameter (~24km), i.e. 12km radius.
 const CIRCLE_RADIUS_METERS = 12000;
@@ -26,9 +26,22 @@ function initializeLandingMap(circles) {
 
         // Built via DOM APIs (not an HTML string) so a circle name can never be
         // interpreted as markup - bindPopup renders whatever it's given as raw HTML.
-        const link = document.createElement('a');
-        link.href = circle.url;
-        link.textContent = circle.circle_name;
+        // An external circle with no external URL is listed without a link.
+        let popupContent;
+        if (circle.url) {
+            const link = document.createElement('a');
+            link.href = circle.url;
+            link.textContent = circle.circle_name;
+            if (circle.is_external) {
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.textContent += ' \u2197';
+            }
+            popupContent = link;
+        } else {
+            popupContent = document.createElement('span');
+            popupContent.textContent = circle.circle_name;
+        }
 
         const circleShape = L.circle([circle.latitude, circle.longitude], {
             radius: CIRCLE_RADIUS_METERS,
@@ -36,7 +49,7 @@ function initializeLandingMap(circles) {
             weight: 2,
             fillOpacity: 0.15
         }).addTo(map);
-        circleShape.bindPopup(link);
+        circleShape.bindPopup(popupContent);
         shapes.push(circleShape);
     });
 

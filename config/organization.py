@@ -223,12 +223,13 @@ def get_organization_variables():
     correctly-resolved circle that simply hasn't filled in an optional field
     (very normal for a newly-created circle) gets a plain, neutral unset_default
     below, never Vancouver's actual value - see _circle_value's docstring, case 2.
-    'name'/'circle_name'/'is_cbc'/'display_timezone' are NOT NULL at the DB level,
+    'circle_name'/'is_cbc'/'display_timezone' are NOT NULL at the DB level ('name' is
+    nullable only for external circles, which send no email),
     so they need no unset_default; they can only be missing via the no-circle-at-
     all case, which correctly raises instead.
     """
     return {
-        'organization_name': _circle_value('name'),
+        'organization_name': _circle_value('name', unset_default=''),
         'organization_website': _circle_value('website', unset_default=''),
         'organization_contact': _circle_value('contact', unset_default=''),
         'count_contact': _circle_value('count_contact', unset_default=''),

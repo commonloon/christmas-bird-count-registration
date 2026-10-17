@@ -8,6 +8,7 @@ import html
 import re
 from typing import Optional, Any
 import logging
+from urllib.parse import urlparse
 from config.areas import get_all_areas
 
 logger = logging.getLogger(__name__)
@@ -114,6 +115,27 @@ def sanitize_phone(phone: str) -> str:
     phone = re.sub(r'\s+', ' ', phone)
     
     return phone.strip()
+
+def sanitize_http_url(url: str, max_length: int = 500) -> str:
+    """
+    Validate a URL that will be rendered as a link.
+
+    Returns the trimmed URL if it is a well-formed http(s) URL with a host, else "".
+    Rejects javascript:, data:, and every other scheme, plus whitespace/control
+    characters, quotes/angle brackets, and anything over max_length.
+    """
+    if not isinstance(url, str):
+        return ""
+    url = url.strip()
+    if not url or len(url) > max_length:
+        return ""
+    if re.search(r"[\s\x00-\x1f\x7f<>\"'`]", url):
+        return ""
+    parsed = urlparse(url)
+    if parsed.scheme.lower() not in ('http', 'https') or not parsed.hostname:
+        return ""
+    return url
+
 
 def sanitize_email(email: str) -> str:
     """

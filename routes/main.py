@@ -17,6 +17,8 @@ from config.rate_limits import RATE_LIMITS, get_rate_limit_message
 from config.ip_blocking import HONEYPOT_ENABLED
 from datetime import datetime
 import logging
+from services.count_dates import next_count_date
+from services.security import sanitize_http_url
 
 logger = logging.getLogger(__name__)
 
@@ -48,18 +50,31 @@ def index():
         # /api/circles/<slug>/contact instead, so it never sits in this page's
         # initial HTML/JSON where a scraper could harvest it for free (bots
         # scraping this contact address caused a real spam problem previously).
-        circles = [
-            {
+        circles = []
+        for c in all_circles:
+            if c['is_cbc'] == is_apex:
+                continue
+            count_date, count_date_past = next_count_date(
+                c.get('yearly_count_dates'), c.get('display_timezone'))
+            circles.append({
                 'slug': c['slug'],
                 'circle_name': c['circle_name'],
                 'organization_name': c['name'],
+                # Only a well-formed http(s) URL is ever rendered as a link.
+                'organization_url': sanitize_http_url(c.get('website') or '') or None,
                 'latitude': c['latitude'],
                 'longitude': c['longitude'],
-                'url': f"{scheme}://{circle_host(c['slug'], c['is_cbc'])}/",
-            }
-            for c in all_circles
-            if c['is_cbc'] != is_apex
-        ]
+                'is_external': bool(c.get('is_external')),
+                # An external circle links to its own external_url - or to nothing
+                # at all when that is empty (listed with name/location/contact only).
+                'url': (
+                    (sanitize_http_url(c.get('external_url') or '') or None)
+                    if c.get('is_external')
+                    else f"{scheme}://{circle_host(c['slug'], c['is_cbc'])}/"
+                ),
+                'count_date': count_date,
+                'count_date_past': count_date_past,
+            })
         # circle_host() mirrors per-circle hosts onto .test automatically when
         # is_test_dev_host() - the landing hosts themselves need the same
         # mirroring done explicitly here, so the cross-listing link also stays

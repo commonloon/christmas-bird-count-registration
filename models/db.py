@@ -209,7 +209,9 @@ class Circle(Base, DictMixin):
     __tablename__ = 'circles'
 
     slug = Column(String(50), primary_key=True)
-    name = Column(String(200), nullable=False)  # managing organization, e.g. "Nature Vancouver"
+    # managing organization, e.g. "Nature Vancouver". Nullable only for is_external circles
+    # (a count may be run by an individual) - the app requires it otherwise (migration 0014).
+    name = Column(String(200))
     circle_name = Column(String(200), nullable=False)  # the count circle itself, e.g. "Vancouver"
     website = Column(String(500))
     contact = Column(String(254))
@@ -228,6 +230,10 @@ class Circle(Base, DictMixin):
     test_recipient = Column(String(254))
     display_timezone = Column(String(100), nullable=False, default='America/Vancouver')
     is_cbc = Column(Boolean, nullable=False, default=True)
+    # Externally-managed count (registration lives elsewhere); external_url is its
+    # registration OR info page, and may be NULL - see migration 0014.
+    is_external = Column(Boolean, nullable=False, default=False)
+    external_url = Column(String(500))
     count_experience_label = Column(String(200))
     feeder_counter_label = Column(String(200))
     notes_placeholder_example = Column(Text)
