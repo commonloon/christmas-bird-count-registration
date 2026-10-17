@@ -21,7 +21,7 @@ from tests.test_config import TEST_CIRCLE_SLUG
 # their own - same pattern/circle as tests/unit/test_email_content.py.
 OTHER_CIRCLE_SLUG = 'nanaimo'
 
-LOCKED_FIELDS = ['test_recipient', 'latitude', 'longitude', 'from_email']
+LOCKED_FIELDS = ['test_recipient', 'latitude', 'longitude', 'from_email', 'is_external', 'external_url']
 EDIT_URL = f'/bigbird/circles/{TEST_CIRCLE_SLUG}/edit'
 
 
@@ -152,10 +152,13 @@ class TestEditCircleFieldUpdatePermissions:
         inputs), but the server must reject a crafted POST that includes
         them anyway - not just rely on the UI."""
         original = restore_test_circle
-        resp = admin_client.post(EDIT_URL, data=_full_form())
+        resp = admin_client.post(EDIT_URL, data=_full_form(
+            {'is_external': 'on', 'external_url': 'https://evil.example/'}))
         assert resp.status_code == 302
 
         updated = CircleModel(get_db_session()).get_by_slug(TEST_CIRCLE_SLUG)
+        assert updated['is_external'] == original['is_external']
+        assert updated['external_url'] == original['external_url']
         assert updated['test_recipient'] == original['test_recipient']
         assert updated['latitude'] == original['latitude']
         assert updated['longitude'] == original['longitude']

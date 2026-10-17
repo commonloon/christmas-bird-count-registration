@@ -1,4 +1,4 @@
-{# Updated by Claude AI on 2026-08-30 #}
+{# Updated by Claude AI on 2026-10-17 #}
 {% extends "base.html" %}
 {% from "_macros.html" import page_header, breadcrumbs, year_tabs, circle_crumbs with context %}
 
@@ -11,18 +11,44 @@
 {% set src = form_data or circle or {} %}
 {% set errors = field_errors or {} %}
 {% set is_super_admin = session.get('user_role') == 'super_admin' %}
-<form method="POST" class="card">
+{% set is_external = src.get('is_external', false) %}
+<form method="POST" class="card" id="circle-form"
+      data-initial-external="{{ 'true' if circle and circle.is_external else 'false' }}"
+      data-is-new="{{ 'false' if circle else 'true' }}"
+      data-slug-check-url="{{ url_for('admin.circle_slug_check') }}">
     <div class="card-body">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
+        <div class="border rounded p-3 mb-4 bg-light">
+            <div class="form-check form-switch fs-5 mb-1">
+                <input type="checkbox" role="switch" name="is_external" id="is_external" class="form-check-input"
+                       {% if is_external %}checked{% endif %} {% if not is_super_admin %}disabled{% endif %}>
+                <label class="form-check-label fw-bold" for="is_external">
+                    External count
+                    {% if not is_super_admin %}<span class="badge bg-secondary fs-6">Super-admin only</span>{% endif %}
+                </label>
+                <a class="small ms-2 fw-normal fs-6" data-bs-toggle="collapse" href="#external-help"
+                   role="button" aria-expanded="false" aria-controls="external-help">What's this?</a>
+            </div>
+            <div class="collapse" id="external-help">
+                <div class="form-text mt-1">
+                    <strong>Off</strong> (default): registration is hosted on this site, under the circle's own address.<br>
+                    <strong>On</strong>: registration is handled on another website. The count is still listed on the
+                    landing-page map and table, and its address here sends visitors to the web address you enter (or
+                    to the landing page if there is none). Only the fields that apply are shown.
+                </div>
+            </div>
+        </div>
+
         {% if not circle %}
         <div class="mb-3">
-            <label class="form-label">Slug (used in URLs, e.g. <code>nanaimo</code> for <code>nanaimo.cbc.birdcount.ca</code> if
-                this is a Christmas Bird Count, or <code>nanaimo.birdcount.ca</code> otherwise - see the checkbox below)</label>
-            <input type="text" name="slug" class="form-control{% if errors.slug %} is-invalid{% endif %}"
-                   pattern="[a-z0-9-]+" required title="Lowercase letters, numbers, and hyphens only"
-                   value="{{ src.get('slug', '')|e }}">
-            {% if errors.slug %}<div class="invalid-feedback">{{ errors.slug|e }}</div>{% endif %}
+            <label class="form-label" for="slug-input">Slug (used in URLs, e.g. <code>nanaimo</code> for <code>nanaimo.cbc.birdcount.ca</code> if
+                this is a Christmas Bird Count, or <code>nanaimo.birdcount.ca</code> otherwise - see the &quot;Christmas Bird Count&quot; checkbox at the bottom of the form)</label>
+            <input type="text" name="slug" id="slug-input" class="form-control{% if errors.slug %} is-invalid{% endif %}"
+                   pattern="[a-z0-9-]+" maxlength="50" required title="Lowercase letters, numbers, and hyphens only"
+                   value="{{ src.get('slug', '')|e }}" autocomplete="off">
+            <div class="form-text">Suggested from the circle name; you can change it. Must be unique across the whole site.</div>
+            <div id="slug-status" class="small mt-1" role="status">{% if errors.slug %}<span class="text-danger">{{ errors.slug|e }}</span>{% endif %}</div>
         </div>
         {% else %}
         <div class="mb-3">
@@ -34,14 +60,30 @@
         <div class="row">
             <div class="col-md-6 mb-3">
                 <label class="form-label">Circle name (e.g. "Vancouver")</label>
-                <input type="text" name="circle_name" class="form-control" required
+                <input type="text" name="circle_name" id="circle-name-input" class="form-control{% if errors.circle_name %} is-invalid{% endif %}" required
                        value="{{ src.get('circle_name', '')|e }}">
             </div>
             <div class="col-md-6 mb-3">
                 <label class="form-label">Managing organization (e.g. "Nature Vancouver")</label>
-                <input type="text" name="name" class="form-control" required
-                       value="{{ src.get('name', '')|e }}">
+                <input type="text" name="name" id="org-name-input" class="form-control" data-required-unless-external
+                       {% if not is_external %}required{% endif %} value="{{ (src.get('name') or '')|e }}">
+                <div class="form-text external-only alert alert-warning py-1 px-2 mt-1 mb-0">
+                    Strongly recommended: naming the organizing group helps people trust the listing.
+                    Leave blank only if the count is run by an individual.
+                </div>
             </div>
+        </div>
+
+        <div class="mb-3 external-only">
+            <label class="form-label" for="external-url-input">Web address for this count (registration or information page)
+                {% if not is_super_admin %}<span class="badge bg-secondary">Super-admin only</span>{% endif %}
+            </label>
+            <input type="url" name="external_url" id="external-url-input"
+                   class="form-control{% if errors.external_url %} is-invalid{% endif %}"
+                   placeholder="https://" maxlength="500" value="{{ (src.get('external_url') or '')|e }}"
+                   {% if not is_super_admin %}disabled{% endif %}>
+            {% if errors.external_url %}<div class="invalid-feedback">{{ errors.external_url|e }}</div>
+            {% else %}<div class="form-text">Optional. If empty, the count is listed with its name, location and contact but no links.</div>{% endif %}
         </div>
 
         <div class="row">
@@ -61,12 +103,12 @@
                 <input type="email" name="count_contact" class="form-control" required
                        value="{{ (src.get('count_contact') or '')|e }}">
             </div>
-            <div class="col-md-6 mb-3">
+            <div class="col-md-6 mb-3 internal-only">
                 <label class="form-label">From email (used to send registration emails)
                     {% if not is_super_admin %}<span class="badge bg-secondary">Super-admin only</span>{% endif %}
                 </label>
                 <input type="email" name="from_email" class="form-control{% if errors.from_email %} is-invalid{% endif %}"
-                       required value="{{ (src.get('from_email') or '')|e }}"
+                       data-required-unless-external {% if not is_external %}required{% endif %} value="{{ (src.get('from_email') or '')|e }}"
                        {% if not is_super_admin %}disabled{% endif %}>
                 {% if errors.from_email %}
                 <div class="invalid-feedback">{{ errors.from_email|e }}</div>
@@ -76,18 +118,19 @@
             </div>
         </div>
 
-        <div class="mb-3">
+        <div class="mb-3 internal-only">
             <label class="form-label">Count event name (e.g. "Vancouver Christmas Bird Count")</label>
-            <input type="text" name="count_event_name" class="form-control" required
+            <input type="text" name="count_event_name" class="form-control" data-required-unless-external
+                   {% if not is_external %}required{% endif %}
                    value="{{ src.get('count_event_name', '')|e }}">
         </div>
 
-        <div class="mb-3">
+        <div class="mb-3 internal-only">
             <label class="form-label">Count info URL</label>
             <input type="url" name="count_info_url" class="form-control" value="{{ (src.get('count_info_url') or '')|e }}">
         </div>
 
-        <div class="row">
+        <div class="row internal-only">
             <div class="col-md-6 mb-3">
                 <label class="form-label">Test-mode recipient email
                     {% if not is_super_admin %}<span class="badge bg-secondary">Super-admin only</span>{% endif %}
@@ -109,58 +152,74 @@
                     {% endfor %}
                 </datalist>
             </div>
-            <div class="col-md-3 mb-3">
+            <div class="col-md-3 mb-3 internal-only">
                 <label class="form-label">Registration opens (months before count)</label>
                 <input type="number" name="registration_opens_months" class="form-control" min="1"
                        value="{{ src.get('registration_opens_months', 4) }}">
             </div>
-            <div class="col-md-3 mb-3">
+            <div class="col-md-3 mb-3 internal-only">
                 <label class="form-label">Registration closes (days before count)</label>
                 <input type="number" name="registration_closes_days" class="form-control" min="0"
                        value="{{ src.get('registration_closes_days', 1) }}">
             </div>
         </div>
 
+        {% if src.get('count_dates') is not none %}
+            {% set date_values = src.get('count_dates') %}
+        {% else %}
+            {% set date_values = (src.get('yearly_count_dates') or {}).values()|list|sort %}
+        {% endif %}
         <div class="mb-3">
-            <label class="form-label">This year's count date</label>
-            <input type="date" name="count_date" class="form-control"
-                   value="{{ src.get('count_date', src.get('yearly_count_dates', {}).get(current_year, ''))|e }}">
+            <label class="form-label">Count dates</label>
+            <div id="count-dates">
+                {% for value in (date_values or ['']) %}
+                <div class="input-group mb-2 count-date-row">
+                    <input type="date" name="count_date" class="form-control{% if errors.count_date %} is-invalid{% endif %}"
+                           value="{{ value|e }}" aria-label="Count date">
+                    <button type="button" class="btn btn-outline-secondary remove-count-date" aria-label="Remove this date">&times;</button>
+                </div>
+                {% endfor %}
+            </div>
+            {% if errors.count_date %}<div class="text-danger small mb-1">{{ errors.count_date|e }}</div>{% endif %}
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="add-count-date">+ Add another date</button>
             <div class="form-text">
-                Leave blank if the date isn't confirmed yet - the public site will show "TBD" and
-                registration will stay closed for this circle until a date is set here.
-                {% if circle and circle.yearly_count_dates %}
-                <br>Existing dates on file: {{ circle.yearly_count_dates }}
-                {% else %}
-                <br>No dates on file yet.
-                {% endif %}
+                One date per year (two dates in the same year can't be saved); add future years as soon as they are known. The landing page shows the
+                next upcoming date, or "TBA" if there is none. For a circle with its own registration site,
+                registration stays closed until a date is set for the current year.
             </div>
         </div>
 
         <div class="row">
             <div class="col-12 mb-1">
                 <div class="form-text">
-                    Used to place this circle's pin on the cross-circle landing map. Leave blank if
-                    you don't know it offhand - it isn't required, and will be filled in automatically
-                    once area-boundary import (from your Google My Maps KML export) is available.
+                    Used to place this circle's pin on the cross-circle landing map. Required for an
+                    external count; otherwise optional. Type the coordinates, or click the map
+                    {% if not is_super_admin %}(super-admins only){% endif %}.
                 </div>
             </div>
             <div class="col-md-6 mb-3">
                 <label class="form-label">Map latitude (optional)
                     {% if not is_super_admin %}<span class="badge bg-secondary">Super-admin only</span>{% endif %}
                 </label>
-                <input type="number" step="any" name="latitude" class="form-control" value="{{ src.get('latitude') if src.get('latitude') is not none else '' }}"
+                <input type="number" step="any" name="latitude" id="latitude-input" class="form-control{% if errors.latitude %} is-invalid{% endif %}" value="{{ src.get('latitude') if src.get('latitude') is not none else '' }}"
                        {% if not is_super_admin %}disabled{% endif %}>
             </div>
             <div class="col-md-6 mb-3">
                 <label class="form-label">Map longitude (optional)
                     {% if not is_super_admin %}<span class="badge bg-secondary">Super-admin only</span>{% endif %}
                 </label>
-                <input type="number" step="any" name="longitude" class="form-control" value="{{ src.get('longitude') if src.get('longitude') is not none else '' }}"
+                <input type="number" step="any" name="longitude" id="longitude-input" class="form-control{% if errors.longitude %} is-invalid{% endif %}" value="{{ src.get('longitude') if src.get('longitude') is not none else '' }}"
                        {% if not is_super_admin %}disabled{% endif %}>
             </div>
         </div>
 
-        <div class="row">
+        {% if is_super_admin %}
+        <div class="mb-3">
+            <div id="location-map" class="border rounded" style="height: 320px;" aria-label="Map: click to set the circle's location"></div>
+        </div>
+        {% endif %}
+
+        <div class="row internal-only">
             <div class="col-md-4 mb-3">
                 <label class="form-label">Experience field label</label>
                 <input type="text" name="count_experience_label" class="form-control"
@@ -173,7 +232,7 @@
             </div>
         </div>
 
-        <div class="mb-3">
+        <div class="mb-3 internal-only">
             <label class="form-label">Notes field placeholder example</label>
             <input type="text" name="notes_placeholder_example" class="form-control"
                    value="{{ (src.get('notes_placeholder_example') or '')|e }}">
@@ -185,6 +244,7 @@
             <label class="form-check-label" for="is_cbc">This is a Christmas Bird Count (uncheck for a Spring count, etc.)</label>
         </div>
 
+        <div class="text-danger mb-2" id="form-client-error" role="alert"></div>
         <button type="submit" class="btn btn-primary">{% if circle %}Save Changes{% else %}Create Circle{% endif %}</button>
         <a href="{{ url_for('admin.list_circles') }}" class="btn btn-outline-secondary">Cancel</a>
     </div>
@@ -218,4 +278,8 @@
     </div>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/circle-form.js') }}"></script>
 {% endblock %}

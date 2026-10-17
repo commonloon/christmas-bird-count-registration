@@ -38,7 +38,7 @@ from test.email_generator import (
 )
 from services.security import (
     sanitize_name, sanitize_email, sanitize_phone, sanitize_notes, sanitize_text_input,
-    sanitize_email_content, validate_area_code, validate_experience, validate_email_format,
+    sanitize_email_content, sanitize_http_url, validate_area_code, validate_experience, validate_email_format,
     is_suspicious_input, log_security_event
 )
 from services.csv_security import escape_csv_formula
@@ -62,7 +62,7 @@ admin_bp = Blueprint('admin', __name__)
 # (a raw IP, localhost, a typo) too, not just the landing host - they don't need
 # a resolved circle at all, just the explicit slug in their own URL.
 CIRCLE_CONSOLE_ENDPOINTS = {
-    'admin.list_circles', 'admin.new_circle', 'admin.edit_circle',
+    'admin.list_circles', 'admin.new_circle', 'admin.edit_circle', 'admin.circle_slug_check',
     'admin.circle_admins', 'admin.circle_areas_manage', 'admin.circle_areas_edit', 'admin.circle_areas_import_kml',
     'admin.circle_logo_upload', 'admin.circle_logo_delete',
     'admin.email_content_defaults', 'admin.circle_email_content', 'admin.circle_email_content_preview',
@@ -1527,6 +1527,20 @@ def _valid_circle_slug(slug):
     return bool(_re.match(r'^[a-z0-9-]+$', slug or ''))
 
 
+def _slug_problem(slug):
+    """Why this slug can't be used for a new circle, or None if it is free. Slugs are
+    the circles table's primary key and the subdomain, so they are unique sitewide."""
+    if len(slug) > 50:
+        return 'Slug must be 50 characters or fewer.'
+    if not _valid_circle_slug(slug):
+        return f'Invalid slug: {CIRCLE_SLUG_PATTERN_MESSAGE}'
+    if slug in RESERVED_CIRCLE_SLUGS:
+        return f'The slug "{slug}" is reserved and cannot be used for a circle.'
+    if CircleModel(g.db).get_by_slug(slug):
+        return f'A circle with slug "{slug}" already exists.'
+    return None
+
+
 def _from_email_domain_allowed(email):
     """Check a proposed from_email's domain against the code-level allowlist
     (config/email_settings.py's ALLOWED_FROM_EMAIL_DOMAINS) - deliberately not
@@ -1554,7 +1568,10 @@ def _can_manage_circle(slug):
 # circle's pin on the cross-circle landing map (not this circle's own concern),
 # and from_email is constrained to ALLOWED_FROM_EMAIL_DOMAINS platform-wide - a
 # circle-admin shouldn't be choosing/changing what domain the app sends mail from.
-SUPER_ADMIN_ONLY_CIRCLE_FIELDS = {'test_recipient', 'latitude', 'longitude', 'from_email'}
+# is_external/external_url decide where visitors are sent (and an unvetted link on the
+# public landing page), so only a super-admin may set them.
+SUPER_ADMIN_ONLY_CIRCLE_FIELDS = {'test_recipient', 'latitude', 'longitude', 'from_email',
+                                  'is_external', 'external_url'}
 
 
 def _require_circle_manage_access(slug):
@@ -1571,7 +1588,9 @@ def _circle_form_data(form):
     """Extract and sanitize circle config fields from a submitted form."""
     return {
         'circle_name': sanitize_text_input(form.get('circle_name', ''), max_length=200),
-        'name': sanitize_text_input(form.get('name', ''), max_length=200),
+        # NULL, not '', when blank - only an external circle may leave it empty
+        # (_validate_circle_form() requires it otherwise)
+        'name': sanitize_text_input(form.get('name', ''), max_length=200) or None,
         'website': sanitize_text_input(form.get('website', ''), max_length=500),
         'contact': sanitize_email(form.get('contact', '')),
         'count_contact': sanitize_email(form.get('count_contact', '')),
@@ -1590,9 +1609,86 @@ def _circle_form_data(form):
         'notes_placeholder_example': sanitize_notes(form.get('notes_placeholder_example', '')),
         'registration_opens_months': int(form.get('registration_opens_months') or 4),
         'registration_closes_days': int(form.get('registration_closes_days') or 1),
-        'latitude': float(form['latitude']) if form.get('latitude') else None,
-        'longitude': float(form['longitude']) if form.get('longitude') else None,
+        'latitude': _float_or_none(form.get('latitude')),
+        'longitude': _float_or_none(form.get('longitude')),
+        'is_external': form.get('is_external') == 'on',
+        # '' when blank or not a plain http(s) URL - _validate_circle_form() reports the latter
+        'external_url': sanitize_http_url(form.get('external_url', '')) or None,
     }
+
+
+def _float_or_none(value):
+    try:
+        return float(value) if value else None
+    except ValueError:
+        return None
+
+
+# Fields only meaningful for a circle that runs its own registration site. An external
+# circle's form doesn't show them, so they are left out of its saved data entirely
+# (rather than blanked) - flipping is_external off later restores the old values.
+INTERNAL_ONLY_CIRCLE_FIELDS = (
+    'from_email', 'count_event_name', 'count_info_url', 'test_recipient',
+    'count_experience_label', 'feeder_counter_label', 'notes_placeholder_example',
+    'registration_opens_months', 'registration_closes_days',
+)
+
+
+def _parse_count_dates(values):
+    """Turn the form's repeated count_date inputs into the circles.yearly_count_dates
+    shape ({'2026': '2026-12-19'}). Returns (dates, error_message)."""
+    dates = {}
+    for value in values:
+        value = value.strip()
+        if not value:
+            continue
+        try:
+            parsed = datetime.strptime(value, '%Y-%m-%d')
+        except ValueError:
+            return None, f'"{value}" is not a valid date.'
+        key = str(parsed.year)
+        if key in dates and dates[key] != value:
+            return None, f'More than one count date was given for {parsed.year}.'
+        dates[key] = value
+    return dates, None
+
+
+def _validate_circle_form(form, data, enforce_location):
+    """Field errors ({field: message}) for a submitted circle form. enforce_location is
+    True only when the submitter may set the map pin / external URL (a super-admin) -
+    a circle-admin's values for those come from the stored row instead."""
+    from config.email_settings import ALLOWED_FROM_EMAIL_DOMAINS
+    errors = {}
+
+    if data['is_external']:
+        if not data['circle_name']:
+            errors['circle_name'] = 'Circle name is required.'
+        if not data['count_contact']:
+            errors['count_contact'] = 'A contact email is required for an external count.'
+        if (form.get('external_url') or '').strip() and not data['external_url']:
+            errors['external_url'] = 'Must be a full web address starting with http:// or https://.'
+    else:
+        if not data['name']:
+            errors['name'] = 'Managing organization is required.'
+        if not _from_email_domain_allowed(data['from_email']):
+            errors['from_email'] = f'Must be on one of these domains: {", ".join(ALLOWED_FROM_EMAIL_DOMAINS)}'
+
+    # Only the fields this submitter may set: a circle-admin's latitude/longitude are
+    # replaced by the stored values, so whatever their form carried is irrelevant.
+    for key, label, limit in (('latitude', 'Latitude', 90), ('longitude', 'Longitude', 180)):
+        if not enforce_location:
+            break
+        raw = (form.get(key) or '').strip()
+        if raw:
+            try:
+                valid = abs(float(raw)) <= limit
+            except ValueError:
+                valid = False
+            if not valid:
+                errors[key] = f'{label} must be a number between -{limit} and {limit}.'
+        elif data['is_external']:
+            errors[key] = f'{label} is required for an external count (type it or click the map).'
+    return errors
 
 
 @admin_bp.route('/circles')
@@ -1603,43 +1699,55 @@ def list_circles():
     return render_template('admin/circles.html', circles=circles, current_user=get_current_user())
 
 
+@admin_bp.route('/circles/slug-check')
+@require_super_admin
+def circle_slug_check():
+    """Live availability check for the new-circle form's slug field (JSON). The
+    create route re-checks on submit - this only saves a round trip."""
+    slug = request.args.get('slug', '').strip().lower()
+    if not slug:
+        return jsonify({'available': False, 'message': 'Enter a slug.'})
+    problem = _slug_problem(slug)
+    return jsonify({'available': problem is None, 'message': problem or 'Available'})
+
+
+def _render_circle_form(circle, form_data=None, field_errors=None):
+    from config.email_settings import ALLOWED_FROM_EMAIL_DOMAINS
+    return render_template('admin/circle_form.html', circle=circle, form_data=form_data,
+                           field_errors=field_errors, current_user=get_current_user(),
+                           timezones=pytz.all_timezones,
+                           allowed_from_email_domains=ALLOWED_FROM_EMAIL_DOMAINS)
+
+
 @admin_bp.route('/circles/new', methods=['GET', 'POST'])
 @require_super_admin
 def new_circle():
     """Super-admin console: create a new count circle."""
-    from config.email_settings import ALLOWED_FROM_EMAIL_DOMAINS
-    import pytz
-
     if request.method == 'GET':
-        return render_template('admin/circle_form.html', circle=None, form_data=None, field_errors=None,
-                                current_user=get_current_user(), timezones=pytz.all_timezones,
-                                allowed_from_email_domains=ALLOWED_FROM_EMAIL_DOMAINS)
+        return _render_circle_form(None)
 
     slug = sanitize_text_input(request.form.get('slug', ''), max_length=50).lower()
     data = _circle_form_data(request.form)
     data['slug'] = slug
-    count_date = request.form.get('count_date', '').strip()
-    data['yearly_count_dates'] = {str(datetime.now().year): count_date} if count_date else {}
+    count_dates = request.form.getlist('count_date')
+    data['yearly_count_dates'], date_error = _parse_count_dates(count_dates)
 
     field_errors = {}
-    if not _valid_circle_slug(slug):
-        field_errors['slug'] = f'Invalid slug: {CIRCLE_SLUG_PATTERN_MESSAGE}'
-    elif slug in RESERVED_CIRCLE_SLUGS:
-        field_errors['slug'] = f'The slug "{slug}" is reserved and cannot be used for a circle.'
-    elif CircleModel(g.db).get_by_slug(slug):
-        field_errors['slug'] = f'A circle with slug "{slug}" already exists.'
-
-    if not _from_email_domain_allowed(data['from_email']):
-        field_errors['from_email'] = f'Must be on one of these domains: {", ".join(ALLOWED_FROM_EMAIL_DOMAINS)}'
+    slug_problem = _slug_problem(slug)
+    if slug_problem:
+        field_errors['slug'] = slug_problem
+    field_errors.update(_validate_circle_form(request.form, data, enforce_location=True))
+    if date_error:
+        field_errors['count_date'] = date_error
 
     if field_errors:
         for message in field_errors.values():
             flash(message, 'error')
-        return render_template('admin/circle_form.html', circle=None,
-                                form_data={**data, 'count_date': count_date}, field_errors=field_errors,
-                                current_user=get_current_user(), timezones=pytz.all_timezones,
-                                allowed_from_email_domains=ALLOWED_FROM_EMAIL_DOMAINS)
+        return _render_circle_form(None, {**data, 'count_dates': count_dates}, field_errors)
 
+    if data['is_external']:
+        for field in INTERNAL_ONLY_CIRCLE_FIELDS:
+            data.pop(field, None)
     CircleModel(g.db).create(data)
     flash(f'Circle "{data["circle_name"]}" created.', 'success')
     return redirect(url_for('admin.list_circles'))
@@ -1652,46 +1760,38 @@ def edit_circle(slug):
     if denied:
         return denied
 
-    from config.email_settings import ALLOWED_FROM_EMAIL_DOMAINS
-    import pytz
-
     circle = CircleModel(g.db).get_by_slug(slug)
     if not circle:
         flash('Circle not found.', 'error')
         return redirect(url_for('main.index'))
 
     if request.method == 'GET':
-        return render_template('admin/circle_form.html', circle=circle, form_data=None, field_errors=None,
-                                current_user=get_current_user(), timezones=pytz.all_timezones,
-                                allowed_from_email_domains=ALLOWED_FROM_EMAIL_DOMAINS)
+        return _render_circle_form(circle)
 
     data = _circle_form_data(request.form)
 
-    if session.get('user_role') != 'super_admin':
+    is_super_admin = session.get('user_role') == 'super_admin'
+    if not is_super_admin:
         # Defense in depth - the form disables these inputs for a circle-admin,
         # but never trust that a crafted POST honoured it.
         for field in SUPER_ADMIN_ONLY_CIRCLE_FIELDS:
             data[field] = circle.get(field)
 
-    count_date = request.form.get('count_date', '').strip()
-    yearly_dates = dict(circle.get('yearly_count_dates') or {})
-    current_year_key = str(datetime.now().year)
-    if count_date:
-        yearly_dates[current_year_key] = count_date
-    else:
-        # Field submitted blank - clear this year's date (revert to "TBD") rather
-        # than silently leaving a previously-set date in place.
-        yearly_dates.pop(current_year_key, None)
-    data['yearly_count_dates'] = {str(k): v for k, v in yearly_dates.items()}
+    count_dates = request.form.getlist('count_date')
+    data['yearly_count_dates'], date_error = _parse_count_dates(count_dates)
 
-    if not _from_email_domain_allowed(data['from_email']):
-        field_errors = {'from_email': f'Must be on one of these domains: {", ".join(ALLOWED_FROM_EMAIL_DOMAINS)}'}
-        flash(field_errors['from_email'], 'error')
-        return render_template('admin/circle_form.html', circle=circle,
-                                form_data={**data, 'count_date': count_date}, field_errors=field_errors,
-                                current_user=get_current_user(), timezones=pytz.all_timezones,
-                                allowed_from_email_domains=ALLOWED_FROM_EMAIL_DOMAINS)
+    field_errors = _validate_circle_form(request.form, data, enforce_location=is_super_admin)
+    if date_error:
+        field_errors['count_date'] = date_error
 
+    if field_errors:
+        for message in field_errors.values():
+            flash(message, 'error')
+        return _render_circle_form(circle, {**data, 'count_dates': count_dates}, field_errors)
+
+    if data['is_external']:
+        for field in INTERNAL_ONLY_CIRCLE_FIELDS:
+            data.pop(field, None)
     CircleModel(g.db).update(slug, data)
     flash(f'Circle "{data["circle_name"]}" updated.', 'success')
     return redirect(url_for('admin.edit_circle', slug=slug))
