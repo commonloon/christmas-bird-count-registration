@@ -34,3 +34,7 @@ UX_REVIEW.md
 EMAIL_CUSTOMIZATION_PLAN.txt
 SCHEDULER_ARCHITECTURE_PLAN.txt
 DOC_REFRESH.md
+
+# Claude Code instructions and local settings stay out of the repo
+CLAUDE.md
+.claude/settings.local.json
