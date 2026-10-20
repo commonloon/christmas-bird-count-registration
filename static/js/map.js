@@ -1,6 +1,7 @@
 // Map functionality for CBC Registration
-/* Updated by Claude AI on 2026-08-31 */
+/* Updated by Claude AI on 2026-10-20 */
 let map;
+let thresholds;  // CountThresholds state - see count-thresholds.js
 let areaLayers = {};
 let selectedArea = null;
 let isUpdatingProgrammatically = false;
@@ -91,6 +92,13 @@ function loadAreaData() {
                 return;
             }
 
+            // Count-colour tiers: the circle's values, unless this viewer has tried others
+            const circleThresholds = data.thresholds || {};
+            thresholds = CountThresholds.create(data.circle_slug || '', {
+                medium: circleThresholds.medium_from,
+                high: circleThresholds.high_from
+            });
+
             // Initialize map with configuration from data
             const mapConfig = data.map_config || {};
             initializeMap(mapConfig);
@@ -98,6 +106,12 @@ function loadAreaData() {
             // Display areas
             const areas = data.areas || data;  // Support both new and old format
             displayAreas(areas);
+
+            // The colour key is also the control for adjusting the tiers
+            thresholds.legendControl({
+                extraRows: [{ className: 'admin-only-box', text: 'Admin-assignment only' }]
+            }).addTo(map);
+            thresholds.onChange(restyleAreas);
 
             // Display decorative major-area-group boundary lines, if this
             // circle has any (most don't - see services/kml_import.py's
@@ -201,7 +215,7 @@ function displayCountCircle(countCircle) {
 }
 
 function getAreaStyle(count, isAdminOnly) {
-    // Colors from DISTINCT_COLOURS palette (config/colors.py) using CSS variables
+    // Tier colours come from the --map-color-* CSS variables in main.css
     const rootStyles = getComputedStyle(document.documentElement);
     const baseStyle = {
         weight: 2,
@@ -210,14 +224,7 @@ function getAreaStyle(count, isAdminOnly) {
         fillOpacity: isAdminOnly ? 0.6 : 0.3
     };
 
-    let tier;
-    if (count <= 3) {
-        tier = 'low'; // Orange: 0-3 registered
-    } else if (count <= 8) {
-        tier = 'med'; // Maroon: 4-8 registered
-    } else {
-        tier = 'high'; // Navy: 8+ registered
-    }
+    const tier = thresholds.tier(count);  // low / med / high - see count-thresholds.js
 
     const color = rootStyles.getPropertyValue(`--map-color-${tier}`).trim();
     return {
@@ -225,6 +232,15 @@ function getAreaStyle(count, isAdminOnly) {
         color: color,
         fillColor: isAdminOnly ? `url(#admin-hatch-${tier})` : color
     };
+}
+
+// Recolour every area after the tiers change, leaving the selected area highlighted
+function restyleAreas() {
+    Object.keys(areaLayers).forEach(function(areaCode) {
+        if (areaCode === selectedArea) return;
+        const layer = areaLayers[areaCode];
+        layer.polygon.setStyle(getAreaStyle(layer.data.current_count, layer.data.admin_assignment_only));
+    });
 }
 
 function selectAreaOnMap(areaCode, areaName, polygon) {

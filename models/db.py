@@ -234,6 +234,9 @@ class Circle(Base, DictMixin):
     # registration OR info page, and may be NULL - see migration 0014.
     is_external = Column(Boolean, nullable=False, default=False)
     external_url = Column(String(500))
+    # Map colour tiers (migration 0015) - NULL means the defaults in services/count_thresholds.py
+    map_medium_from = Column(Integer)
+    map_high_from = Column(Integer)
     count_experience_label = Column(String(200))
     feeder_counter_label = Column(String(200))
     notes_placeholder_example = Column(Text)

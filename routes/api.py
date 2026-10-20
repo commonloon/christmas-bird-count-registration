@@ -1,10 +1,11 @@
-# Updated by Claude AI on 2026-08-31
+# Updated by Claude AI on 2026-10-20
 from flask import Blueprint, jsonify, request, g, Response
 from config.database import get_db_session
 from models.circle import CircleModel, CircleAreaModel
 from models.db import Circle
 from models.participant import ParticipantModel
 from models.area_signup_type import AreaSignupTypeModel
+from services.count_thresholds import get_thresholds
 from services.limiter import limiter
 from config.rate_limits import RATE_LIMITS
 
@@ -83,7 +84,8 @@ def get_areas():
 
         # Get current registration counts
         try:
-            area_counts = participant_model.get_area_counts()
+            # Feeder counters watch from home, so they don't count toward an area's coverage
+            area_counts = participant_model.get_area_counts(include_feeders=False)
         except Exception as e:
             print(f"Warning: Could not get area counts: {e}")
             area_counts = {}
@@ -117,7 +119,10 @@ def get_areas():
             else:
                 area['availability'] = 'low'
 
-        return jsonify({'areas': areas, 'map_config': map_config, 'boundaries': boundaries})
+        medium_from, high_from = get_thresholds(getattr(g, 'circle', None))
+        return jsonify({'areas': areas, 'map_config': map_config, 'boundaries': boundaries,
+                        'circle_slug': circle_slug,
+                        'thresholds': {'medium_from': medium_from, 'high_from': high_from}})
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500

@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from typing import List, Dict, Optional
 import logging
 
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 
 from models.db import Participant, resolve_default_circle_slug
@@ -116,11 +117,17 @@ class ParticipantModel:
             self.logger.error(f"Failed to assign participant {participant_id}: {e}")
             return False
 
-    def get_area_counts(self) -> Dict[str, int]:
-        """Get active participant count by area for the current year."""
+    def get_area_counts(self, include_feeders: bool = True) -> Dict[str, int]:
+        """Get active participant count by area for the current year. Area maps and
+        capacity buttons pass include_feeders=False: feeder counters watch from home,
+        so they say nothing about how well an area is covered. Leaders are counted by
+        preferred_area, which assign_area_leadership() sets to their area."""
         counts = {}
-        rows = self._base_query().filter_by(status='active').all()
-        for row in rows:
+        query = self._base_query().filter_by(status='active')
+        if not include_feeders:
+            query = query.filter(or_(Participant.participation_type.is_(None),
+                                     Participant.participation_type != 'FEEDER'))
+        for row in query.all():
             area = row.preferred_area or 'UNKNOWN'
             if area != 'UNASSIGNED':
                 counts[area] = counts.get(area, 0) + 1

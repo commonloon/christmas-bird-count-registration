@@ -1,4 +1,4 @@
-{# Updated by Claude AI on 2025-12-16 #}
+{# Updated by Claude AI on 2026-10-20 #}
 {% extends "base.html" %}
 {% from "_macros.html" import page_header, breadcrumbs, year_tabs, circle_crumbs with context %}
 
@@ -21,7 +21,8 @@
             <div class="col-md-2 col-sm-3 col-4 mb-2">
                 <div class="text-center">
                     <a href="{{ url_for('admin.area_detail', area_code=area, year=selected_year) }}" 
-                       class="btn btn-sm {% if area_counts.get(area, 0) == 0 %}btn-outline-secondary{% elif area_counts.get(area, 0) < 5 %}btn-outline-warning{% else %}btn-outline-success{% endif %}">
+                       class="btn btn-sm btn-primary area-count-btn btn-tier-{{ tier_for_count(area_counts.get(area, 0)) }}"
+                       data-area-count="{{ area_counts.get(area, 0) }}">
                         {{ area }}
                     </a>
                     <br>
@@ -31,11 +32,8 @@
             {% endfor %}
         </div>
         <div class="mt-2">
-            <small class="text-muted">
-                <span class="badge bg-secondary">●</span> 0 participants
-                <span class="badge bg-warning">●</span> 1-4 participants  
-                <span class="badge bg-success">●</span> 5+ participants
-            </small>
+            <div id="capacity-legend"></div>
+            <small class="text-muted">Feeder counters are not counted. The map at the bottom of the page uses the same colours.</small>
         </div>
     </div>
 </div>
@@ -130,8 +128,8 @@
                                 <select name="area_code" class="form-select form-select-sm me-2 area-select-narrow" required>
                                     <option value="">Select...</option>
                                     {% for area in all_areas %}
-                                    <option value="{{ area }}"
-                                            {% if area_counts.get(area, 0) >= 8 %}class="text-warning"{% endif %}>
+                                    <option value="{{ area }}" data-area-count="{{ area_counts.get(area, 0) }}"
+                                            {% if tier_for_count(area_counts.get(area, 0)) == 'high' %}class="text-warning"{% endif %}>
                                         {{ area }} ({{ area_counts.get(area, 0) }})
                                     </option>
                                     {% endfor %}
@@ -160,4 +158,21 @@
     </div>
 </div>
 {% endif %}
+
+<!-- Participation map -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h5 class="mb-0">Participation by Area</h5>
+    </div>
+    <div class="card-body">
+        <p class="text-muted small mb-2">Leaders and field counters registered for each area in {{ selected_year }}; feeder counters are not counted. Edit the numbers in the colour key to try other ranges (saved in this browser only).</p>
+        <div id="unassigned-map" data-circle-slug="{{ circle_slug|e }}"
+             data-medium-from="{{ thresholds[0] }}" data-high-from="{{ thresholds[1] }}"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/count-thresholds.js') }}"></script>
+<script src="{{ url_for('static', filename='js/unassigned-map.js') }}"></script>
 {% endblock %}

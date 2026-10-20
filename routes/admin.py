@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2026-10-16
+# Updated by Claude AI on 2026-10-20
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response, g, current_app, session
 from config.database import get_db_session
 from config.email_settings import is_test_server
@@ -21,6 +21,7 @@ from config.email_settings import ALLOWED_FROM_EMAIL_DOMAINS
 from models.app_settings import AppSettingsModel, SCHEDULER_ALERT_FROM_EMAIL_KEY
 from models.email_schedule import CircleEmailScheduleModel, EmailScheduleRunLogModel
 from services import scheduler_service
+from services.count_thresholds import get_thresholds, parse_thresholds, tier_for_count
 from services.datetime_utils import get_timezone_label
 from services.email_content_service import extract_placeholders
 from services.kml_import import (
@@ -362,12 +363,17 @@ def unassigned():
 
     unassigned_participants = participant_model.get_unassigned_participants()
     all_areas = get_all_areas()
-    area_counts = participant_model.get_area_counts()
+    # Feeder counters watch from home, so they don't count toward an area's coverage
+    area_counts = participant_model.get_area_counts(include_feeders=False)
+    medium_from, high_from = get_thresholds(g.circle)
 
     return render_template('admin/unassigned.html',
                            participants=unassigned_participants,
                            all_areas=all_areas,
                            area_counts=area_counts,
+                           thresholds=(medium_from, high_from),
+                           tier_for_count=lambda count: tier_for_count(count, medium_from, high_from),
+                           circle_slug=g.circle_slug,
                            selected_year=selected_year,
                            current_user=get_current_user())
 
@@ -1586,6 +1592,8 @@ def _require_circle_manage_access(slug):
 
 def _circle_form_data(form):
     """Extract and sanitize circle config fields from a submitted form."""
+    map_medium_from, map_high_from, _ = parse_thresholds(
+        form.get('map_medium_from'), form.get('map_high_from'))
     return {
         'circle_name': sanitize_text_input(form.get('circle_name', ''), max_length=200),
         # NULL, not '', when blank - only an external circle may leave it empty
@@ -1609,6 +1617,9 @@ def _circle_form_data(form):
         'notes_placeholder_example': sanitize_notes(form.get('notes_placeholder_example', '')),
         'registration_opens_months': int(form.get('registration_opens_months') or 4),
         'registration_closes_days': int(form.get('registration_closes_days') or 1),
+        # None/None (the defaults) when blank or invalid - _validate_circle_form() reports the latter
+        'map_medium_from': map_medium_from,
+        'map_high_from': map_high_from,
         'latitude': _float_or_none(form.get('latitude')),
         'longitude': _float_or_none(form.get('longitude')),
         'is_external': form.get('is_external') == 'on',
@@ -1630,7 +1641,7 @@ def _float_or_none(value):
 INTERNAL_ONLY_CIRCLE_FIELDS = (
     'from_email', 'count_event_name', 'count_info_url', 'test_recipient',
     'count_experience_label', 'feeder_counter_label', 'notes_placeholder_example',
-    'registration_opens_months', 'registration_closes_days',
+    'registration_opens_months', 'registration_closes_days', 'map_medium_from', 'map_high_from',
 )
 
 
@@ -1672,6 +1683,9 @@ def _validate_circle_form(form, data, enforce_location):
             errors['name'] = 'Managing organization is required.'
         if not _from_email_domain_allowed(data['from_email']):
             errors['from_email'] = f'Must be on one of these domains: {", ".join(ALLOWED_FROM_EMAIL_DOMAINS)}'
+        threshold_error = parse_thresholds(form.get('map_medium_from'), form.get('map_high_from'))[2]
+        if threshold_error:
+            errors['map_thresholds'] = threshold_error
 
     # Only the fields this submitter may set: a circle-admin's latitude/longitude are
     # replaced by the stored values, so whatever their form carried is irrelevant.

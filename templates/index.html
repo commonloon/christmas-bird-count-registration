@@ -1,4 +1,4 @@
-{# Updated by Claude AI on 2026-09-11 #}
+{# Updated by Claude AI on 2026-10-20 #}
 {% extends "base.html" %}
 
 {% block content %}
@@ -175,14 +175,6 @@
         <h3>Select Area on Map</h3>
         <p>Click on an area below to select it automatically:</p>
         <div id="count-area-map"></div>
-        <div class="mt-2">
-            <small class="text-muted">
-                <span class="color-box low-count"></span> 0-3 registered
-                <span class="color-box med-count"></span> 4-8 registered
-                <span class="color-box high-count"></span> 8+ registered
-                <span class="color-box admin-only-box"></span> Admin-assignment only
-            </small>
-        </div>
 
         <div class="mt-5">
             <h3>Area Leaders</h3>
@@ -220,6 +212,7 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/validation.js') }}"></script>
+<script src="{{ url_for('static', filename='js/count-thresholds.js') }}"></script>
 <script src="{{ url_for('static', filename='js/map.js') }}"></script>
 <script src="{{ url_for('static', filename='js/registration.js') }}"></script>
 <script>

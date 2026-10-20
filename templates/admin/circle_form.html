@@ -164,6 +164,29 @@
             </div>
         </div>
 
+        <div class="row internal-only">
+            <div class="col-md-3 mb-3">
+                <label class="form-label" for="map_medium_from">Map colours: middle colour starts at</label>
+                <input type="number" id="map_medium_from" name="map_medium_from"
+                       class="form-control{% if errors.map_thresholds %} is-invalid{% endif %}" min="1" max="999"
+                       placeholder="4" value="{{ src.get('map_medium_from') if src.get('map_medium_from') is not none else '' }}">
+            </div>
+            <div class="col-md-3 mb-3">
+                <label class="form-label" for="map_high_from">Map colours: darkest colour starts at</label>
+                <input type="number" id="map_high_from" name="map_high_from"
+                       class="form-control{% if errors.map_thresholds %} is-invalid{% endif %}" min="2" max="999"
+                       placeholder="8" value="{{ src.get('map_high_from') if src.get('map_high_from') is not none else '' }}">
+            </div>
+            <div class="col-md-6 mb-3 d-flex align-items-end">
+                <div class="form-text mt-0">
+                    Participant counts per area: below the first number is the lightest colour, from the first number up
+                    to one below the second is the middle colour, and the second number and above is the darkest.
+                    Leave both blank for the defaults (4 and 8). Visitors can still try other numbers on the map.
+                    {% if errors.map_thresholds %}<span class="text-danger d-block">{{ errors.map_thresholds|e }}</span>{% endif %}
+                </div>
+            </div>
+        </div>
+
         {% if src.get('count_dates') is not none %}
             {% set date_values = src.get('count_dates') %}
         {% else %}
