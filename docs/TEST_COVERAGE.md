@@ -1,5 +1,11 @@
-# Code Coverage Guide
+# Code Coverage Guide (OBSOLETE)
 Updated by Claude AI on 2025-10-11
+
+> [!CAUTION]
+> # ⚠️ OBSOLETE DOCUMENT
+> **This document was written for the gcloud implementation and has not been updated.**  
+> It is retained only because it may contain useful information on how to set up coverage
+> testing for the new implementation.
 
 ## Overview
 
