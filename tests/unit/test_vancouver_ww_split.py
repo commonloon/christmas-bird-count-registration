@@ -5,6 +5,7 @@ repo KML (utils/Vancouver_CBC_Areas.kml), migration 0013, and that area code
 WW is accepted by validation once the area exists.
 """
 
+from flask import g
 import importlib.util
 import os
 
@@ -184,6 +185,7 @@ class TestWwValidation:
             assert validate_area_code('WW') is False
             migration.split_w(db.connection(), slug=TEST_CIRCLE_SLUG)
             db.flush()
+            g.pop('_circle_areas_cache', None)  # raw-SQL change bypasses the model's invalidation
             assert validate_area_code('WW') is True
         finally:
             db.rollback()

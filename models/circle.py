@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+from flask import g, has_request_context
+
 from models.db import Circle, CircleArea, CircleAdmin
 from models.area_signup_type import natural_sort_key
 from models.email_schedule import CircleEmailScheduleModel
@@ -71,6 +73,12 @@ class CircleModel:
         return row.to_dict()
 
 
+def _drop_area_cache():
+    """Drop config/areas.py's per-request area cache after this request changes areas."""
+    if has_request_context():
+        g.pop('_circle_areas_cache', None)
+
+
 class CircleAreaModel:
     """Manage per-circle area definitions (replaces config/areas.py's static AREA_CONFIG,
     which only ever described Vancouver's areas)."""
@@ -100,6 +108,7 @@ class CircleAreaModel:
         )
         self.db.add(row)
         self.db.commit()
+        _drop_area_cache()
         return row.to_dict()
 
     def update_area(self, circle_slug, code, name=None, description=None, difficulty=None, terrain=None):
@@ -117,6 +126,7 @@ class CircleAreaModel:
         if terrain is not None:
             row.terrain = terrain
         self.db.commit()
+        _drop_area_cache()
         return row.to_dict()
 
     def upsert_from_kml(self, circle_slug, code, name, description, boundary_geojson, commit=True):
@@ -145,6 +155,7 @@ class CircleAreaModel:
             self.db.commit()
         else:
             self.db.flush()
+        _drop_area_cache()
         return row.to_dict()
 
     def get_boundary_data(self, circle_slug, circle=None):

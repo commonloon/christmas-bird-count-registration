@@ -49,11 +49,7 @@
                                 <strong>{{ leader.assigned_area_leader }}</strong>
                             </div>
                             <div class="area-edit initially-hidden">
-                                <select class="form-select form-select-sm area-select">
-                                    {% for area in all_areas %}
-                                    <option value="{{ area }}" {% if area == leader.assigned_area_leader %}selected{% endif %}>{{ area }} - {{ get_area_info(area).name }}</option>
-                                    {% endfor %}
-                                </select>
+                                <select class="form-select form-select-sm area-select" data-area-options data-selected="{{ leader.assigned_area_leader|e }}"></select>
                             </div>
                         </td>
                         <td>
@@ -161,11 +157,8 @@
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <input type="hidden" name="participant_id" value="{{ participant.id }}">
                                 <input type="hidden" name="year" value="{{ selected_year }}">
-                                <select name="area_code" class="form-select form-select-sm d-inline w-auto" required>
+                                <select name="area_code" class="form-select form-select-sm d-inline w-auto" data-area-options required>
                                     <option value="">Select area...</option>
-                                    {% for area in all_areas %}
-                                    <option value="{{ area }}">{{ area }} - {{ get_area_info(area).name }}</option>
-                                    {% endfor %}
                                 </select>
                                 <button type="submit" class="btn btn-sm btn-success ms-1">Assign</button>
                             </form>
@@ -218,11 +211,8 @@
             <div class="row mt-3">
                 <div class="col-md-3">
                     <label for="area_code" class="form-label">Area to Lead *</label>
-                    <select class="form-select" id="area_code" name="area_code" required>
+                    <select class="form-select" id="area_code" name="area_code" data-area-options required>
                         <option value="">Select area...</option>
-                        {% for area in all_areas %}
-                        <option value="{{ area }}">{{ area }} - {{ get_area_info(area).name }}</option>
-                        {% endfor %}
                     </select>
                 </div>
                 <div class="col-md-3">
@@ -338,6 +328,20 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/validation.js') }}"></script>
+{# Updated by Claude AI on 2026-10-20 #}
+{# Area options are written once here and cloned into every [data-area-options] select, instead of being repeated in the HTML for each leader row #}
+<template id="area-options-template">{% for area in all_areas %}<option value="{{ area }}">{{ area }} - {{ get_area_info(area).name }}</option>{% endfor %}</template>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const template = document.getElementById('area-options-template');
+    document.querySelectorAll('select[data-area-options]').forEach(function (select) {
+        select.appendChild(template.content.cloneNode(true));
+        if (select.dataset.selected) {
+            select.value = select.dataset.selected;
+        }
+    });
+});
+</script>
 <script>
 // Make leader data available to the map JavaScript
 window.leaderData = {};

@@ -183,10 +183,18 @@ def _get_circle_areas():
             "_push_circle_context() for scripts)."
         )
 
+    # Cached per request: templates call get_area_info() inside nested loops, which
+    # was one query per call (hundreds per page). g lives only for one request.
+    cache = getattr(g, '_circle_areas_cache', None)
+    if cache is not None and cache[0] == g.circle_slug:
+        return cache[1]
+
     from config.database import get_db_session
     from models.circle import CircleAreaModel
     areas = CircleAreaModel(get_db_session()).get_areas_for_circle(g.circle_slug)
-    return {area['code']: area for area in areas}
+    by_code = {area['code']: area for area in areas}
+    g._circle_areas_cache = (g.circle_slug, by_code)
+    return by_code
 
 def get_area_info(letter_code):
     """Get configuration info for a specific area."""
