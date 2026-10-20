@@ -107,10 +107,13 @@ function loadAreaData() {
             const areas = data.areas || data;  // Support both new and old format
             displayAreas(areas);
 
-            // The colour key is also the control for adjusting the tiers
-            thresholds.legendControl({
-                extraRows: [{ className: 'admin-only-box', text: 'Admin-assignment only' }]
-            }).addTo(map);
+            // The colour key (a row under the map) is also the control for adjusting the tiers
+            const legendEl = document.getElementById('count-area-legend');
+            if (legendEl) {
+                legendEl.appendChild(thresholds.legendElement({
+                    extraRows: [{ className: 'admin-only-box', text: 'Admin-assignment only' }]
+                }));
+            }
             thresholds.onChange(restyleAreas);
 
             // Display decorative major-area-group boundary lines, if this

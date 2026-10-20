@@ -1,6 +1,6 @@
 /* Updated by Claude AI on 2026-10-20 */
 // Participation-count tiers for the area maps (public registration map and the admin
-// unassigned page), plus a Leaflet legend that doubles as the control for trying other
+// unassigned page), plus a colour key that doubles as the control for trying other
 // cut-offs. Mirrors services/count_thresholds.py: a tier is defined by the lowest count
 // in it, so the ranges can't overlap - counts below `medium` are low, `medium` up to
 // `high - 1` are medium, `high` and above are high.
@@ -10,7 +10,7 @@
 // dropped again when they match the circle's values, so a later change to the circle's
 // defaults still reaches viewers who never customised anything.
 const CountThresholds = (function () {
-    const MAX_THRESHOLD = 999;
+    const MAX_THRESHOLD = 99;
 
     function isValid(medium, high) {
         return Number.isInteger(medium) && Number.isInteger(high) &&
@@ -79,18 +79,12 @@ const CountThresholds = (function () {
             isCustom() {
                 return current.medium !== circleDefaults.medium || current.high !== circleDefaults.high;
             },
-            // options.extraRows: [{className, text}] appended below the three tiers
-            // (e.g. the registration map's "Admin-assignment only" swatch).
-            legendControl(options) {
-                return buildLegend(state, options || {});
-            },
-            // The same key as a plain element for placing in the page (e.g. beside the
-            // area buttons); stays in step with any legendControl on a map.
+            // The colour key as a plain element, to place in a row under a map (or beside
+            // other controls). Every key built from this state stays in step with the others.
+            // options.extraRows: [{className, text}] appended after the three tiers (e.g. the
+            // registration map's "Admin-assignment only" swatch).
             legendElement(options) {
-                const opts = options || {};
-                const box = buildLegendBox(state, opts, true);
-                box.classList.add('count-legend-inline');
-                return box;
+                return buildLegendBox(state, options || {});
             }
         };
         return state;
@@ -120,34 +114,8 @@ const CountThresholds = (function () {
         return input;
     }
 
-    function buildLegend(state, options) {
-        const Legend = L.Control.extend({
-            options: { position: 'bottomright' },
-
-            onAdd: function (map) {
-                // Phones: start collapsed so the key doesn't cover the map
-                const box = buildLegendBox(state, options, map.getSize().x >= 480);
-                box.classList.add('leaflet-bar');
-                L.DomEvent.disableClickPropagation(box);
-                L.DomEvent.disableScrollPropagation(box);
-                return box;
-            }
-        });
-        return new Legend();
-    }
-
-    function buildLegendBox(state, options, startOpen) {
+    function buildLegendBox(state, options) {
         const box = el('div', 'count-legend');
-
-        const toggle = el('button', 'count-legend-toggle', 'Colour key');
-        toggle.type = 'button';
-        const body = el('div', 'count-legend-body');
-        body.hidden = !startOpen;
-        toggle.setAttribute('aria-expanded', String(startOpen));
-        toggle.addEventListener('click', function () {
-            body.hidden = !body.hidden;
-            toggle.setAttribute('aria-expanded', String(!body.hidden));
-        });
 
         const lowRow = swatchRow('low');
         const lowText = el('span');
@@ -165,25 +133,23 @@ const CountThresholds = (function () {
         highRow.appendChild(highInput);
         highRow.appendChild(highText);
 
-        const reset = el('button', 'btn btn-link btn-sm p-0 count-legend-reset', 'Reset to default');
-        reset.type = 'button';
-        reset.addEventListener('click', function () { state.reset(); });
-
-        const hint = el('div', 'count-legend-hint', 'Edit the numbers to change the colour ranges.');
-
-        body.appendChild(lowRow);
-        body.appendChild(medRow);
-        body.appendChild(highRow);
+        box.appendChild(lowRow);
+        box.appendChild(medRow);
+        box.appendChild(highRow);
         (options.extraRows || []).forEach(function (extra) {
             const row = el('div', 'count-legend-row');
             row.appendChild(el('span', 'color-box ' + extra.className));
             row.appendChild(el('span', null, extra.text));
-            body.appendChild(row);
+            box.appendChild(row);
         });
-        body.appendChild(hint);
-        body.appendChild(reset);
-        box.appendChild(toggle);
-        box.appendChild(body);
+
+        const reset = el('button', 'btn btn-link btn-sm p-0 count-legend-reset', 'Reset to default');
+        reset.type = 'button';
+        reset.addEventListener('click', function () { state.reset(); });
+        box.appendChild(reset);
+
+        box.appendChild(el('div', 'count-legend-hint',
+            'Edit the numbers to change the colour ranges.'));
 
         function refresh() {
             const v = state.values();

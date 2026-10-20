@@ -11,11 +11,14 @@ document.addEventListener('DOMContentLoaded', function () {
         high: parseInt(mapEl.dataset.highFrom, 10)
     });
 
-    // Same key beside the area buttons, so admins needn't scroll down to the map
-    const inlineLegend = document.getElementById('capacity-legend');
-    if (inlineLegend) {
-        inlineLegend.appendChild(thresholds.legendElement());
-    }
+    // The key appears twice - beside the area buttons, so admins needn't scroll down to
+    // the map, and in a row under the map. Both stay in step.
+    ['capacity-legend', 'map-legend'].forEach(function (id) {
+        const container = document.getElementById(id);
+        if (container) {
+            container.appendChild(thresholds.legendElement());
+        }
+    });
 
     const polygons = [];
     const TIERS = ['low', 'med', 'high'];
@@ -75,7 +78,6 @@ document.addEventListener('DOMContentLoaded', function () {
                     { color: '#0055CC', weight: 4, opacity: 0.85, interactive: false }).addTo(map);
             });
 
-            thresholds.legendControl().addTo(map);
             thresholds.onChange(restyleControls);
             restyleControls();
         })

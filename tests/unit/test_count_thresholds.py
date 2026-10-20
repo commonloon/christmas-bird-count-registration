@@ -142,7 +142,7 @@ class TestUnassignedPage:
         circle_thresholds(1, 3)
         html = super_admin_client.get(f'/bigbird/unassigned?year={YEAR}').get_data(as_text=True)
         assert 'btn-tier-high' in html
-        circle_thresholds(1, 999)
+        circle_thresholds(1, 99)
         html = super_admin_client.get(f'/bigbird/unassigned?year={YEAR}').get_data(as_text=True)
         assert 'btn-tier-med' in html and 'btn-tier-high' not in html
 

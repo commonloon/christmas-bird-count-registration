@@ -12,7 +12,7 @@ DEFAULT_MEDIUM_FROM = 4
 DEFAULT_HIGH_FROM = 8
 
 # Generous upper bound - just stops absurd values, not a real-world limit
-MAX_THRESHOLD = 999
+MAX_THRESHOLD = 99
 
 
 def get_thresholds(circle):
