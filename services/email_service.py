@@ -466,6 +466,106 @@ REASON FOR WITHDRAWAL:
         return self.send_email([participant_email], subject, body, from_email=org_vars['from_email'],
                                 test_recipient=org_vars['test_recipient'])
 
+    @staticmethod
+    def _format_leader_names(area_leaders):
+        """'Jane Doe', 'Jane Doe and Sam Lee', 'A, B and C' - names only, never contact
+        details (the leader contacts the participant, not the other way round)."""
+        names = []
+        for leader in area_leaders:
+            name = f"{leader.get('first_name', '')} {leader.get('last_name', '')}".strip()
+            if name and name not in names:
+                names.append(name)
+        if len(names) <= 1:
+            return ''.join(names)
+        return ', '.join(names[:-1]) + ' and ' + names[-1]
+
+    def _compose_area_assignment_email(self, email_type, first_name, last_name, area_name,
+                                       old_area_name, leader_names, org_vars, year, circle_slug):
+        """Resolve this circle's admin-customizable area_assignment/area_reassignment
+        blocks and assemble the plain-text email. Returns (subject, body). Shared by the
+        real send path and the admin email-content preview route. The area name and
+        leader names lines are fixed, not admin-editable; the leader line is omitted
+        when the area has no leader yet."""
+        from models.email_content import EmailContentModel
+        from services.email_content_service import substitute_placeholders
+
+        db = self._get_db_session()
+        blocks = EmailContentModel(db).resolve_all(circle_slug, email_type)
+
+        placeholder_values = {
+            'first_name': first_name or '',
+            'last_name': last_name or '',
+            'year': year,
+            'count_event_name': org_vars['count_event_name'],
+            'area_name': area_name,
+            'old_area_name': old_area_name or '',
+            'count_contact': org_vars['count_contact'],
+            'organization_name': org_vars['organization_name'],
+        }
+
+        subject = substitute_placeholders(blocks['subject'], placeholder_values)
+        intro = substitute_placeholders(blocks['intro_message'], placeholder_values)
+        closing = substitute_placeholders(blocks['closing_message'], placeholder_values)
+
+        details = f"YOUR AREA:\n{area_name}\n"
+        if leader_names:
+            label = 'YOUR AREA LEADERS' if ' and ' in leader_names else 'YOUR AREA LEADER'
+            details += f"\n{label}:\n{leader_names}\n"
+
+        body = f"""
+{intro}
+
+{details}
+{closing}
+        """
+        return subject, body
+
+    def build_area_assignment_preview(self, circle_slug, email_type='area_assignment'):
+        """Subject + body for this circle's currently-saved area_assignment or
+        area_reassignment blocks, using synthetic sample data. Never sends anything.
+        org_vars come from circle_slug via a pushed context - see
+        build_registration_confirmation_preview's docstring for why."""
+        import app as app_module
+
+        ctx = app_module.push_circle_context(circle_slug)
+        try:
+            org_vars = get_organization_variables()
+        finally:
+            ctx.pop()
+
+        old_area_name = 'Area B - Sample Marsh' if email_type == 'area_reassignment' else None
+        return self._compose_area_assignment_email(
+            email_type, 'Sample', 'Participant', 'Area A - Sample Neighbourhood', old_area_name,
+            'Sample Leader and Another Leader', org_vars, datetime.now().year, circle_slug)
+
+    def send_area_assignment(self, participant_data: dict, area_code: str, year: int,
+                             old_area_code: str = None) -> bool:
+        """Tell a participant which area an admin assigned them to (or, when
+        old_area_code is given, moved them to) and who leads it. Never includes
+        leader contact details."""
+        from flask import g
+        from config.areas import get_area_info
+        from models.participant import ParticipantModel
+
+        org_vars = get_organization_variables()
+        circle_slug = getattr(g, 'circle_slug', None)
+
+        try:
+            area_leaders = ParticipantModel(self._get_db_session(), year).get_leaders_by_area(area_code)
+        except Exception as e:
+            logger.error(f"Error getting area leaders: {e}")
+            area_leaders = []
+
+        email_type = 'area_reassignment' if old_area_code else 'area_assignment'
+        subject, body = self._compose_area_assignment_email(
+            email_type, participant_data.get('first_name'), participant_data.get('last_name'),
+            get_area_info(area_code)['name'],
+            get_area_info(old_area_code)['name'] if old_area_code else None,
+            self._format_leader_names(area_leaders), org_vars, year, circle_slug)
+
+        return self.send_email([participant_data.get('email')], subject, body,
+                                from_email=org_vars['from_email'], test_recipient=org_vars['test_recipient'])
+
     def _get_db_session(self):
         """Get the request-scoped database session."""
         from config.database import get_db_session

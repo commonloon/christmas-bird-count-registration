@@ -135,6 +135,12 @@
                                     {% endfor %}
                                 </select>
 
+                                <div class="form-check me-2 mb-0">
+                                    <input class="form-check-input" type="checkbox" name="notify" value="1" checked
+                                           id="notify-{{ participant.id }}">
+                                    <label class="form-check-label small" for="notify-{{ participant.id }}">Notify this person</label>
+                                </div>
+
                                 <button type="submit" class="btn btn-sm btn-success">Assign</button>
                             </form>
                         </td>

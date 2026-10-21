@@ -283,6 +283,12 @@
                                         <option value="{{ area }}">Area {{ area }}</option>
                                         {% endfor %}
                                     </select>
+                                    <div class="form-check d-inline-block ms-1 me-1 align-middle">
+                                        <input class="form-check-input reassign-notify" type="checkbox" checked
+                                               id="notify-{{ participant.id }}">
+                                        <label class="form-check-label small" for="notify-{{ participant.id }}"
+                                               title="Email the participant about their new area. Not sent when a leader is moved as Leader.">Notify</label>
+                                    </div>
                                     <button type="button" class="btn btn-success btn-sm btn-confirm-reassign" title="Confirm reassignment">
                                         <i class="bi bi-check"></i>
                                     </button>
@@ -656,6 +662,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const currentArea = reassignButton.dataset.currentArea;
             const isLeader = reassignButton.dataset.isLeader === 'true';
             const newArea = row.querySelector('.reassign-area-select').value;
+            const notify = row.querySelector('.reassign-notify').checked;
 
             if (!newArea) {
                 alert('Please select an area.');
@@ -689,7 +696,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     modal.hide();
                     reassignButton.disabled = true;
                     reassignButton.innerHTML = '<i class="bi bi-hourglass-split"></i>';
-                    reassignParticipant(participantId, firstName, lastName, email, newArea, reassignButton);
+                    reassignParticipant(participantId, firstName, lastName, email, newArea, reassignButton, notify);
                 };
 
                 modal.show();
@@ -697,7 +704,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Non-leader: just move them
                 this.disabled = true;
                 this.innerHTML = '<i class="bi bi-hourglass-split"></i>';
-                reassignParticipant(participantId, firstName, lastName, email, newArea, this);
+                reassignParticipant(participantId, firstName, lastName, email, newArea, this, notify);
             }
         });
     });
@@ -731,13 +738,14 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    function reassignParticipant(participantId, firstName, lastName, email, newArea, button) {
+    function reassignParticipant(participantId, firstName, lastName, email, newArea, button, notify) {
         const formData = {
             participant_id: participantId,
             first_name: firstName,
             last_name: lastName,
             email: email,
             preferred_area: newArea,
+            notify: notify,
             year: {{ selected_year }},
             csrf_token: '{{ csrf_token() }}'
         };
@@ -753,7 +761,9 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                alert('Participant reassigned successfully. Reloading page...');
+                alert(data.message === 'Participant updated successfully'
+                    ? 'Participant reassigned successfully. Reloading page...'
+                    : data.message + ' Reloading page...');
                 window.location.reload();
             } else {
                 alert('Error reassigning participant: ' + (data.message || 'Unknown error'));

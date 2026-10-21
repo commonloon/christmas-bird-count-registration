@@ -413,8 +413,19 @@ def assign_participant():
 
     participant_model = ParticipantModel(g.db, selected_year)
 
+    participant = participant_model.get_participant(participant_id)
+
     if participant_model.assign_participant_to_area(participant_id, area_code, user['email']):
         flash(f'Participant assigned to Area {area_code} successfully.', 'success')
+        if request.form.get('notify') and participant:
+            try:
+                if email_service.send_area_assignment(participant, area_code, selected_year):
+                    flash('Notification email sent to the participant.', 'success')
+                else:
+                    flash('Participant assigned, but the notification email could not be sent.', 'warning')
+            except Exception as e:
+                logging.error(f"Failed to send area assignment email: {e}")
+                flash('Participant assigned, but the notification email could not be sent.', 'warning')
     else:
         flash('Failed to assign participant.', 'error')
 
@@ -1291,6 +1302,21 @@ def edit_participant():
                     'message': f'Participant updated but reassignment logging failed: {str(e)}'
                 })
 
+        # Notify the participant of a move between two real areas (a first assignment
+        # from UNASSIGNED has its own checkbox on the unassigned page)
+        if data.get('notify') and area_changed and old_area and preferred_area \
+                and old_area != 'UNASSIGNED' and preferred_area != 'UNASSIGNED':
+            try:
+                sent = email_service.send_area_assignment(
+                    {**current_participant, **updates}, preferred_area, selected_year,
+                    old_area_code=old_area)
+            except Exception as e:
+                logging.error(f"Failed to send area reassignment email: {e}")
+                sent = False
+            if not sent:
+                return jsonify({'success': True, 'message':
+                                'Participant reassigned, but the notification email could not be sent.'})
+
         return jsonify({'success': True, 'message': 'Participant updated successfully'})
 
     except Exception as e:
@@ -1995,6 +2021,10 @@ def circle_email_content_preview(slug, email_type):
         subject, html_content = email_service.build_registration_confirmation_preview(slug, variant=variant)
         return render_template('admin/email_content_preview.html', circle=circle, email_type=email_type,
                                 subject=subject, html_content=html_content, is_html=True)
+    elif email_type in ('area_assignment', 'area_reassignment'):
+        subject, body = email_service.build_area_assignment_preview(slug, email_type)
+        return render_template('admin/email_content_preview.html', circle=circle, email_type=email_type,
+                                subject=subject, body=body, is_html=False)
     elif email_type == 'withdrawal_confirmation':
         subject, body = email_service.build_withdrawal_confirmation_preview(slug)
         return render_template('admin/email_content_preview.html', circle=circle, email_type=email_type,

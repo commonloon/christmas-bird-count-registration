@@ -126,14 +126,18 @@ Most participants pick an area when they register and are placed in it automatic
 "wherever I'm needed most" wait for you to give them an area. Click **Manage Unassigned**:
 
 1. The top of the page shows how many people each area has so far, to help you balance the teams.
-2. For each waiting person, pick an area and click **Assign**.
+2. For each waiting person, pick an area and click **Assign**. The **Notify this person** box next to
+   the button is ticked by default; untick it if you don't want them emailed yet.
 
 Things worth considering when you choose an area: the person's skill level, whether they have
 binoculars or a scope, and whether they've offered to lead.
 
-Assigning someone doesn't send them an email by itself. Their area leader will hear about the new
-team member in the next team update, but you may want to tell the person yourself, using the email
-address shown for them.
+If **Notify this person** is ticked, the person gets an email saying which area they've been assigned
+to and who its leader is. It doesn't include the leader's contact details; it tells them their area
+leader will be in touch with count day details such as where and when to meet. If the area has no
+leader yet, the leader's name is left out. The wording can be changed under
+[Email Content](#customizing-the-emails). Their area leader hears about the new team member in the
+next team update either way.
 
 Participants who asked for an area they couldn't be placed in will have been told in their confirmation
 email that someone will be in touch. You are that someone: use their contact details on the
@@ -155,7 +159,10 @@ notes, and whether they're interested in leading or scribing. Use the buttons on
 
 - **Pencil (edit)**: change any of their details. Click **Save** or **Cancel**.
 - **Reassign**: move them to another area. If they are a leader, you'll be asked whether they
-  should stay a leader in the new area or become an ordinary team member.
+  should stay a leader in the new area or become an ordinary team member. A **Notify** box next to
+  the confirm button (ticked by default) emails the person that they've been moved from one area to
+  another, and who their new area leader is. No email is sent when a leader is moved as a leader;
+  you'll need to welcome them to their new area yourself.
 - **Withdraw**: mark them as no longer taking part, with an optional reason. Their record is kept,
   their row turns yellow, and they receive the withdrawal confirmation email. You can undo this with
   **Reactivate**.
@@ -249,6 +256,8 @@ still need to write yourself.
 |---|---|---|
 | **Registration confirmation** | A participant | Right after they register. Says which area they're in, or that someone will be in touch if they couldn't get their first choice or are waiting for an area. |
 | **Withdrawal confirmation** | A participant | After you withdraw them. |
+| **Area assignment** | A participant | When you assign them from the unassigned list with **Notify this person** ticked. |
+| **Area reassignment** | A participant | When you move them to a different area with **Notify** ticked. |
 | **Team update** | Area leaders | When someone joins or leaves their team. By default checked twice a day (7:00 am and 6:00 pm); nothing is sent if nothing changed. |
 | **Weekly summary** | Area leaders | Once a week (by default Friday at 11:00 pm) with the full team roster. |
 | **Admin digest** | Circle admins | By default daily at 6:00 pm, only if people are still waiting for an area. |
@@ -481,6 +490,8 @@ There is one tab for each email:
 |---|---|
 | **Registration confirmation** | A participant, right after they register. |
 | **Withdrawal confirmation** | A participant, after they're withdrawn. |
+| **Area assignment** | A participant you assign to an area from the unassigned list. |
+| **Area reassignment** | A participant you move from one area to another. |
 | **Team update** | An area leader, when their team changes. |
 | **Weekly summary** | An area leader, once a week. |
 | **Admin digest** | The circle's admins, listing people still waiting for an area. |
