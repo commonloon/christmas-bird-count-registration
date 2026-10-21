@@ -2,6 +2,7 @@
 import html
 import os
 import smtplib
+from urllib.parse import quote
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import List, Dict, Optional
@@ -301,6 +302,7 @@ This is an automated notification from the CBC registration system.
             'intro_text': intro_text,
             'whats_next_text': whats_next_text,
             'closing_text': closing_text,
+            'map_url': self._area_map_url(org_vars, assigned_area) if assigned_area != 'UNASSIGNED' else None,
         }
 
         with current_app.app_context():
@@ -372,6 +374,7 @@ This is an automated notification from the CBC registration system.
             'intro_text': intro_text,
             'whats_next_text': whats_next_text,
             'closing_text': closing_text,
+            'map_url': self._area_map_url(org_vars, assigned_area) if assigned_area != 'UNASSIGNED' else None,
         }
 
         # Render HTML template
@@ -467,6 +470,11 @@ REASON FOR WITHDRAWAL:
                                 test_recipient=org_vars['test_recipient'])
 
     @staticmethod
+    def _area_map_url(org_vars, area_code):
+        """Link to the circle's public /map page with this area highlighted."""
+        return f"{org_vars['registration_url']}/map?area={quote(area_code)}"
+
+    @staticmethod
     def _format_leader_names(area_leaders):
         """'Jane Doe', 'Jane Doe and Sam Lee', 'A, B and C' - names only, never contact
         details (the leader contacts the participant, not the other way round)."""
@@ -480,7 +488,7 @@ REASON FOR WITHDRAWAL:
         return ', '.join(names[:-1]) + ' and ' + names[-1]
 
     def _compose_area_assignment_email(self, email_type, first_name, last_name, area_name,
-                                       old_area_name, leader_names, org_vars, year, circle_slug):
+                                       old_area_name, leader_names, map_url, org_vars, year, circle_slug):
         """Resolve this circle's admin-customizable area_assignment/area_reassignment
         blocks and assemble the plain-text email. Returns (subject, body). Shared by the
         real send path and the admin email-content preview route. The area name and
@@ -511,6 +519,7 @@ REASON FOR WITHDRAWAL:
         if leader_names:
             label = 'YOUR AREA LEADERS' if ' and ' in leader_names else 'YOUR AREA LEADER'
             details += f"\n{label}:\n{leader_names}\n"
+        details += f"\nMAP OF YOUR AREA:\n{map_url}\n"
 
         body = f"""
 {intro}
@@ -536,7 +545,8 @@ REASON FOR WITHDRAWAL:
         old_area_name = 'Area B - Sample Marsh' if email_type == 'area_reassignment' else None
         return self._compose_area_assignment_email(
             email_type, 'Sample', 'Participant', 'Area A - Sample Neighbourhood', old_area_name,
-            'Sample Leader and Another Leader', org_vars, datetime.now().year, circle_slug)
+            'Sample Leader and Another Leader', self._area_map_url(org_vars, 'A'), org_vars,
+            datetime.now().year, circle_slug)
 
     def send_area_assignment(self, participant_data: dict, area_code: str, year: int,
                              old_area_code: str = None) -> bool:
@@ -561,7 +571,8 @@ REASON FOR WITHDRAWAL:
             email_type, participant_data.get('first_name'), participant_data.get('last_name'),
             get_area_info(area_code)['name'],
             get_area_info(old_area_code)['name'] if old_area_code else None,
-            self._format_leader_names(area_leaders), org_vars, year, circle_slug)
+            self._format_leader_names(area_leaders), self._area_map_url(org_vars, area_code),
+            org_vars, year, circle_slug)
 
         return self.send_email([participant_data.get('email')], subject, body,
                                 from_email=org_vars['from_email'], test_recipient=org_vars['test_recipient'])

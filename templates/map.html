@@ -1,0 +1,26 @@
+{# Updated by Claude AI on 2026-10-21 #}
+{% extends "base.html" %}
+
+{% block title %}Map - {{ count_event_name }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h1>{{ count_event_name|e }} Map</h1>
+            <a href="{{ url_for('main.index') }}" class="btn btn-outline-primary">Registration</a>
+        </div>
+        <p id="map-area-summary" class="lead"></p>
+        <div id="count-area-map"></div>
+        <div class="mt-2 small text-muted d-flex flex-wrap gap-3">
+            <span><span class="color-box med-count"></span> Area</span>
+            <span><span class="color-box admin-only-box"></span> Assigned by organizers (not open for self-registration)</span>
+        </div>
+        <p class="text-muted mt-3">Tap or hover over an area to see its name and leader(s). Your area leader will contact you with details about where and when to meet.</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/area-map.js') }}"></script>
+{% endblock %}

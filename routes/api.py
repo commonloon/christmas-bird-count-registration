@@ -97,10 +97,21 @@ def get_areas():
             print(f"Warning: Could not get signup types: {e}")
             signup_types = {}
 
+        # Leader names only (never contact details) - shown on the public /map page,
+        # the same names the registration page already lists
+        leader_names = {}
+        try:
+            for leader in participant_model.get_leaders():
+                leader_names.setdefault(leader.get('assigned_area_leader'), []).append(
+                    f"{leader.get('first_name', '')} {leader.get('last_name', '')}".strip())
+        except Exception as e:
+            print(f"Warning: Could not get area leaders: {e}")
+
         # Add current counts and signup type to area data
         for area in areas:
             area_code = area['letter_code']
             area['current_count'] = area_counts.get(area_code, 0)
+            area['leaders'] = sorted(leader_names.get(area_code, []))
 
             # Add signup type information
             if area_code in signup_types:

@@ -135,7 +135,9 @@ binoculars or a scope, and whether they've offered to lead.
 If **Notify this person** is ticked, the person gets an email saying which area they've been assigned
 to and who its leader is. It doesn't include the leader's contact details; it tells them their area
 leader will be in touch with count day details such as where and when to meet. If the area has no
-leader yet, the leader's name is left out. The wording can be changed under
+leader yet, the leader's name is left out. The email also links to your circle's public map page (`/map`), with their area highlighted;
+the registration confirmation email links to it too. The map shows area names and leader names only, and
+marks areas that only organizers can assign people to with a hatched pattern. The wording can be changed under
 [Email Content](#customizing-the-emails). Their area leader hears about the new team member in the
 next team update either way.
 

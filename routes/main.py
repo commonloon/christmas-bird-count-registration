@@ -422,6 +422,15 @@ def registration_success():
                            **org_vars)
 
 
+@main_bp.route('/map')
+def area_map():
+    """Public read-only map of the circle's count areas. ?area=C highlights one area
+    (linked from the assignment and registration emails). Data comes from /api/areas."""
+    if getattr(g, 'is_landing_host', False):
+        return redirect(url_for('main.index'))
+    return render_template('map.html', **get_organization_variables())
+
+
 @main_bp.route('/area-leader-info')
 def area_leader_info():
     """Information about area leader responsibilities."""
