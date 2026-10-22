@@ -124,6 +124,37 @@ Every attempt, including missed ones, is recorded in `email_schedule_run_log` an
   slug typed as confirmation, only works during the circle's season, and only sends what changed since each
   team's last email, so running it right after a normal run sends nothing new.
 
+## Bot registration alerts
+
+The same hourly tick also reports bot activity on the public registration form (see
+`services/bot_attempts.py`; needs migration `0016`). An "attempt" is a submission our own checks rejected:
+filled honeypot, missing or too-fast form token, URL-bearing name, disposable email domain. Super-admins get:
+
+- a **daily summary at 06:00 Pacific**, only if the previous Pacific day had any attempts (7-day trend, then
+  breakdowns by reason, circle, network, IP, browser/OS family and email domain). If a tick is missed it is
+  retried until 09:00 Pacific.
+- an **alert when the previous full hour had more than 10 attempts across all circles**, at most one per 6
+  hours (the daily summary still covers everything).
+
+Emails contain counts and short sanitized labels only - never names, notes or raw user agents. Skipped when
+the tick is run with `--circle`, and its errors never change the exit status.
+
+Storage is bounded regardless of attack volume: `bot_attempt_hourly` (30 days), `bot_attempt_daily` (total /
+circle / reason kept 400 days, ip / ip_prefix / user_agent / email_domain 90 days, at most 200 distinct values
+per dimension per day with the rest in an `(other)` row), and `bot_attempt_sample`, a 200-row ring buffer of
+the latest attempts in full (this one holds attacker-supplied text; query it directly, it is never emailed).
+Each web process stops writing after 300 attempts a minute and only counts what it drops. Pruning runs in the
+tick. The retention and cap constants are at the top of `services/bot_attempts.py`; state for "already sent"
+lives in `app_settings` (`bot_summary_last_sent_date`, `bot_alert_last_sent_at`).
+
+Useful queries (read-only):
+
+```sql
+SELECT day, count FROM bot_attempt_daily WHERE dimension = 'total' ORDER BY day DESC LIMIT 30;
+SELECT value, sum(count) FROM bot_attempt_daily WHERE dimension = 'ip_prefix' GROUP BY 1 ORDER BY 2 DESC LIMIT 20;
+SELECT * FROM bot_attempt_sample ORDER BY occurred_at DESC LIMIT 20;
+```
+
 ## Data
 
 - `circle_email_schedules`: one row per send time. `hour` is the local hour; `day_of_week` follows Python's
@@ -136,4 +167,4 @@ Every attempt, including missed ones, is recorded in `email_schedule_run_log` an
 
 Code: `services/scheduler_service.py` (logic), `services/scheduler_cli.py` (the command),
 `models/email_schedule.py`, `models/app_settings.py`. Tests: `tests/unit/test_scheduler_service.py`,
-`tests/unit/test_scheduler_admin_routes.py`.
+`tests/unit/test_scheduler_admin_routes.py`, `tests/unit/test_bot_attempts.py`.

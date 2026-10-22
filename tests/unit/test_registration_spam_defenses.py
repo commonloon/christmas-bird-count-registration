@@ -154,3 +154,43 @@ def test_confirmation_email_backstop_blanks_spam_name_and_skips_disposable(app, 
         assert email_service.send_registration_confirmation(
             dict(participant, email='bgg671lbkbz0p7mt7ywd@fextemp.com'), 'UNASSIGNED') is False
         assert len(sent) == 1
+
+
+class TestRejectionsAreRecordedForAlerts:
+    """Each bot rejection feeds services/bot_attempts.py (history + super-admin alerts)."""
+
+    @pytest.fixture(autouse=True)
+    def clean_bot_tables(self):
+        from sqlalchemy import text
+        from models.db import get_engine
+
+        def wipe():
+            with get_engine().begin() as conn:
+                for table in ('bot_attempt_hourly', 'bot_attempt_daily', 'bot_attempt_sample'):
+                    conn.execute(text(f'DELETE FROM {table}'))
+        wipe()
+        yield
+        wipe()
+
+    @staticmethod
+    def _reasons():
+        from sqlalchemy import text
+        from models.db import get_engine
+        with get_engine().connect() as conn:
+            return sorted(r[0] for r in conn.execute(text(
+                "SELECT value FROM bot_attempt_daily WHERE dimension = 'reason'")))
+
+    def test_each_rejection_type_is_recorded(self, app, client, sent):
+        client.post('/register', data=_form(app, fax_number='x'))
+        client.post('/register', data=_form(app, first_name='see https://evil.example now'))
+        client.post('/register', data=_form(app, email='bgg671lbkbz0p7mt7ywd@fextemp.com'))
+        data = _form(app)
+        del data['form_token']
+        client.post('/register', data=data)
+        assert self._reasons() == ['disposable_email', 'honeypot', 'missing', 'spam_name']
+
+    def test_clean_registration_and_stale_form_are_not_recorded(self, app, client, sent, monkeypatch):
+        client.post('/register', data=_form(app))
+        monkeypatch.setattr(security, 'MAX_FORM_AGE_SECONDS', -1)
+        client.post('/register', data=_form(app))
+        assert self._reasons() == []

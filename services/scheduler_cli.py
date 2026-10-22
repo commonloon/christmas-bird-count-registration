@@ -26,6 +26,7 @@ import click
 from flask import current_app
 from flask.cli import with_appcontext
 
+from services.bot_attempts import run_bot_attempt_notifications
 from services.scheduler_service import tick
 
 LOG_MAX_BYTES = 1_000_000
@@ -71,6 +72,12 @@ def tick_scheduled_emails_command(circles):
         log.exception('Scheduler tick crashed')
         click.echo('ERROR: scheduler tick crashed - see log', err=True)
         sys.exit(1)
+
+    # Bot-registration summary/alert/pruning: independent of the circles' email seasons, and
+    # skipped on a hand-run for specific circles so that stays side-effect free. Errors here
+    # are logged and reported in the summary but never change the exit status.
+    if not circles:
+        summary['bot_attempts'] = run_bot_attempt_notifications()
 
     log.info(f'Tick complete: {json.dumps(summary)}')
     click.echo(json.dumps(summary))

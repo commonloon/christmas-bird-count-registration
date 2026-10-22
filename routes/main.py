@@ -12,6 +12,7 @@ from services.security import (
     validate_participation_type, validate_email_format, is_suspicious_input, log_security_event,
     name_looks_like_spam, is_disposable_email, check_form_token
 )
+from services.bot_attempts import record_bot_attempt
 from services.ip_blocker import IPBlockerService, get_client_ip
 from services.limiter import limiter
 from config.rate_limits import RATE_LIMITS, get_rate_limit_message
@@ -190,6 +191,15 @@ def report_problem():
     return jsonify({'ok': True})
 
 
+def _record_bot_attempt(reason):
+    """Store a rejected-registration attempt for the bot-activity history/alerts
+    (services/bot_attempts.py). Reads the raw form since that is what the bot sent."""
+    record_bot_attempt(
+        reason, getattr(g, 'circle_slug', None), get_client_ip(request),
+        request.headers.get('User-Agent', ''), request.form.get('email', ''),
+        f"{request.form.get('first_name', '')} {request.form.get('last_name', '')}".strip())
+
+
 @main_bp.route('/register', methods=['POST'])
 @limiter.limit(RATE_LIMITS['registration'], error_message=get_rate_limit_message('registration'))
 def register():
@@ -214,6 +224,8 @@ def register():
     form_problem = 'honeypot' if request.form.get('fax_number') else check_form_token(request.form.get('form_token', ''))
     if form_problem:
         log_security_event('Registration bot trap', f'{form_problem} from {get_client_ip(request)}')
+        if form_problem != 'expired':  # an expired token is a person with a stale tab, not a bot
+            _record_bot_attempt(form_problem)
         if form_problem == 'honeypot':
             flash('Invalid input detected. Please check your entries and try again.', 'error')
         else:
@@ -264,6 +276,7 @@ def register():
     if raw_names_look_spammy:
         errors.append('Names cannot contain web addresses or be unusually long')
         log_security_event('Spam-like registration name', f'from {get_client_ip(request)}', email)
+        _record_bot_attempt('spam_name')
 
     if not last_name:
         errors.append('Last name is required')
@@ -277,6 +290,7 @@ def register():
     elif is_disposable_email(email):
         errors.append('Please use a permanent email address, not a disposable one')
         log_security_event('Disposable email registration', f'from {get_client_ip(request)}', email)
+        _record_bot_attempt('disposable_email')
         
     if phone and len(phone) > 20:
         errors.append('Primary phone number must be 20 characters or less')

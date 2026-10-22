@@ -1,7 +1,7 @@
 import os
 
 from sqlalchemy import (
-    Boolean, Column, DateTime, Float, ForeignKey, Integer, JSON, LargeBinary, String, Text,
+    Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, JSON, LargeBinary, String, Text,
     UniqueConstraint, create_engine, inspect
 )
 from sqlalchemy.orm import declarative_base, deferred, scoped_session, sessionmaker
@@ -371,6 +371,44 @@ class EmailScheduleRunLog(Base, DictMixin):
     emails_sent = Column(Integer, nullable=False, default=0)
     error_summary = Column(Text)
     triggered_by = Column(String(254), nullable=False, default='scheduler')
+
+
+class BotAttemptHourly(Base, DictMixin):
+    """Bot registration attempts rejected by our own checks, counted per UTC hour,
+    circle and reason. Kept ~30 days. See services/bot_attempts.py for the storage bounds."""
+    __tablename__ = 'bot_attempt_hourly'
+
+    hour = Column(DateTime(timezone=True), primary_key=True)
+    circle_slug = Column(String(50), primary_key=True)
+    reason = Column(String(30), primary_key=True)
+    count = Column(Integer, nullable=False, default=0)
+
+
+class BotAttemptDaily(Base, DictMixin):
+    """Per-Pacific-day counts by one dimension (total, circle, reason, ip, ip_prefix,
+    user_agent, email_domain). Each dimension is capped at a fixed number of distinct
+    values per day, with the rest folded into an '(other)' row."""
+    __tablename__ = 'bot_attempt_daily'
+
+    day = Column(Date, primary_key=True)
+    dimension = Column(String(20), primary_key=True)
+    value = Column(String(100), primary_key=True)
+    count = Column(Integer, nullable=False, default=0)
+
+
+class BotAttemptSample(Base, DictMixin):
+    """Fixed-size ring buffer (slots 0..N-1) of the most recent attempts in full, for
+    forensics. Holds attacker-supplied text, so it is never included in an email."""
+    __tablename__ = 'bot_attempt_sample'
+
+    slot = Column(Integer, primary_key=True)
+    occurred_at = Column(DateTime(timezone=True), nullable=False)
+    reason = Column(String(30), nullable=False)
+    circle_slug = Column(String(50))
+    ip = Column(String(45))
+    user_agent = Column(String(100))
+    email = Column(String(100))
+    name = Column(String(100))
 
 
 class AppSetting(Base, DictMixin):
