@@ -129,7 +129,7 @@ class TestCircleValues:
 
 
 class TestUnassignedPage:
-    def test_map_container_and_scripts(self, super_admin_client, circle_thresholds):
+    def test_map_container_and_scripts(self, super_admin_client, participants, circle_thresholds):
         circle_thresholds(1, 3)
         html = super_admin_client.get(f'/bigbird/unassigned?year={YEAR}').get_data(as_text=True)
         assert 'id="unassigned-map"' in html

@@ -5,11 +5,13 @@ Provides functions to prevent XSS attacks and ensure data integrity.
 """
 
 import html
+import os
 import re
 from typing import Optional, Any
 import logging
 from urllib.parse import urlparse
 from config.areas import get_all_areas
+from config.disposable_email_domains import DISPOSABLE_EMAIL_DOMAINS
 
 logger = logging.getLogger(__name__)
 
@@ -396,3 +398,67 @@ def log_security_event(event_type: str, details: str, user_email: str = None):
         log_msg += f" - User: {user_email}"
     
     logger.warning(log_msg)
+
+# Registration spam defenses (Updated by Claude AI on 2026-10-22)
+#
+# sanitize_name() strips ':', '/', '.' and digits, so a pasted URL survives as a
+# run of letters ("httpsexamplecom") - these checks must therefore run on the
+# RAW submitted value, before sanitizing.
+_URL_IN_TEXT_PATTERN = re.compile(
+    r'https?|ftp|://|www\.|href|\b[\w-]+\.(com|net|org|info|biz|xyz|top|ru|link|click|site|online|shop)\b',
+    re.IGNORECASE,
+)
+
+# Longest believable single name field; the observed spam names were 60-80 chars
+MAX_PLAUSIBLE_NAME_LENGTH = 50
+
+REGISTRATION_FORM_SALT = 'registration-form-timestamp'
+# Browser-automation suites fill and submit the form instantly, so the minimum is off in TEST_MODE
+# (same approach as config/rate_limits.py); tests/unit/test_registration_spam_defenses.py covers the real check
+MIN_FORM_FILL_SECONDS = 0 if os.getenv('TEST_MODE', '').lower() == 'true' else 3
+MAX_FORM_AGE_SECONDS = 24 * 60 * 60
+
+
+def name_looks_like_spam(raw_name: str) -> bool:
+    """True if a raw (unsanitized) name field contains a URL/link markup or is
+    implausibly long for a person's name."""
+    if not isinstance(raw_name, str):
+        return False
+    return bool(_URL_IN_TEXT_PATTERN.search(raw_name)) or len(raw_name.strip()) > MAX_PLAUSIBLE_NAME_LENGTH
+
+
+def is_disposable_email(email: str) -> bool:
+    """True if the address's domain (or a parent domain) is a known throwaway-mailbox service."""
+    if not isinstance(email, str) or '@' not in email:
+        return False
+    parts = email.rsplit('@', 1)[1].strip().lower().split('.')
+    return any('.'.join(parts[i:]) in DISPOSABLE_EMAIL_DOMAINS for i in range(len(parts) - 1))
+
+
+def make_form_token() -> str:
+    """Signed timestamp embedded in the registration form (template global
+    registration_form_token); see check_form_token()."""
+    from flask import current_app
+    from itsdangerous import URLSafeTimedSerializer
+    return URLSafeTimedSerializer(current_app.secret_key, salt=REGISTRATION_FORM_SALT).dumps('form')
+
+
+def check_form_token(token: str) -> Optional[str]:
+    """Validate the registration form's signed timestamp. Returns None if the form
+    was filled in a plausibly human time, otherwise a reason string: 'missing'
+    (absent or forged - a bot that never loaded the form), 'expired' or 'too_fast'."""
+    from flask import current_app
+    from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+    from datetime import datetime, timezone
+
+    if not token:
+        return 'missing'
+    try:
+        _, issued_at = URLSafeTimedSerializer(current_app.secret_key, salt=REGISTRATION_FORM_SALT).loads(
+            token, max_age=MAX_FORM_AGE_SECONDS, return_timestamp=True)
+    except SignatureExpired:
+        return 'expired'
+    except BadSignature:
+        return 'missing'
+    age = (datetime.now(timezone.utc) - issued_at).total_seconds()
+    return 'too_fast' if age < MIN_FORM_FILL_SECONDS else None

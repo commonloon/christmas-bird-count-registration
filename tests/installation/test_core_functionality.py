@@ -27,6 +27,25 @@ from selenium.common.exceptions import TimeoutException
 
 
 @pytest.mark.installation
+@pytest.fixture
+def seeded_participant():
+    """One current-year participant in the test circle. The admin participants page only renders
+    its per-area dropdowns, and the CSV export only has content, when at least one participant
+    exists, so these tests must not depend on leftover data from other tests."""
+    from datetime import datetime
+    from config.database import get_db_session
+    from models.participant import ParticipantModel
+    from tests.test_config import TEST_CIRCLE_SLUG
+    model = ParticipantModel(get_db_session(), datetime.now().year, TEST_CIRCLE_SLUG)
+    participant_id = model.add_participant({
+        'first_name': 'Seeded', 'last_name': 'InstallationTest',
+        'email': 'seeded-installation-test@example.com', 'phone': '555-0100',
+        'preferred_area': 'A', 'status': 'active', 'skill_level': 'Beginner', 'experience': 'None',
+    })
+    yield participant_id
+    model.delete_participant(participant_id)
+
+
 class TestRegistrationWorkflow:
     """Validate basic participant registration workflow."""
 
@@ -396,7 +415,7 @@ class TestAdminAccess:
             )
 
     @pytest.mark.installation
-    def test_participants_page_shows_all_areas(self, authenticated_browser, installation_config):
+    def test_participants_page_shows_all_areas(self, authenticated_browser, installation_config, seeded_participant):
         """Verify admin participants page displays all configured areas."""
         url = f"{installation_config['test_url']}/bigbird/participants"
         all_areas = installation_config['all_areas']
@@ -466,7 +485,7 @@ class TestAdminAccess:
 class TestCSVExport:
     """Validate CSV export functionality."""
 
-    def test_csv_export_button_exists_and_downloads(self, authenticated_browser, installation_config):
+    def test_csv_export_button_exists_and_downloads(self, authenticated_browser, installation_config, seeded_participant):
         """Verify CSV export button exists in admin UI and triggers valid CSV download."""
         import os
         import time

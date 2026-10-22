@@ -47,6 +47,12 @@
 
         <form method="POST" action="{{ url_for('main.register') }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {# Updated by Claude AI on 2026-10-22 - bot traps: signed form-load timestamp + off-screen honeypot #}
+            <input type="hidden" name="form_token" value="{{ registration_form_token() }}">
+            <div style="position:absolute; left:-10000px; top:auto; width:1px; height:1px; overflow:hidden;" aria-hidden="true">
+                <label for="fax_number">Leave this field empty</label>
+                <input type="text" id="fax_number" name="fax_number" tabindex="-1" autocomplete="off" value="">
+            </div>
             <div class="mb-3">
                 <label for="first_name" class="form-label">First Name *</label>
                 <input type="text" class="form-control" id="first_name" name="first_name" required>

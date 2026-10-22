@@ -170,8 +170,10 @@ class TestParticipantReassignment:
         logger.info("Clicked Reassign button")
 
         # Wait for reassignment controls to appear
+        # Scoped to the target row: a page-wide locator matches the FIRST row's controls,
+        # which never appear unless the target participant happens to sort first
         WebDriverWait(authenticated_browser, 5).until(
-            EC.visibility_of_element_located((By.CSS_SELECTOR, ".reassign-controls"))
+            lambda d: target_row.find_element(By.CSS_SELECTOR, ".reassign-controls").is_displayed()
         )
 
         # Select new area (Area C)

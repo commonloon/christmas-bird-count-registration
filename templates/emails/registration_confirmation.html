@@ -159,9 +159,8 @@
             {% if interested_in_leadership %}
             <p><strong>Leadership Interest:</strong> ⭐ Yes - You've indicated interest in area leadership</p>
             {% endif %}
-            {% if notes_to_organizers %}
-            <p><strong>Your Notes:</strong> {{ notes_to_organizers|e }}</p>
-            {% endif %}
+            {# Updated by Claude AI on 2026-10-22 - free-text notes deliberately not echoed back:
+               a bot can otherwise use this email to relay arbitrary text/links to any address #}
         </div>
 
         {% if assigned_area != 'UNASSIGNED' %}

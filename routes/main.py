@@ -9,7 +9,8 @@ from services.email_service import email_service
 from services.security import (
     sanitize_name, sanitize_email, sanitize_phone, sanitize_notes,
     validate_area_code, validate_skill_level, validate_experience,
-    validate_participation_type, validate_email_format, is_suspicious_input, log_security_event
+    validate_participation_type, validate_email_format, is_suspicious_input, log_security_event,
+    name_looks_like_spam, is_disposable_email, check_form_token
 )
 from services.ip_blocker import IPBlockerService, get_client_ip
 from services.limiter import limiter
@@ -207,6 +208,22 @@ def register():
     current_year = datetime.now().year
     participant_model = ParticipantModel(g.db, current_year)
 
+    # Bot traps (Updated by Claude AI on 2026-10-22): a filled honeypot or a missing/too-fast
+    # form timestamp means the form was never rendered for a human. Reject before any DB
+    # write or confirmation email.
+    form_problem = 'honeypot' if request.form.get('fax_number') else check_form_token(request.form.get('form_token', ''))
+    if form_problem:
+        log_security_event('Registration bot trap', f'{form_problem} from {get_client_ip(request)}')
+        if form_problem == 'honeypot':
+            flash('Invalid input detected. Please check your entries and try again.', 'error')
+        else:
+            flash('Please reload the registration page and submit the form again.', 'error')
+        return redirect(url_for('main.index'))
+
+    # Raw name values: sanitize_name() strips the characters that make a URL recognisable
+    raw_names_look_spammy = (name_looks_like_spam(request.form.get('first_name', ''))
+                             or name_looks_like_spam(request.form.get('last_name', '')))
+
     # Get and sanitize form data
     first_name = sanitize_name(request.form.get('first_name', ''))
     last_name = sanitize_name(request.form.get('last_name', ''))
@@ -244,6 +261,10 @@ def register():
     elif len(first_name) > 100:
         errors.append('First name must be 100 characters or less')
         
+    if raw_names_look_spammy:
+        errors.append('Names cannot contain web addresses or be unusually long')
+        log_security_event('Spam-like registration name', f'from {get_client_ip(request)}', email)
+
     if not last_name:
         errors.append('Last name is required')
     elif len(last_name) > 100:
@@ -253,6 +274,9 @@ def register():
         errors.append('Valid email address is required')
     elif len(email) > 254:
         errors.append('Email address is too long')
+    elif is_disposable_email(email):
+        errors.append('Please use a permanent email address, not a disposable one')
+        log_security_event('Disposable email registration', f'from {get_client_ip(request)}', email)
         
     if phone and len(phone) > 20:
         errors.append('Primary phone number must be 20 characters or less')
@@ -352,6 +376,7 @@ def register():
                              all_areas=all_areas,
                              area_leaders=area_leaders,
                              count_date=count_date,
+                             registration_status=reg_status,  # Updated by Claude AI on 2026-10-22: index.html requires it; omitting it 500'd every validation-error re-render
                              **org_vars)
 
 

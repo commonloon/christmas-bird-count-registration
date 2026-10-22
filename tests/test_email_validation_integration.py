@@ -451,7 +451,7 @@ class TestAdminEmailValidation:
         Select(area_select).select_by_index(1)  # Select first area
 
         # Submit form
-        authenticated_browser.find_element(By.CSS_SELECTOR, 'button[type="submit"]').click()
+        authenticated_browser.find_element(By.CSS_SELECTOR, '#add-leader-form button[type="submit"]').click()
         time.sleep(2)
 
         # Should see inline validation error (Bootstrap .is-invalid)

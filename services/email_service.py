@@ -312,6 +312,21 @@ This is an automated notification from the CBC registration system.
     def send_registration_confirmation(self, participant_data: dict, assigned_area: str) -> bool:
         """Send HTML registration confirmation email to participant."""
         from flask import current_app, render_template, g
+        from services.security import name_looks_like_spam, is_disposable_email
+
+        # Updated by Claude AI on 2026-10-22: the name is attacker-controlled text that lands
+        # in a message from our domain, so never echo a spam-like one, and don't mail
+        # throwaway addresses at all (the route already rejects both; this is the backstop
+        # for other callers).
+        if is_disposable_email(participant_data.get('email')):
+            logger.warning("Skipping registration confirmation to disposable address")
+            return False
+        participant_data = dict(participant_data)
+        for name_field in ('first_name', 'last_name'):
+            if name_looks_like_spam(participant_data.get(name_field) or ''):
+                participant_data[name_field] = ''
+        if not participant_data.get('first_name') and not participant_data.get('last_name'):
+            participant_data['first_name'] = 'Participant'
         from config.email_settings import get_email_branding, is_test_server
         from config.areas import get_area_info
         from models.participant import ParticipantModel

@@ -208,12 +208,26 @@ def create_participant_data(email, interested_in_leadership=False, interested_in
     return data
 
 
+_form_token_cache = {}
+
+
+def get_form_token(session):
+    """Fetch the registration form's signed bot-check timestamp (reusable for 24h) - the form
+    rejects submissions without it (see services/security.py check_form_token)."""
+    if 'value' not in _form_token_cache:
+        response = session.get(BASE_URL, timeout=30)
+        match = re.search(r'name="form_token"[^>]*value="([^"]+)"', response.text)
+        _form_token_cache['value'] = match.group(1) if match else None
+    return _form_token_cache['value']
+
+
 def submit_registration(session, participant_data, csrf_token=None):
     """Submit registration data to the endpoint with CSRF protection."""
     try:
         # Add CSRF token if provided
         if csrf_token:
             participant_data['csrf_token'] = csrf_token
+        participant_data.setdefault('form_token', get_form_token(session))
         
         response = session.post(
             REGISTRATION_URL,

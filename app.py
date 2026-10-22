@@ -7,7 +7,7 @@ from config.database import get_db_session, teardown_db_session
 from config.organization import get_organization_variables, get_registration_url, get_admin_url, get_leader_url, DISPLAY_TIMEZONE
 from config.fields import get_skill_level_label
 from services.limiter import limiter
-from services.security import sanitize_http_url
+from services.security import sanitize_http_url, make_form_token
 from services.ip_blocker import IPBlockerService, get_client_ip
 from models.circle import CircleModel, CircleAreaModel
 import mimetypes
@@ -289,6 +289,9 @@ def nl2br(text):
     if text is None:
         return ''
     return Markup(str(escape(text)).replace('\n', '<br>\n'))
+
+# Updated by Claude AI on 2026-10-22 - signed timestamp for the registration form's bot check
+app.jinja_env.globals['registration_form_token'] = make_form_token
 
 # Make area boundaries and common data available to templates
 @app.context_processor
