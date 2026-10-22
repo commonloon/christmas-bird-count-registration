@@ -45,19 +45,16 @@ DEFAULT_RATE_LIMIT = '20 per minute'
 def get_rate_limit_key():
     """
     Generate rate limit key based on client IP.
-    Uses X-Forwarded-For header since we're behind Cloud Run proxy.
+
+    Uses the connection's peer address (request.remote_addr), never the
+    X-Forwarded-For header: a client can send any value in that header, which
+    would hand it a fresh rate-limit bucket on every request. On the FullHost app
+    node Apache sees the real client address directly (see services/ip_blocker.py's
+    get_client_ip(), which this must stay consistent with). Updated by Claude AI on 2026-10-22.
     """
     from flask import request
-    
-    # Use X-Forwarded-For header if behind a proxy (like Cloud Run)
-    forwarded_for = request.headers.get('X-Forwarded-For')
-    if forwarded_for:
-        # Take the first IP in the chain (original client)
-        client_ip = forwarded_for.split(',')[0].strip()
-    else:
-        client_ip = request.remote_addr or 'unknown'
-    
-    return client_ip
+
+    return request.remote_addr or 'unknown'
 
 def get_rate_limit_message(endpoint_type: str) -> str:
     """

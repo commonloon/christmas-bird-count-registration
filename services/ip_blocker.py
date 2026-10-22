@@ -4,6 +4,7 @@ IP blocking service for bot defense.
 Tracks 404 errors, manages honeypot traps, and maintains blocked IP list in PostgreSQL.
 """
 
+import ipaddress
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, List
@@ -62,6 +63,10 @@ class IPBlockerService:
         both attempt INSERT, and the second would raise an uncaught
         IntegrityError on the primary key.
         """
+        if not is_blockable_ip(ip_address):
+            logger.warning(f"IP_BLOCK: refusing to block non-public address {ip_address!r} (reason: {reason})")
+            return ip_address
+
         now = datetime.now(timezone.utc)
         expires = now + timedelta(hours=BLOCK_DURATION_HOURS)
         history = violation_history or []
@@ -276,8 +281,22 @@ class IPBlockerService:
 
 
 def get_client_ip(request) -> str:
-    """Extract client IP from request (handles X-Forwarded-For behind a reverse proxy)."""
-    forwarded_for = request.headers.get('X-Forwarded-For')
-    if forwarded_for:
-        return forwarded_for.split(',')[0].strip()
+    """The client's IP: the connection's peer address, never the client-controlled
+    X-Forwarded-For header (spoofing it would evade rate limits and IP blocks, and fake
+    the addresses recorded for bot attempts). Apache on the FullHost app node sees the
+    real client address directly. If a reverse proxy is ever placed in front of the app,
+    every visitor would appear as the proxy's address - the proxy would need to be made
+    transparent to Apache (e.g. mod_remoteip) rather than trusting the header here.
+    Updated by Claude AI on 2026-10-22."""
     return request.remote_addr or 'unknown'
+
+
+def is_blockable_ip(ip_address: str) -> bool:
+    """False for loopback, private, link-local and unparseable addresses. Blocking one of
+    those can only ever lock out the proxy/local tooling (and so everyone behind it), never
+    a remote attacker."""
+    try:
+        address = ipaddress.ip_address(ip_address)
+    except ValueError:
+        return False
+    return not (address.is_loopback or address.is_private or address.is_link_local)
