@@ -10,13 +10,26 @@
             <h1>{{ count_event_name|e }} Map</h1>
             <a href="{{ url_for('main.index') }}" class="btn btn-outline-primary">Registration</a>
         </div>
-        <p id="map-area-summary" class="lead"></p>
+        <div class="row g-3 mb-3">
+            <div class="col-md-5">
+                <label for="area-select" class="form-label fw-bold">Show an area</label>
+                <select id="area-select" class="form-select" disabled>
+                    <option value="">Select an area...</option>
+                </select>
+            </div>
+            <div class="col-md-7">
+                <div id="area-detail" class="border rounded p-2 h-100 bg-body-tertiary" aria-live="polite">
+                    <span class="text-muted">Select an area to see its description and leader(s).</span>
+                </div>
+            </div>
+        </div>
         <div id="count-area-map"></div>
         <div class="mt-2 small text-muted d-flex flex-wrap gap-3">
             <span><span class="color-box med-count"></span> Area</span>
             <span><span class="color-box admin-only-box"></span> Assigned by organizers (not open for self-registration)</span>
         </div>
-        <p class="text-muted mt-3">Tap or hover over an area to see its name and leader(s). Your area leader will contact you with details about where and when to meet.</p>
+        <p class="text-muted mt-3">Tap an area on the map, or in the list below, to highlight it. Your area leader will contact you with details about where and when to meet.</p>
+        <div id="area-list" class="list-group mb-4"></div>
     </div>
 </div>
 {% endblock %}

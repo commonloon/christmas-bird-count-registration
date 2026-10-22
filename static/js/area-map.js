@@ -1,9 +1,11 @@
 /* Updated by Claude AI on 2026-10-21 */
-// Public read-only map of a circle's count areas (templates/map.html).
-// /map?area=C highlights and zooms to area C. Data: /api/areas.
+// Public read-only map of a circle's count areas (templates/map.html), with a
+// clickable list of areas below it. /map?area=C starts with area C highlighted.
+// Data: /api/areas.
 
-// Area names/leader names come from the DB (admin-entered or KML-imported) and
-// Leaflet tooltips render strings as markup - escape before interpolating.
+// Area names/descriptions/leader names come from the DB (admin-entered or
+// KML-imported) and Leaflet tooltips render strings as markup - escape before
+// interpolating. The list below the map is built with textContent instead.
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text == null ? '' : String(text);
@@ -32,6 +34,16 @@ function addHatchPattern(map, color) {
     svg.insertBefore(defs, svg.firstChild);
 }
 
+function showMapError(message) {
+    document.getElementById('count-area-map').textContent = message;
+}
+
+function leaderText(leaders) {
+    return leaders.length
+        ? `Leader${leaders.length > 1 ? 's' : ''}: ${leaders.join(', ')}`
+        : 'Leader: to be announced';
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     const rootStyles = getComputedStyle(document.documentElement);
     const baseColor = rootStyles.getPropertyValue('--map-color-med').trim();
@@ -42,7 +54,7 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(response => response.json())
         .then(data => {
             if (data.error || !data.areas || data.areas.length === 0) {
-                document.getElementById('count-area-map').textContent = 'Unable to load the map.';
+                showMapError('Unable to load the map.');
                 return;
             }
 
@@ -56,38 +68,122 @@ document.addEventListener('DOMContentLoaded', function() {
             L.svg().addTo(map);
             addHatchPattern(map, baseColor);
 
-            let highlighted = null;
-            data.areas.forEach(area => {
-                const isSelected = area.letter_code.toUpperCase() === requestedArea;
-                const coords = area.geometry.coordinates[0].map(c => [c[1], c[0]]);
+            const layers = {};   // area code -> {polygon, area, item}
+            let selectedCode = null;
+            const selectEl = document.getElementById('area-select');
+            const detailEl = document.getElementById('area-detail');
+            const listEl = document.getElementById('area-list');
+            selectEl.disabled = false;
+
+            // Detail box above the map; built with textContent (admin-entered text)
+            function showDetail(area) {
+                detailEl.replaceChildren();
+                const title = document.createElement('strong');
+                title.textContent = `Area ${area.letter_code}: ${area.name}`;
+                detailEl.appendChild(title);
+                if (area.admin_assignment_only) {
+                    const badge = document.createElement('span');
+                    badge.className = 'badge text-bg-secondary ms-2';
+                    badge.textContent = 'Assigned by organizers';
+                    detailEl.appendChild(badge);
+                }
+                if (area.description) {
+                    const desc = document.createElement('div');
+                    desc.textContent = area.description;
+                    detailEl.appendChild(desc);
+                }
+                const leaderLine = document.createElement('div');
+                leaderLine.className = 'small text-muted';
+                leaderLine.textContent = leaderText(area.leaders || []);
+                detailEl.appendChild(leaderLine);
+            }
+
+            function polygonStyle(area, isSelected) {
                 const color = isSelected ? selectedColor : baseColor;
-                const polygon = L.polygon(coords, {
+                return {
                     color: color,
                     weight: isSelected ? 4 : 2,
                     opacity: isSelected ? 1 : 0.8,
                     fillColor: area.admin_assignment_only && !isSelected ? 'url(#area-hatch)' : color,
                     fillOpacity: isSelected ? 0.6 : (area.admin_assignment_only ? 0.6 : 0.3)
-                }).addTo(map);
+                };
+            }
 
-                const leaders = (area.leaders || []).map(escapeHtml).join(', ');
+            function selectArea(code, zoom) {
+                const current = layers[code];
+                if (!current) return;
+                if (selectedCode && layers[selectedCode]) {
+                    const prev = layers[selectedCode];
+                    prev.polygon.setStyle(polygonStyle(prev.area, false));
+                    prev.item.classList.remove('active');
+                }
+                selectedCode = code;
+                current.polygon.setStyle(polygonStyle(current.area, true));
+                current.polygon.bringToFront();
+                current.item.classList.add('active');
+                if (zoom) {
+                    map.fitBounds(current.polygon.getBounds(), {padding: [20, 20]});
+                }
+                selectEl.value = code;
+                showDetail(current.area);
+                history.replaceState(null, '', `?area=${encodeURIComponent(code)}`);
+            }
+
+            data.areas.forEach(area => {
+                const code = area.letter_code.toUpperCase();
+                const coords = area.geometry.coordinates[0].map(c => [c[1], c[0]]);
+                const polygon = L.polygon(coords, polygonStyle(area, false)).addTo(map);
+
                 polygon.bindTooltip(
                     `Area ${escapeHtml(area.letter_code)}: ${escapeHtml(area.name)}<br>` +
-                    (leaders ? `Leader${area.leaders.length > 1 ? 's' : ''}: ${leaders}` : 'Leader: to be announced'),
+                    escapeHtml(leaderText(area.leaders || [])),
                     { permanent: false, direction: 'center' });
 
-                if (isSelected) {
-                    highlighted = {polygon: polygon, area: area, leaders: leaders};
+                // List row: a button, so it is keyboard-accessible
+                const item = document.createElement('button');
+                item.type = 'button';
+                item.className = 'list-group-item list-group-item-action';
+                const title = document.createElement('strong');
+                title.textContent = `Area ${area.letter_code}: ${area.name}`;
+                item.appendChild(title);
+                if (area.admin_assignment_only) {
+                    const badge = document.createElement('span');
+                    badge.className = 'badge text-bg-secondary ms-2';
+                    badge.textContent = 'Assigned by organizers';
+                    item.appendChild(badge);
                 }
+                if (area.description) {
+                    const desc = document.createElement('div');
+                    desc.className = 'small text-muted';
+                    desc.textContent = area.description;
+                    item.appendChild(desc);
+                }
+                const leaderLine = document.createElement('div');
+                leaderLine.className = 'small';
+                leaderLine.textContent = leaderText(area.leaders || []);
+                item.appendChild(leaderLine);
+                listEl.appendChild(item);
+
+                const option = document.createElement('option');
+                option.value = code;
+                option.textContent = `Area ${area.letter_code}: ${area.name}`;
+                selectEl.appendChild(option);
+
+                layers[code] = {polygon: polygon, area: area, item: item};
+                polygon.on('click', () => selectArea(code, false));
+                item.addEventListener('click', () => {
+                    selectArea(code, true);
+                    document.getElementById('count-area-map').scrollIntoView({behavior: 'smooth', block: 'nearest'});
+                });
             });
 
-            if (highlighted) {
-                map.fitBounds(highlighted.polygon.getBounds(), {padding: [20, 20]});
-                const summary = document.getElementById('map-area-summary');
-                summary.textContent = `Area ${highlighted.area.letter_code}: ${highlighted.area.name}` +
-                    (highlighted.area.leaders.length ? ` - led by ${highlighted.area.leaders.join(', ')}` : '');
+            selectEl.addEventListener('change', () => {
+                if (selectEl.value) selectArea(selectEl.value, true);
+            });
+
+            if (requestedArea) {
+                selectArea(requestedArea, true);
             }
         })
-        .catch(() => {
-            document.getElementById('count-area-map').textContent = 'Unable to load the map.';
-        });
+        .catch(() => showMapError('Unable to load the map.'));
 });

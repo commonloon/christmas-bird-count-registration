@@ -66,3 +66,9 @@ def test_registration_confirmation_links_map_only_when_assigned(admin_client):
 
     assert '/map?area=A' in admin_client.get(base).get_data(as_text=True)
     assert '/map?area=' not in admin_client.get(base + '?variant=unassigned').get_data(as_text=True)
+
+
+def test_map_page_has_area_list_container(client):
+    html = client.get('/map').get_data(as_text=True)
+    assert 'id="area-list"' in html
+    assert 'id="area-select"' in html and 'id="area-detail"' in html
