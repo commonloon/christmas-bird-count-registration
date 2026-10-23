@@ -408,6 +408,26 @@ class TestRegistrationFormUI:
         privacy_text = soup.find(string=lambda x: x and 'Provincial Privacy Act' in x)
         assert privacy_text is not None, "Privacy Act compliance text not found"
 
+    def test_privacy_section_collapsed_by_default(self, client):
+        """Privacy text sits in a collapsed Bootstrap collapse with an accessible toggle."""
+        soup = BeautifulSoup(client.get('/').data, 'html.parser')
+
+        panel = soup.find(id='privacy-info')
+        assert panel is not None and 'collapse' in panel.get('class', [])
+        assert 'show' not in panel.get('class', [])
+        toggle = soup.find(attrs={'data-bs-target': '#privacy-info'})
+        assert toggle is not None and toggle.get('aria-expanded') == 'false'
+
+    def test_contact_email_not_in_registration_page_html(self, client):
+        """The contact address is fetched on demand, never shipped in the page HTML."""
+        contact = client.get('/api/circles/test/contact').get_json()['contact']
+        html = client.get('/').data.decode()
+
+        assert contact, "test circle should have a count_contact"
+        assert contact not in html
+        assert 'mailto:' not in html
+        assert 'show-contact-btn' in html
+
     def test_map_div_present(self, client):
         """Verify interactive map div exists on registration page."""
         response = client.get('/')
@@ -788,16 +808,31 @@ class TestAdminParticipantsUI:
 
         Spec reference: Lines 182-184 (Tab Navigation)
 
-        Note: This test checks for tab navigation structure. Actual year availability
-        depends on database state.
+        The year tabs only render when the circle has data in more than one year,
+        so this seeds (and removes) one previous-year participant rather than
+        relying on whatever historical data the test database happens to hold.
         """
-        response = admin_client.get(f'/bigbird/participants?year={CURRENT_TEST_YEAR}')
+        from config.database import get_db_session
+        from models.participant import ParticipantModel
+        from tests.test_config import TEST_CIRCLE_SLUG
+
+        previous_year = ParticipantModel(get_db_session(), CURRENT_TEST_YEAR - 1, TEST_CIRCLE_SLUG)
+        participant_id = previous_year.add_participant({
+            'first_name': 'YearTabs', 'last_name': 'UiConformanceTest',
+            'email': 'yeartabs-ui-conformance-test@example.com', 'phone': '555-0100',
+            'preferred_area': 'UNASSIGNED', 'status': 'active',
+            'skill_level': 'Beginner', 'experience': 'None',
+        })
+        try:
+            response = admin_client.get(f'/bigbird/participants?year={CURRENT_TEST_YEAR}')
+        finally:
+            previous_year.delete_participant(participant_id)
         soup = BeautifulSoup(response.data, 'html.parser')
 
         # Look for year tab navigation (Bootstrap nav-tabs)
         year_tabs = soup.find('ul', {'class': lambda x: x and 'nav-tabs' in x})
 
-        # Year tabs should exist (even if only one year has data)
+        # Year tabs should exist (two years have data)
         assert year_tabs is not None, "Year tab navigation not found"
 
         # Should have tab items

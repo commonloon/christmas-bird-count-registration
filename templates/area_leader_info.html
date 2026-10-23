@@ -1,4 +1,4 @@
-{# Updated by Claude AI on 2025-10-26 #}
+{# Updated by Claude AI on 2026-10-23 #}
 {% extends "base.html" %}
 
 {% block title %}Area Leader Role - {{ count_event_name }}{% endblock %}
@@ -24,7 +24,7 @@
 
                     <ol class="list-group list-group-numbered">
                         <li class="list-group-item">
-                            Act as liaison with the CBC Compiler on data matters and the CBC Coordinator on all other CBC matters.
+                            Act as liaison with the {% if is_cbc %}CBC{% else %}Count{% endif %} Compiler on data matters and the {% if is_cbc %}CBC{% else %}Count{% endif %} Coordinator on all other {% if is_cbc %}CBC{% else %}count{% endif %} matters.
                         </li>
                         <li class="list-group-item">
                             Become acquainted with the data collection requirements of the CBC and the associated forms and documents for data compilation and submission.

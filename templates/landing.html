@@ -116,6 +116,7 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/landing-map.js') }}"></script>
+<script src="{{ url_for('static', filename='js/contact-button.js') }}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const circles = {{ circles|tojson }};

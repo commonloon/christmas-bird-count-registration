@@ -166,10 +166,22 @@
                           rows="3"></textarea>
             </div>
 
-            <div class="mb-4 p-3 bg-light border rounded">
-                <h6 class="fw-bold">Privacy Information</h6>
-                <p class="mb-2"><strong>Compliance with Provincial Privacy Act:</strong> In accordance with Section 2 of the Provincial Privacy Act, the email address and phone number you provide when you sign up to be an Area Leader or a member of a Survey Team will only be made available to the CBC Coordinator and Compiler, as well as to the members of the team surveying the Area for which you've signed up, and this information is to be used strictly for ease of communication for {{ count_event_name }}. Lists of Area Participants will be sent to Area Leaders at least once per week.</p>
-                <p class="mb-0"><strong>Note:</strong> Please direct any questions, suggestions, etc., to <a href="mailto:{{ count_contact|e }}">{{ count_contact|e }}</a></p>
+            {# Updated by Claude AI on 2026-10-23 #}
+            <div class="mb-4 bg-light border rounded">
+                <button class="btn btn-link w-100 text-start fw-bold text-decoration-none p-3" type="button"
+                        data-bs-toggle="collapse" data-bs-target="#privacy-info"
+                        aria-expanded="false" aria-controls="privacy-info">
+                    Privacy Information <i class="bi bi-chevron-down"></i>
+                </button>
+                <div class="collapse px-3 pb-3" id="privacy-info">
+                    <p class="mb-2"><strong>Compliance with Provincial Privacy Act:</strong> In accordance with Section 2 of the Provincial Privacy Act, the email address and phone number you provide when you sign up to be an Area Leader or a member of a Survey Team will only be made available to the Count Coordinator and Compiler, as well as to the members of the team surveying the Area for which you've signed up, and this information is to be used strictly for ease of communication for {{ count_event_name }}.</p>
+                    <p class="mb-2">Lists of Area Participants will be sent to Area Leaders at least once per week. The website administrators may also access your personal information (name, email address, phone number, area preferences and notes) when necessary to check or test that the website is operating correctly.</p>
+                    <p class="mb-2">Site administrators will not disclose your personal information to third parties other than the count administrators, except as required by law.</p>
+                    <p class="mb-0"><strong>Note:</strong> Please direct any questions, suggestions, etc., to
+                        <button type="button" class="btn btn-sm btn-outline-secondary show-contact-btn">Show contact</button>
+                        <noscript>(JavaScript is required to display the contact email address.)</noscript>
+                    </p>
+                </div>
             </div>
 
             <button type="submit" class="btn btn-primary btn-lg">Register</button>
@@ -222,8 +234,10 @@
 <script src="{{ url_for('static', filename='js/count-thresholds.js') }}"></script>
 <script src="{{ url_for('static', filename='js/map.js') }}"></script>
 <script src="{{ url_for('static', filename='js/registration.js') }}"></script>
+<script src="{{ url_for('static', filename='js/contact-button.js') }}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    initializeContactButtons();
     // Restore form data if returning from area leader info page
     {% if form_data %}
     const formData = {{ form_data | tojson }};

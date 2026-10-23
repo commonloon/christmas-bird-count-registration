@@ -112,30 +112,3 @@ function initializeProblemReports() {
             });
     });
 }
-
-function initializeContactButtons() {
-    document.querySelectorAll('.show-contact-btn').forEach(function(button) {
-        button.addEventListener('click', function() {
-            const slug = button.dataset.slug;
-            button.disabled = true;
-
-            fetch(`/api/circles/${encodeURIComponent(slug)}/contact`)
-                .then(function(response) {
-                    if (!response.ok) {
-                        throw new Error('Request failed');
-                    }
-                    return response.json();
-                })
-                .then(function(data) {
-                    const link = document.createElement('a');
-                    link.href = `mailto:${data.contact}`;
-                    link.textContent = data.contact;
-                    button.replaceWith(link);
-                })
-                .catch(function() {
-                    button.disabled = false;
-                    button.textContent = 'Unable to load - try again';
-                });
-        });
-    });
-}
