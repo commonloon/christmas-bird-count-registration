@@ -564,7 +564,10 @@ def not_found_error(error):
                 user_agent = request.headers.get('User-Agent', '')
 
                 blocker = IPBlockerService(get_db_session())
-                block_id = blocker.track_404(client_ip, request.path, user_agent)
+                # Scanner-only paths (/.env, /wp-login.php, ...) block immediately; anything
+                # else only counts toward the 404-per-minute threshold.
+                block_id = (blocker.trigger_probe_block(client_ip, request.path, user_agent)
+                            or blocker.track_404(client_ip, request.path, user_agent))
 
                 if block_id:
                     logger.warning(f"IP_AUTO_BLOCKED: {client_ip} exceeded 404 threshold")

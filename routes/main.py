@@ -6,6 +6,7 @@ from models.area_signup_type import AreaSignupTypeModel
 from config.areas import get_area_info, get_all_areas
 from config.organization import get_count_date, get_registration_status, get_organization_variables
 from services.email_service import email_service
+from services.tor_exit_list import is_tor_exit
 from services.security import (
     sanitize_name, sanitize_email, sanitize_phone, sanitize_notes,
     validate_area_code, validate_skill_level, validate_experience,
@@ -217,6 +218,14 @@ def register():
     # Initialize year-aware models
     current_year = datetime.now().year
     participant_model = ParticipantModel(g.db, current_year)
+
+    # Tor exit relays (services/tor_exit_list.py): registration spam has come through them
+    if is_tor_exit(get_client_ip(request)):
+        log_security_event('Registration from Tor exit', f'from {get_client_ip(request)}')
+        _record_bot_attempt('tor_exit')
+        flash('Registrations cannot be accepted over Tor or similar anonymizing connections. '
+              'Please try again from a regular connection, or contact the count organizers.', 'error')
+        return redirect(url_for('main.index'))
 
     # Bot traps (Updated by Claude AI on 2026-10-22): a filled honeypot or a missing/too-fast
     # form timestamp means the form was never rendered for a human. Reject before any DB

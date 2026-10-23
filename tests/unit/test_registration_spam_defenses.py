@@ -73,7 +73,11 @@ def test_name_looks_like_spam():
     assert name_looks_like_spam('visit www.example.com')
     assert name_looks_like_spam('deposit at spam.com')
     assert name_looks_like_spam('x' * 51)
-    for name in ("Jane", "O'Brien", "Mary-Ann", "José", "de la Cruz", "Smith Jr"):
+    # Observed spam: 'href' glued to a URL fragment, and a bare URL fragment
+    assert name_looks_like_spam('a hrefhttpsliniivideougo-naphpsmmuz payment availablea hscbf lecz')
+    assert name_looks_like_spam('deposit available Confirm your transaction httpsliniivideougo')
+    for name in ("Jane", "O'Brien", "Mary-Ann", "José", "de la Cruz", "Smith Jr",
+                 "Eshref", "Shref", "Beshref"):   # real names containing the substring 'href'
         assert not name_looks_like_spam(name)
 
 

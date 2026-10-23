@@ -1,10 +1,11 @@
-# Updated by Claude AI on 2026-08-29
+# Updated by Claude AI on 2026-10-22
 """
 IP blocking service for bot defense.
 Tracks 404 errors, manages honeypot traps, and maintains blocked IP list in PostgreSQL.
 """
 
 import ipaddress
+import re
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, List
@@ -16,6 +17,8 @@ from config.ip_blocking import *
 from models.db import BlockedIP, IPViolation
 
 logger = logging.getLogger(__name__)
+
+PROBE_PATH_RE = re.compile(PROBE_PATH_PATTERN, re.IGNORECASE)
 
 # In-memory cache for the blocked-IP lookup only. This is safe to keep
 # per-instance: a cache miss just costs one extra DB read, it never
@@ -192,6 +195,24 @@ class IPBlockerService:
             violation_history=[{
                 'timestamp': datetime.now(timezone.utc).isoformat(),
                 'path': trap_url,
+            }],
+        )
+
+    def trigger_probe_block(self, ip_address: str, url_path: str, user_agent: str = '') -> Optional[str]:
+        """Immediately block an IP whose unrouted (404) request matches a scanner-only path
+        such as /.env or /wp-login.php. Returns the IP if blocked, None if the path is not
+        a probe. Only call this for requests that matched no route."""
+        if not PROBE_PATH_RE.search(url_path or ''):
+            return None
+        return self.add_block(
+            ip_address=ip_address,
+            reason='probe_path',
+            trigger_count=1,
+            user_agent=user_agent,
+            violation_url=url_path[:500],
+            violation_history=[{
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'path': url_path[:500],
             }],
         )
 

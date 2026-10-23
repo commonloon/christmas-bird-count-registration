@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2025-12-09
+# Updated by Claude AI on 2026-10-22
 """
 IP blocking configuration for bot defense.
 Defines thresholds, durations, and cache settings for the IP blocking system.
@@ -39,3 +39,18 @@ VIOLATION_WINDOW_SECONDS = 60  # Fixed window for 404 counting (stored in Firest
 
 # Admin and logging settings
 ENABLE_BLOCK_LOGGING = True  # Log all blocks to Cloud Logging
+
+# Paths that only vulnerability scanners request: secret/config files, VCS and cloud-credential
+# directories, CMS/framework admin endpoints, PHP files (this app serves none), backup archives.
+# Checked only for requests that matched no route (the 404 handler), so a real route can never
+# be caught by it; a match blocks the IP immediately instead of waiting for MAX_404_PER_MINUTE.
+PROBE_PATH_PATTERN = (
+    r'(^|/)\.(?!well-known)'   # any dotfile/dot-directory: .env, .git, .aws, .claude, .github, ...
+    r'|^/(wp-admin|wp-login|wp-content|wp-includes|wp-json|wordpress|xmlrpc\.php|phpmyadmin|pma|cgi-bin|vendor/phpunit'
+    r'|actuator|solr|kibana|jenkins|manager/html|boaform|HNAP1|owa|ecp|server-status|fpm-status|_profiler)(/|$)'
+    r'|\.php\d?$'
+    r'|\.(sql|bak|old|orig|save|swp|tar|tgz|gz|zip|7z|rar|env)$'
+    r'|(^|/)(phpinfo|Dockerfile|env|env\.js|env\.txt|config\.(js|json|ya?ml|env)|settings(\.local)?\.json'
+    r'|appsettings[\w.]*\.json|credentials(\.\w+)?|secrets?\.(json|ya?ml)|composer\.(json|lock)'
+    r'|package\.json|docker-compose\.ya?ml)(/|$)'
+)

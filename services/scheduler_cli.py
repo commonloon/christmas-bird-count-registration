@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2026-09-28
+# Updated by Claude AI on 2026-10-22
 """
 `flask tick-scheduled-emails` - the command the hourly cron entry runs.
 
@@ -28,6 +28,7 @@ from flask.cli import with_appcontext
 
 from services.bot_attempts import run_bot_attempt_notifications
 from services.scheduler_service import tick
+from services.tor_exit_list import refresh_tor_exit_list
 
 LOG_MAX_BYTES = 1_000_000
 LOG_BACKUP_COUNT = 5
@@ -78,6 +79,11 @@ def tick_scheduled_emails_command(circles):
     # are logged and reported in the summary but never change the exit status.
     if not circles:
         summary['bot_attempts'] = run_bot_attempt_notifications()
+        try:
+            summary['tor_exit_list'] = refresh_tor_exit_list()
+        except Exception:
+            log.exception('Tor exit list refresh crashed')
+            summary['tor_exit_list'] = {'status': 'failed'}
 
     log.info(f'Tick complete: {json.dumps(summary)}')
     click.echo(json.dumps(summary))

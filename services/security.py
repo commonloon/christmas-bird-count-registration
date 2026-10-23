@@ -405,7 +405,9 @@ def log_security_event(event_type: str, details: str, user_email: str = None):
 # run of letters ("httpsexamplecom") - these checks must therefore run on the
 # RAW submitted value, before sanitizing.
 _URL_IN_TEXT_PATTERN = re.compile(
-    r'https?|ftp|://|www\.|href|\b[\w-]+\.(com|net|org|info|biz|xyz|top|ru|link|click|site|online|shop)\b',
+    # 'href' only as markup (href=...): a bare substring match would reject real names
+    # such as Eshref, Shref and Beshref. Spam that glues it to a URL ("hrefhttps...") is caught by https?.
+    r'https?|://|www\.|\bhref\s*=|\b[\w-]+\.(com|net|org|info|biz|xyz|top|ru|link|click|site|online|shop)\b',
     re.IGNORECASE,
 )
 
