@@ -11,7 +11,7 @@ import pytest
 from config.database import get_db_session
 from config.ip_blocking import PROBE_PATH_PATTERN
 from models.db import BlockedIP
-from services.ip_blocker import IPBlockerService
+from services.ip_blocker import BLOCKED_IP_CACHE, IPBlockerService
 
 PROBE_RE = re.compile(PROBE_PATH_PATTERN, re.IGNORECASE)
 PUBLIC_IP = '8.8.4.4'   # documentation ranges (192.0.2/24, 198.51.100/24) count as private to is_blockable_ip
@@ -41,9 +41,11 @@ def clean_block():
     db = get_db_session()
     db.query(BlockedIP).filter_by(ip_address=PUBLIC_IP).delete()
     db.commit()
+    BLOCKED_IP_CACHE.clear()
     yield db
     db.query(BlockedIP).filter_by(ip_address=PUBLIC_IP).delete()
     db.commit()
+    BLOCKED_IP_CACHE.clear()
 
 
 def test_probe_blocks_immediately_and_records_reason(clean_block):
@@ -62,3 +64,36 @@ def test_ordinary_missing_page_is_not_blocked_by_probe_check(clean_block):
 def test_probe_from_non_public_address_is_not_blocked(clean_block):
     IPBlockerService(clean_block).trigger_probe_block('127.0.0.1', '/.env')
     assert clean_block.query(BlockedIP).filter_by(ip_address='127.0.0.1').first() is None
+
+
+@pytest.mark.parametrize('host', [
+    'test.cbc.test',             # a real circle
+    'nosuchcircle.cbc.test',     # looks like a circle subdomain, is none: resolve_circle() aborts 404
+    'example.org',               # matches no circle pattern: resolve_circle() aborts 400
+])
+def test_blocked_ip_gets_403_whatever_the_host(client, clean_block, host):
+    """The block check must run before resolve_circle(), whose aborts skip later hooks - a
+    scanner switching to made-up Host headers used to walk past its own block."""
+    blocker = IPBlockerService(clean_block)
+    blocker.add_block(PUBLIC_IP, 'probe_path', 1, 'curl/8', '/.env')
+
+    response = client.get('/', headers={'Host': host}, environ_overrides={'REMOTE_ADDR': PUBLIC_IP})
+
+    assert response.status_code == 403
+
+
+def test_unblocked_ip_on_unknown_circle_host_still_gets_404(client, clean_block):
+    response = client.get('/', headers={'Host': 'nosuchcircle.cbc.test'},
+                          environ_overrides={'REMOTE_ADDR': PUBLIC_IP})
+
+    assert response.status_code == 404
+
+
+def test_blocked_response_does_not_expose_the_contact_address(client, clean_block):
+    """Blocked clients are scanners; the 403 page must not hand them the contact email."""
+    IPBlockerService(clean_block).add_block(PUBLIC_IP, 'probe_path', 1, 'curl/8', '/.env')
+
+    response = client.get('/', headers={'Host': 'test.cbc.test'}, environ_overrides={'REMOTE_ADDR': PUBLIC_IP})
+
+    assert response.status_code == 403
+    assert b'mailto:' not in response.data

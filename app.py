@@ -357,6 +357,32 @@ def enforce_https():
     if app.config.get('SESSION_COOKIE_SECURE') and not request.is_secure:
         return redirect(request.url.replace('http://', 'https://', 1), code=301)
 
+# Registered ahead of resolve_circle() on purpose: that hook can abort(404)/abort(400) for a
+# Host that names no real circle, and a hook that aborts skips every later hook. A scanner
+# that switched to made-up subdomains therefore walked past the block check (and was
+# re-blocked by the 404 handler thousands of times) while a real-host request got 403.
+# Updated by Claude AI on 2026-10-23
+@app.before_request
+def check_blocked_ip():
+    """Block requests from IPs on the block list."""
+    # Skip authenticated users (can mistype URLs)
+    if 'user_email' in session:
+        return None
+
+    # Get client IP
+    client_ip = get_client_ip(request)
+
+    # Check if blocked (best-effort - don't let a DB hiccup break normal request handling)
+    try:
+        blocker = IPBlockerService(get_db_session())
+        if blocker.is_blocked(client_ip):
+            logger.warning(f"BLOCKED_REQUEST: {client_ip} attempted access to {request.path}")
+            return render_template('errors/403.html'), 403
+    except Exception as e:
+        logger.error(f"IP block check failed: {e}")
+
+    return None
+
 # Before request handler for multi-circle resolution (must run before anything that
 # reads g.circle/g.circle_slug, including model construction in later before_request
 # hooks and in route handlers)
@@ -527,27 +553,6 @@ def load_user():
         g.user_email = None
         g.user_name = None
         g.user_role = 'public'
-
-@app.before_request
-def check_blocked_ip():
-    """Block requests from IPs on the block list."""
-    # Skip authenticated users (can mistype URLs)
-    if 'user_email' in session:
-        return None
-
-    # Get client IP
-    client_ip = get_client_ip(request)
-
-    # Check if blocked (best-effort - don't let a DB hiccup break normal request handling)
-    try:
-        blocker = IPBlockerService(get_db_session())
-        if blocker.is_blocked(client_ip):
-            logger.warning(f"BLOCKED_REQUEST: {client_ip} attempted access to {request.path}")
-            return render_template('errors/403.html'), 403
-    except Exception as e:
-        logger.error(f"IP block check failed: {e}")
-
-    return None
 
 # Error handlers
 @app.errorhandler(404)
