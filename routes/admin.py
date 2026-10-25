@@ -1650,6 +1650,7 @@ def _circle_form_data(form):
         'is_cbc': form.get('is_cbc') == 'on',
         'count_experience_label': sanitize_text_input(form.get('count_experience_label', ''), max_length=200),
         'feeder_counter_label': sanitize_text_input(form.get('feeder_counter_label', ''), max_length=200),
+        'show_counter_guides': form.get('show_counter_guides') == 'on',
         'notes_placeholder_example': sanitize_notes(form.get('notes_placeholder_example', '')),
         'registration_opens_months': int(form.get('registration_opens_months') or 4),
         'registration_closes_days': int(form.get('registration_closes_days') or 1),
@@ -1676,7 +1677,7 @@ def _float_or_none(value):
 # (rather than blanked) - flipping is_external off later restores the old values.
 INTERNAL_ONLY_CIRCLE_FIELDS = (
     'from_email', 'count_event_name', 'count_info_url', 'test_recipient',
-    'count_experience_label', 'feeder_counter_label', 'notes_placeholder_example',
+    'count_experience_label', 'feeder_counter_label', 'show_counter_guides', 'notes_placeholder_example',
     'registration_opens_months', 'registration_closes_days', 'map_medium_from', 'map_high_from',
 )
 

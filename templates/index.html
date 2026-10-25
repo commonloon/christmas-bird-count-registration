@@ -1,4 +1,4 @@
-{# Updated by Claude AI on 2026-10-20 #}
+{# Updated by Claude AI on 2026-10-25 #}
 {% extends "base.html" %}
 
 {% block content %}
@@ -116,12 +116,18 @@
                     <input class="form-check-input" type="radio" name="participation_type" id="feeder" value="FEEDER" required>
                     <label class="form-check-label" for="feeder">{{ feeder_counter_label }}</label>
                 </div>
+                {% if show_counter_guides %}
                 <div class="mt-2">
                     <a href="https://view.publitas.com/birds-canada-gykxaz9yrrpp/field-counters-guide-to-cbc_cheat-sheet-with-datasheet/page/1"
                        target="_blank" class="btn btn-sm btn-outline-primary me-2">Guide for Field Counters</a>
                     <a href="https://view.publitas.com/birds-canada-gykxaz9yrrpp/feeder-counters-guide-to-cbc_cheat-sheet-with-datasheet/page/1"
                        target="_blank" class="btn btn-sm btn-outline-primary">Guide for Feeder Counters</a>
                 </div>
+                {% elif count_info_url %}
+                <div class="mt-2 small">
+                    Check the <a href="{{ count_info_url|e }}" target="_blank" rel="noopener">{{ count_event_name|e }}</a> page for more information about the count.
+                </div>
+                {% endif %}
             </div>
             {% else %}
             <input type="hidden" name="participation_type" value="regular">

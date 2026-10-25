@@ -239,6 +239,9 @@ class Circle(Base, DictMixin):
     map_high_from = Column(Integer)
     count_experience_label = Column(String(200))
     feeder_counter_label = Column(String(200))
+    # Birds Canada counter-guide buttons on the registration page (migration 0017); when
+    # False the page links to count_info_url instead
+    show_counter_guides = Column(Boolean, nullable=False, default=True)
     notes_placeholder_example = Column(Text)
     yearly_count_dates = Column(JSON, nullable=False, default=dict)
     registration_opens_months = Column(Integer, nullable=False, default=4)

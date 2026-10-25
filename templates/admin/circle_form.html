@@ -1,4 +1,4 @@
-{# Updated by Claude AI on 2026-10-17 #}
+{# Updated by Claude AI on 2026-10-25 #}
 {% extends "base.html" %}
 {% from "_macros.html" import page_header, breadcrumbs, year_tabs, circle_crumbs with context %}
 
@@ -253,6 +253,13 @@
                 <input type="text" name="feeder_counter_label" class="form-control"
                        value="{{ (src.get('feeder_counter_label') or 'Count birds at my home feeder')|e }}">
             </div>
+        </div>
+
+        <div class="form-check mb-3 internal-only">
+            <input type="checkbox" name="show_counter_guides" id="show_counter_guides" class="form-check-input"
+                   {% if src.get('show_counter_guides', True) %}checked{% endif %}>
+            <label class="form-check-label" for="show_counter_guides">Show the Birds Canada field and feeder counter guides on the registration page</label>
+            <div class="form-text">If unchecked, the registration page instead tells people to check the count information page (set above) for more information. Nothing is shown unless a count information URL is set.</div>
         </div>
 
         <div class="mb-3 internal-only">

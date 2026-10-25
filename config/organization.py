@@ -250,6 +250,7 @@ def get_organization_variables():
         'is_cbc': _circle_value('is_cbc'),
         'count_experience_label': _circle_value('count_experience_label', unset_default='Experience'),
         'feeder_counter_label': _circle_value('feeder_counter_label', unset_default='Count birds at my home feeder'),
+        'show_counter_guides': _circle_value('show_counter_guides', unset_default=True),
         'notes_placeholder_example': _circle_value('notes_placeholder_example', unset_default='')
     }
 
