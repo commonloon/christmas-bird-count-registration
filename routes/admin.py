@@ -1127,7 +1127,10 @@ def delete_leader():
         if not data:
             return jsonify({'success': False, 'message': 'No data provided'})
 
-        leader_id = data.get('leader_id')
+        # The leaders page posts participant_id (single-table design: a leader
+        # is a participant row); leader_id is accepted for older callers.
+        # Updated by Claude AI on 2026-10-24
+        leader_id = data.get('participant_id') or data.get('leader_id')
         selected_year = int(data.get('year', datetime.now().year))
 
         denied = _reject_if_historical_year_json(selected_year)
