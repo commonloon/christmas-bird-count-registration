@@ -76,3 +76,50 @@ def test_unassigned_participant_is_editable(super_admin_client, seeded):
     assert updated['skill_level'] == 'Expert'
     assert updated['notes_to_organizers'] == 'Edited while unassigned'
     assert updated['preferred_area'] == 'UNASSIGNED'
+
+
+def _edit(client, participant_id, **extra):
+    body = {
+        'participant_id': str(participant_id),
+        'first_name': 'Aaron',
+        'last_name': 'UnassignedTest',
+        'email': 'aaron-unassigned-test@example.com',
+        'year': YEAR,
+    }
+    body.update(extra)
+    return client.post('/bigbird/edit_participant', json=body).get_json()
+
+
+def test_admin_can_change_feeder_to_field_and_back(super_admin_client, seeded):
+    model = ParticipantModel(get_db_session(), YEAR, TEST_CIRCLE_SLUG)
+
+    assert _edit(super_admin_client, seeded['assigned'], participation_type='FEEDER')['success'] is True
+    assert model.get_participant(seeded['assigned'])['participation_type'] == 'FEEDER'
+
+    assert _edit(super_admin_client, seeded['assigned'], participation_type='regular')['success'] is True
+    assert model.get_participant(seeded['assigned'])['participation_type'] == 'regular'
+
+
+def test_invalid_participation_type_rejected(super_admin_client, seeded):
+    model = ParticipantModel(get_db_session(), YEAR, TEST_CIRCLE_SLUG)
+    before = model.get_participant(seeded['assigned']).get('participation_type')
+
+    result = _edit(super_admin_client, seeded['assigned'], participation_type='bogus')
+
+    assert result['success'] is False
+    assert model.get_participant(seeded['assigned']).get('participation_type') == before
+
+
+def test_participation_type_untouched_when_not_sent(super_admin_client, seeded):
+    model = ParticipantModel(get_db_session(), YEAR, TEST_CIRCLE_SLUG)
+    _edit(super_admin_client, seeded['assigned'], participation_type='FEEDER')
+
+    assert _edit(super_admin_client, seeded['assigned'], phone='555-0123')['success'] is True
+    assert model.get_participant(seeded['assigned'])['participation_type'] == 'FEEDER'
+
+
+def test_participants_page_has_participation_type_dropdown(super_admin_client, seeded):
+    html = super_admin_client.get(PARTICIPANTS_URL).get_data(as_text=True)
+
+    assert 'participation-type-input' in html
+    assert '<option value="FEEDER"' in html

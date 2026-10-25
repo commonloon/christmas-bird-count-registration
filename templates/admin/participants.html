@@ -1,4 +1,4 @@
-{# Updated by Claude AI on 2026-10-04 #}
+{# Updated by Claude AI on 2026-10-25 #}
 {% extends "base.html" %}
 {% from "_macros.html" import page_header, breadcrumbs, year_tabs, circle_crumbs with context %}
 
@@ -134,9 +134,10 @@
                                     {% if participant.is_leader %}
                                         <span class="badge bg-success ms-1">Leader</span>
                                     {% endif %}
-                                    {% if participant.get('participation_type') == 'FEEDER' %}
-                                        <div class="small text-muted">FEEDER</div>
-                                    {% endif %}
+                                    <select class="form-select form-select-sm mt-1 participation-type-input" title="Field counting or feeder watching">
+                                        <option value="regular" {% if participant.get('participation_type') != 'FEEDER' %}selected{% endif %}>Field</option>
+                                        <option value="FEEDER" {% if participant.get('participation_type') == 'FEEDER' %}selected{% endif %}>Feeder</option>
+                                    </select>
                                 </div>
                             </td>
                             <td>
@@ -509,6 +510,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     function saveParticipantChanges(row) {
         const participantId = row.dataset.participantId;
+        const participationTypeInput = row.querySelector('.participation-type-input');
+        const originalParticipationType = participationTypeInput.querySelector('option[selected]').value;
         const formData = {
             participant_id: participantId,
             first_name: row.querySelector('.first-name-input').value.trim(),
@@ -522,6 +525,7 @@ document.addEventListener('DOMContentLoaded', function() {
             has_binoculars: row.querySelector('.has-binoculars-input').checked,
             spotting_scope: row.querySelector('.spotting-scope-input').checked,
             interested_in_leadership: row.querySelector('.leadership-input').checked,
+            participation_type: row.querySelector('.participation-type-input').value,
             year: {{ selected_year }},
             csrf_token: '{{ csrf_token() }}'
         };
@@ -611,6 +615,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
                 // Show success message
                 alert('Participant updated successfully!');
+
+                // Field/feeder changes affect the row's tint and position and the
+                // area header counts, so reload rather than patching them in place
+                if (formData.participation_type !== originalParticipationType) {
+                    window.location.reload();
+                }
             } else {
                 alert('Error updating participant: ' + (data.message || 'Unknown error'));
             }

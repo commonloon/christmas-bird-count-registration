@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2026-10-20
+# Updated by Claude AI on 2026-10-25
 from flask import Blueprint, render_template, request, redirect, url_for, flash, jsonify, make_response, g, current_app, session
 from config.database import get_db_session
 from config.email_settings import is_test_server
@@ -39,7 +39,7 @@ from test.email_generator import (
 )
 from services.security import (
     sanitize_name, sanitize_email, sanitize_phone, sanitize_notes, sanitize_text_input,
-    sanitize_email_content, sanitize_http_url, validate_area_code, validate_experience, validate_email_format,
+    sanitize_email_content, sanitize_http_url, validate_area_code, validate_experience, validate_participation_type, validate_email_format,
     is_suspicious_input, log_security_event
 )
 from services.csv_security import escape_csv_formula
@@ -1186,6 +1186,7 @@ def edit_participant():
         phone2 = sanitize_phone(data.get('phone2', ''))
         skill_level = data.get('skill_level', '').strip()
         experience = data.get('experience', '').strip()
+        participation_type = str(data.get('participation_type', '')).strip()
         notes_to_organizers = sanitize_notes(data.get('notes_to_organizers', ''))
         has_binoculars = bool(data.get('has_binoculars', False))
         spotting_scope = bool(data.get('spotting_scope', False))
@@ -1239,6 +1240,10 @@ def edit_participant():
         if preferred_area and not validate_area_code(preferred_area):
             return jsonify({'success': False, 'message': f'Invalid area code: {preferred_area}'})
 
+        # Validate participation type (field vs. feeder) if provided
+        if 'participation_type' in data and not validate_participation_type(participation_type):
+            return jsonify({'success': False, 'message': f'Invalid participation type: {participation_type}'})
+
         # Initialize models
         participant_model = ParticipantModel(g.db, selected_year)
 
@@ -1272,6 +1277,8 @@ def edit_participant():
             updates['spotting_scope'] = spotting_scope
         if 'interested_in_leadership' in data:
             updates['interested_in_leadership'] = interested_in_leadership
+        if 'participation_type' in data:
+            updates['participation_type'] = participation_type
         # Track if area changed for reassignment logging
         area_changed = False
         old_area = None
