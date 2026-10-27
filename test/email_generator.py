@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2025-10-24
+# Updated by Claude AI on 2026-10-27
 #!/usr/bin/env python3
 """
 Email Generation System for Vancouver CBC Registration
@@ -525,6 +525,110 @@ def generate_team_update_emails(app, circle_slug) -> Dict[str, Any]:
             ctx.pop()
 
 
+def build_weekly_summary_context(db, participant_model, timestamp_model, current_year, area_code,
+                                 current_time, display_timezone, org_vars, content_blocks):
+    """Read-only: build one area's weekly_summary subject/template context. Shared by
+    the real send loop and the admin leader-email preview, so the preview can't drift
+    from what is sent. Never sends and never writes the last-sent timestamp (the
+    caller does that, after a successful send).
+
+    Returns (subject, email_context, leader_emails, window_start), or None if the
+    area has no leader emails. window_start is the 'changes since' cutoff."""
+    # Get last weekly summary timestamp (not team update timestamp)
+    last_weekly_summary = timestamp_model.get_last_email_sent(area_code, 'weekly_summary')
+    if last_weekly_summary is None:
+        # Default to one week ago if no previous weekly summary
+        last_weekly_summary = current_time - timedelta(days=7)
+
+    # Check for changes since last weekly summary
+    new_participants, updated_participants, removed_participants = get_participants_changes_since(
+        participant_model, area_code, last_weekly_summary
+    )
+
+    # Get reassignments affecting this area (with net change calculation)
+    reassignment_model = ReassignmentLogModel(db, current_year)
+    all_reassignments = reassignment_model.get_reassignments_since(last_weekly_summary)
+    arrivals, departures = calculate_net_changes(all_reassignments, area_code)
+
+    # Get NET withdrawal/reactivation changes (filters out intermediate state changes)
+    withdrawal_model = WithdrawalLogModel(db, current_year)
+    withdrawn_participants_changes, reactivated_participants = calculate_net_withdrawal_reactivation_changes(
+        participant_model, withdrawal_model, area_code, last_weekly_summary
+    )
+
+    # Filter out participants from "updated" list if they were round-trip reassignments
+    reassigned_participant_ids = set()
+    for reassignment in all_reassignments:
+        reassigned_participant_ids.add(reassignment.get('participant_id'))
+
+    # Get net change participant IDs (those that aren't round-trips)
+    net_change_participant_ids = set()
+    for arrival in arrivals:
+        net_change_participant_ids.add(arrival.get('participant_id'))
+    for departure in departures:
+        net_change_participant_ids.add(departure.get('participant_id'))
+
+    # Remove updated participants that were reassigned but have no net change
+    updated_participants = [
+        p for p in updated_participants
+        if p.get('id') not in (reassigned_participant_ids - net_change_participant_ids)
+    ]
+
+    has_changes = bool(new_participants or updated_participants or removed_participants or arrivals or departures or withdrawn_participants_changes or reactivated_participants)
+
+    # Send weekly summary to ALL leaders regardless of changes
+    # Get leader emails and names
+    leader_emails = get_area_leaders_emails(participant_model, area_code)
+    if not leader_emails:
+        logger.warning(f"No leader emails found for area {area_code}")
+        return None
+
+    leaders = participant_model.get_leaders_by_area(area_code)
+    leader_names = [f"{leader.get('first_name', '')} {leader.get('last_name', '')}".strip()
+                  for leader in leaders if leader.get('is_leader', False)]
+
+    # Get current team and statistics (active and withdrawn)
+    current_team = participant_model.get_participants_by_area(area_code)
+    withdrawn_participants = participant_model.get_withdrawn_participants_by_area(area_code)
+    current_team = current_team + withdrawn_participants
+    skill_breakdown = calculate_skill_breakdown(current_team)
+    experience_breakdown = calculate_experience_breakdown(current_team)
+    leadership_interest_count = sum(1 for p in current_team if p.get('interested_in_leadership'))
+
+    subject, next_steps_text = _substitute_weekly_summary_content(
+        content_blocks, org_vars, area_code, current_time.strftime('%Y-%m-%d'))
+
+    # Prepare email context
+    email_context = {
+        'area_code': area_code,
+        'leader_names': leader_names,
+        'new_participants': new_participants,
+        'updated_participants': updated_participants,
+        'removed_participants': removed_participants,
+        'arrivals': arrivals,
+        'departures': departures,
+        'withdrawn_participants': withdrawn_participants_changes,
+        'reactivated_participants': reactivated_participants,
+        'current_team': current_team,
+        'has_changes': has_changes,
+        'skill_breakdown': skill_breakdown,
+        'experience_breakdown': experience_breakdown,
+        'leadership_interest_count': leadership_interest_count,
+        'current_date': current_time,
+        'display_timezone': display_timezone,
+        # A leader may lead more than one area (separate records, same
+        # email); deep-link so this area's email opens that area's tab
+        # directly instead of whichever tab the dashboard defaults to.
+        'leader_dashboard_url': f"{get_leader_dashboard_url()}?area={quote(area_code)}",
+        'test_mode': is_test_server(),
+        'branding': get_email_branding(),
+        'count_event_name': org_vars['count_event_name'],
+        'next_steps_text': next_steps_text,
+    }
+
+    return subject, email_context, leader_emails, last_weekly_summary
+
+
 def generate_weekly_summary_emails(app, circle_slug) -> Dict[str, Any]:
     """Generate weekly summary emails for ALL area leaders."""
     ctx = None
@@ -554,97 +658,12 @@ def generate_weekly_summary_emails(app, circle_slug) -> Dict[str, Any]:
             try:
                 results['areas_processed'] += 1
 
-                # Get last weekly summary timestamp (not team update timestamp)
-                last_weekly_summary = timestamp_model.get_last_email_sent(area_code, 'weekly_summary')
-                if last_weekly_summary is None:
-                    # Default to one week ago if no previous weekly summary
-                    last_weekly_summary = current_time - timedelta(days=7)
-
-                # Check for changes since last weekly summary
-                new_participants, updated_participants, removed_participants = get_participants_changes_since(
-                    participant_model, area_code, last_weekly_summary
-                )
-
-                # Get reassignments affecting this area (with net change calculation)
-                reassignment_model = ReassignmentLogModel(db, current_year)
-                all_reassignments = reassignment_model.get_reassignments_since(last_weekly_summary)
-                arrivals, departures = calculate_net_changes(all_reassignments, area_code)
-
-                # Get NET withdrawal/reactivation changes (filters out intermediate state changes)
-                withdrawal_model = WithdrawalLogModel(db, current_year)
-                withdrawn_participants_changes, reactivated_participants = calculate_net_withdrawal_reactivation_changes(
-                    participant_model, withdrawal_model, area_code, last_weekly_summary
-                )
-
-                # Filter out participants from "updated" list if they were round-trip reassignments
-                reassigned_participant_ids = set()
-                for reassignment in all_reassignments:
-                    reassigned_participant_ids.add(reassignment.get('participant_id'))
-
-                # Get net change participant IDs (those that aren't round-trips)
-                net_change_participant_ids = set()
-                for arrival in arrivals:
-                    net_change_participant_ids.add(arrival.get('participant_id'))
-                for departure in departures:
-                    net_change_participant_ids.add(departure.get('participant_id'))
-
-                # Remove updated participants that were reassigned but have no net change
-                updated_participants = [
-                    p for p in updated_participants
-                    if p.get('id') not in (reassigned_participant_ids - net_change_participant_ids)
-                ]
-
-                has_changes = bool(new_participants or updated_participants or removed_participants or arrivals or departures or withdrawn_participants_changes or reactivated_participants)
-
-                # Send weekly summary to ALL leaders regardless of changes
-                # Get leader emails and names
-                leader_emails = get_area_leaders_emails(participant_model, area_code)
-                if not leader_emails:
-                    logger.warning(f"No leader emails found for area {area_code}")
+                built = build_weekly_summary_context(
+                    db, participant_model, timestamp_model, current_year, area_code,
+                    current_time, display_timezone, org_vars, content_blocks)
+                if built is None:
                     continue
-
-                leaders = participant_model.get_leaders_by_area(area_code)
-                leader_names = [f"{leader.get('first_name', '')} {leader.get('last_name', '')}".strip()
-                              for leader in leaders if leader.get('is_leader', False)]
-
-                # Get current team and statistics (active and withdrawn)
-                current_team = participant_model.get_participants_by_area(area_code)
-                withdrawn_participants = participant_model.get_withdrawn_participants_by_area(area_code)
-                current_team = current_team + withdrawn_participants
-                skill_breakdown = calculate_skill_breakdown(current_team)
-                experience_breakdown = calculate_experience_breakdown(current_team)
-                leadership_interest_count = sum(1 for p in current_team if p.get('interested_in_leadership'))
-                
-                subject, next_steps_text = _substitute_weekly_summary_content(
-                    content_blocks, org_vars, area_code, current_time.strftime('%Y-%m-%d'))
-
-                # Prepare email context
-                email_context = {
-                    'area_code': area_code,
-                    'leader_names': leader_names,
-                    'new_participants': new_participants,
-                    'updated_participants': updated_participants,
-                    'removed_participants': removed_participants,
-                    'arrivals': arrivals,
-                    'departures': departures,
-                    'withdrawn_participants': withdrawn_participants_changes,
-                    'reactivated_participants': reactivated_participants,
-                    'current_team': current_team,
-                    'has_changes': has_changes,
-                    'skill_breakdown': skill_breakdown,
-                    'experience_breakdown': experience_breakdown,
-                    'leadership_interest_count': leadership_interest_count,
-                    'current_date': current_time,
-                    'display_timezone': display_timezone,
-                    # A leader may lead more than one area (separate records, same
-                    # email); deep-link so this area's email opens that area's tab
-                    # directly instead of whichever tab the dashboard defaults to.
-                    'leader_dashboard_url': f"{get_leader_dashboard_url()}?area={quote(area_code)}",
-                    'test_mode': is_test_server(),
-                    'branding': get_email_branding(),
-                    'count_event_name': org_vars['count_event_name'],
-                    'next_steps_text': next_steps_text,
-                }
+                subject, email_context, leader_emails, _window_start = built
 
                 # Render email template
                 try:
@@ -680,6 +699,29 @@ def generate_weekly_summary_emails(app, circle_slug) -> Dict[str, Any]:
     finally:
         if ctx:
             ctx.pop()
+
+
+def build_weekly_summary_leader_preview(circle_slug, area_code):
+    """Read-only preview of the weekly_summary email the leaders of area_code would
+    get if it were sent right now (admin "view as leader" page). Never sends and never
+    touches the last-sent timestamp, so it can't disturb the real schedule. Must run
+    inside a request already resolved to circle_slug. Returns a dict (subject, html,
+    recipients, window_start), or None if the area has no leader emails."""
+    db = get_db_session()
+    current_year = datetime.now().year
+    current_time, display_timezone = convert_to_display_timezone(datetime.now(timezone.utc))
+    org_vars = get_organization_variables()
+    content_blocks = EmailContentModel(db).resolve_all(circle_slug, 'weekly_summary')
+    built = build_weekly_summary_context(
+        db, ParticipantModel(db, current_year), EmailTimestampModel(db, current_year), current_year,
+        area_code, current_time, display_timezone, org_vars, content_blocks)
+    if built is None:
+        return None
+    subject, email_context, leader_emails, window_start = built
+    with current_app.app_context():
+        html_content = render_template('emails/weekly_summary.html', **email_context)
+    return {'subject': subject, 'html': html_content, 'recipients': leader_emails,
+            'window_start': window_start}
 
 
 def generate_admin_digest_email(app, circle_slug) -> Dict[str, Any]:

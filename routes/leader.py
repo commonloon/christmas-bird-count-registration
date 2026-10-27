@@ -7,6 +7,7 @@ from config.areas import get_area_info
 from services.limiter import limiter
 from config.rate_limits import RATE_LIMITS
 from datetime import datetime
+from test.email_generator import build_weekly_summary_leader_preview
 import logging
 
 leader_bp = Blueprint('leader', __name__)
@@ -173,6 +174,18 @@ def dashboard():
     # Determine if selected year is historical (read-only)
     is_historical = selected_year < current_year
 
+    # Admin "view as" only: read-only preview of the weekly summary email this
+    # area's leaders get. Never sends or touches the schedule's last-sent timestamp.
+    email_preview = None
+    email_preview_error = False
+    if view_as_email and not is_historical:
+        try:
+            email_preview = build_weekly_summary_leader_preview(g.circle_slug, assigned_area)
+        except Exception:
+            logger.exception(f"Weekly summary preview failed for area {assigned_area} "
+                             f"(circle {g.circle_slug})")
+            email_preview_error = True
+
     return render_template('leader/dashboard.html',
                            selected_year=selected_year,
                            current_year=current_year,
@@ -187,6 +200,8 @@ def dashboard():
                            withdrawn_participants=withdrawn_participants,
                            total_participants=len(active_participants),
                            view_as_email=view_as_email,
+                           email_preview=email_preview,
+                           email_preview_error=email_preview_error,
                            view_as_args={'as': view_as_email} if view_as_email else {},
                            view_as_options=view_as_options,
                            current_user=get_current_user())

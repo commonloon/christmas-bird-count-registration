@@ -147,3 +147,42 @@ class TestNonAdminCannotViewAs:
         html = client.get('/leader').get_data(as_text=True)
         assert 'View as leader' not in html
         assert OTHER_LEADER_EMAIL not in html
+
+
+class TestWeeklySummaryPreview:
+    def test_preview_shown_to_admin_in_view_as_only(self, client, two_leaders):
+        _session(client, ADMIN_EMAIL)
+        html = client.get('/leader', query_string={'as': LEADER_EMAIL}).get_data(as_text=True)
+        assert 'Weekly Summary Email Preview - Area A' in html
+        assert '<iframe' in html and 'srcdoc=' in html
+        assert LEADER_EMAIL in html  # recipients line
+
+    def test_preview_not_shown_to_leader(self, client, two_leaders):
+        _session(client, LEADER_EMAIL)
+        html = client.get('/leader', query_string={'as': LEADER_EMAIL}).get_data(as_text=True)
+        assert 'Weekly Summary Email Preview' not in html
+
+    def test_preview_never_sends_or_writes_timestamp(self, client, two_leaders, db_session, monkeypatch):
+        from services.email_service import email_service
+        from test.email_generator import EmailTimestampModel
+        sent = []
+        monkeypatch.setattr(email_service, 'send_email', lambda *a, **k: sent.append(a) or True)
+        year = datetime.now().year
+        before = EmailTimestampModel(db_session, year, TEST_CIRCLE_SLUG).get_last_email_sent('A', 'weekly_summary')
+        _session(client, ADMIN_EMAIL)
+        resp = client.get('/leader', query_string={'as': LEADER_EMAIL})
+        assert 'Weekly Summary Email Preview' in resp.get_data(as_text=True)
+        after = EmailTimestampModel(db_session, year, TEST_CIRCLE_SLUG).get_last_email_sent('A', 'weekly_summary')
+        assert sent == []
+        assert before == after
+
+    def test_preview_html_is_escaped_inside_srcdoc(self, client, two_leaders):
+        _session(client, ADMIN_EMAIL)
+        html = client.get('/leader', query_string={'as': LEADER_EMAIL}).get_data(as_text=True)
+        srcdoc = html.split('srcdoc="', 1)[1].split('"', 1)[0]
+        assert '<' not in srcdoc and '&lt;' in srcdoc
+
+    def test_historical_year_has_no_preview(self, client, two_leaders):
+        _session(client, ADMIN_EMAIL)
+        html = client.get('/leader', query_string={'as': LEADER_EMAIL, 'year': 2000}).get_data(as_text=True)
+        assert 'Weekly Summary Email Preview' not in html
