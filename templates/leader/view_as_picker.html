@@ -1,0 +1,14 @@
+{# Created by Claude AI on 2026-10-27 #}
+{% extends "base.html" %}
+
+{% block title %}View as Leader - {{ count_event_name }}{% endblock %}
+
+{% block content %}
+<h2>Leader Dashboard Preview</h2>
+<p>You are not an area leader yourself. Choose a leader to see their dashboard exactly as they see it (read-only).</p>
+{% if view_as_options %}
+{% include "leader/_view_as_form.html" %}
+{% else %}
+<div class="alert alert-info">No area leaders are assigned for this circle yet.</div>
+{% endif %}
+{% endblock %}

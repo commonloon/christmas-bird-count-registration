@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2025-10-03
+# Updated by Claude AI on 2026-10-27
 from flask import Blueprint, render_template, request, redirect, url_for, flash, g, session
 from config.database import get_db_session
 from models.participant import ParticipantModel
@@ -38,6 +38,30 @@ def get_current_user_email():
     return session.get('user_email')
 
 
+def _view_as_options(participant_model):
+    """Dropdown entries for the admin "view as" selector: one per distinct leader
+    email (the dashboard is keyed by email), labelled with names and areas."""
+    by_email = {}
+    for leader in participant_model.get_leaders():
+        area = leader.get('assigned_area_leader')
+        email = (leader.get('email') or '').lower()
+        if not area or not email:
+            continue
+        entry = by_email.setdefault(email, {'names': [], 'areas': set()})
+        name = f"{leader.get('first_name', '')} {leader.get('last_name', '')}".strip()
+        if name not in entry['names']:
+            entry['names'].append(name)
+        entry['areas'].add(area)
+    options = [
+        {'email': email,
+         'label': f"{' / '.join(e['names'])} - {', '.join(sorted(e['areas']))}",
+         'sort': (sorted(e['areas'])[0], e['names'][0].lower())}
+        for email, e in by_email.items()
+    ]
+    options.sort(key=lambda o: o['sort'])
+    return options
+
+
 @leader_bp.route('/')
 @leader_bp.route('')
 @require_leader
@@ -56,6 +80,16 @@ def dashboard():
         flash('Authentication error. Please log in again.', 'error')
         return redirect(url_for('auth.login'))
 
+    # Admin-only read-only "view as": render this page exactly as the named leader
+    # sees it. Only this GET honours the override - the session is never changed,
+    # so the admin can't act as the leader. Non-admins' ?as= is ignored.
+    is_admin_viewer = session.get('user_role') in ('admin', 'super_admin')
+    view_as_email = request.args.get('as', '').strip().lower() if is_admin_viewer else ''
+    if view_as_email:
+        logger.info(f"Leader dashboard view-as: {user_email} viewing as {view_as_email} "
+                    f"(circle {g.circle_slug})")
+        user_email = view_as_email
+
     # Get current year
     current_year = datetime.now().year
 
@@ -69,7 +103,17 @@ def dashboard():
     leader_records = current_participant_model.get_participants_by_email(user_email)
     leader_records = [r for r in leader_records if r.get('is_leader', False)]
 
+    view_as_options = _view_as_options(current_participant_model) if is_admin_viewer else []
+
     if not leader_records:
+        if view_as_email:
+            flash('No area leader found for that email in this circle.', 'error')
+            return redirect(url_for('leader.dashboard'))
+        if is_admin_viewer:
+            return render_template('leader/view_as_picker.html',
+                                   view_as_options=view_as_options,
+                                   selected_year=selected_year,
+                                   current_user=get_current_user())
         flash('You are not assigned as an area leader.', 'error')
         return redirect(url_for('main.index'))
 
@@ -142,4 +186,7 @@ def dashboard():
                            regular_participants=regular_participants,
                            withdrawn_participants=withdrawn_participants,
                            total_participants=len(active_participants),
+                           view_as_email=view_as_email,
+                           view_as_args={'as': view_as_email} if view_as_email else {},
+                           view_as_options=view_as_options,
                            current_user=get_current_user())

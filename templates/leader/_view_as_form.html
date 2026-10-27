@@ -1,0 +1,17 @@
+{# Created by Claude AI on 2026-10-27 #}
+{# Admin-only selector: preview the leader dashboard as a given leader sees it. #}
+<form method="get" action="{{ url_for('leader.dashboard') }}" class="row g-2 align-items-center mb-3">
+    <input type="hidden" name="year" value="{{ selected_year|e }}">
+    <div class="col-auto">
+        <label for="view-as-select" class="col-form-label"><i class="bi bi-eye"></i> View as leader:</label>
+    </div>
+    <div class="col-auto">
+        <select id="view-as-select" name="as" class="form-select" onchange="this.form.submit()">
+            <option value="">{% if view_as_email %}(myself){% else %}Select a leader...{% endif %}</option>
+            {% for option in view_as_options %}
+            <option value="{{ option.email|e }}" {% if option.email == view_as_email %}selected{% endif %}>{{ option.label|e }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <noscript><div class="col-auto"><button type="submit" class="btn btn-secondary">View</button></div></noscript>
+</form>
