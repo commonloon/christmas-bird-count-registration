@@ -10,6 +10,7 @@ import pytest
 
 from config.database import get_db_session
 from models.circle import CircleModel
+from models.email_schedule import CircleEmailScheduleModel
 from models.db import Circle, CircleEmailSchedule
 
 NEW_SLUG = 'zz-new-ext'
@@ -170,3 +171,54 @@ class TestToggleExternal:
         back.pop('slug')
         assert super_admin_client.post(edit, data=back).status_code == 302
         assert _row()['is_external'] is False
+
+
+class TestExternalCirclesAreNotScheduledCircles:
+    """An external count sends no email and needs no admin: the scheduler, the
+    no-admins alert and the area/email admin pages must all leave it alone."""
+
+    def _schedule_slots(self):
+        db = get_db_session()
+        db.expire_all()
+        return db.query(CircleEmailSchedule).filter_by(circle_slug=NEW_SLUG).count()
+
+    def test_creating_an_external_circle_adds_no_schedule_rows(self, super_admin_client, cleanup_new_circle):
+        assert super_admin_client.post(NEW_URL, data=_external_form()).status_code == 302
+        assert self._schedule_slots() == 0
+
+    def test_no_admins_alert_ignores_external_circles(self, super_admin_client, cleanup_new_circle):
+        from services.scheduler_service import find_adminless_circles
+        super_admin_client.post(NEW_URL, data=_external_form())
+        assert NEW_SLUG not in [c['slug'] for c in find_adminless_circles(get_db_session())]
+
+    def test_switching_to_internal_creates_the_default_schedule(self, super_admin_client, cleanup_new_circle):
+        super_admin_client.post(NEW_URL, data=_external_form())
+        CircleModel(get_db_session()).update(NEW_SLUG, {'is_external': False})
+        assert self._schedule_slots() > 0
+
+    def test_manual_run_refused_for_external_circle(self, super_admin_client, cleanup_new_circle):
+        import app
+        from services import scheduler_service
+        super_admin_client.post(NEW_URL, data=_external_form())
+        with pytest.raises(ValueError, match='external'):
+            scheduler_service.run_manual(app.app, NEW_SLUG, 'team_update', 'someone@example.org')
+
+    def test_tick_ignores_leftover_schedule_rows_of_an_external_circle(self, super_admin_client, cleanup_new_circle):
+        import app
+        from datetime import datetime, timezone
+        from services.scheduler_service import tick
+        super_admin_client.post(NEW_URL, data=_external_form())
+        CircleEmailScheduleModel(get_db_session()).create_defaults(NEW_SLUG)
+        calls = []
+        generators = {t: (lambda a, slug, t=t: calls.append((t, slug)) or {'emails_sent': 0, 'errors': []})
+                      for t in ('team_update', 'weekly_summary', 'admin_digest')}
+        tick(app.app, now_utc=datetime(2099, 12, 1, 18, 5, tzinfo=timezone.utc),
+             generators=generators, only_circles=[NEW_SLUG])
+        assert calls == []
+
+    @pytest.mark.parametrize('path', ['areas', 'email-content', 'email-schedule'])
+    def test_area_and_email_pages_redirect_to_edit_form(self, super_admin_client, cleanup_new_circle, path):
+        super_admin_client.post(NEW_URL, data=_external_form())
+        resp = super_admin_client.get(f'/bigbird/circles/{NEW_SLUG}/{path}')
+        assert resp.status_code == 302
+        assert resp.headers['Location'].endswith(f'/circles/{NEW_SLUG}/edit')

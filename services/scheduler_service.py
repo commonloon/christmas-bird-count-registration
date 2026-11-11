@@ -275,12 +275,14 @@ def send_failure_notifications(db, failures, circles_by_slug):
 
 def find_adminless_circles(db):
     """Every circle (in any season) that has no circle-admin configured, as
-    [{'slug', 'circle_name'}, ...] ordered by slug."""
+    [{'slug', 'circle_name'}, ...] ordered by slug. External circles are left
+    out: their registration is managed elsewhere, so a circle-admin has nothing
+    to act on."""
     admin_model = CircleAdminModel(db)
     return [
         {'slug': c['slug'], 'circle_name': c.get('circle_name') or c['slug']}
         for c in CircleModel(db).get_all()
-        if not admin_model.get_admins_for_circle(c['slug'])
+        if not c.get('is_external') and not admin_model.get_admins_for_circle(c['slug'])
     ]
 
 
@@ -359,7 +361,9 @@ def tick(app, now_utc=None, generators=None, only_circles=None):
             return summary
 
         db = get_db_session()
-        circles_by_slug = {c['slug']: c for c in CircleModel(db).get_all()}
+        # External circles send no email: leaving them out makes any schedule rows they
+        # still have inert (classify_schedule_rows skips unknown circles).
+        circles_by_slug = {c['slug']: c for c in CircleModel(db).get_all() if not c.get('is_external')}
         schedules = CircleEmailScheduleModel(db).get_all()
         if only_circles is not None:
             only_circles = set(only_circles)
@@ -434,6 +438,8 @@ def run_manual(app, circle_slug, email_type, triggered_by, now_utc=None, generat
     circle = CircleModel(db).get_by_slug(circle_slug)
     if circle is None:
         raise ValueError(f'Unknown circle: {circle_slug}')
+    if circle.get('is_external'):
+        raise ValueError(f'{circle_slug} is an external count and sends no email here.')
     local_date = now_utc.astimezone(pytz.timezone(circle['display_timezone'])).date()
     if not is_in_season(circle, local_date):
         raise ValueError(MANUAL_RUN_OUT_OF_SEASON_MESSAGE)

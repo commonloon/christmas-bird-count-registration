@@ -54,7 +54,9 @@ class CircleModel:
         self.db.commit()
         # A circle with no schedule rows would silently never send any email -
         # give every new circle the default send times (editable by its admins).
-        CircleEmailScheduleModel(self.db).create_defaults(row.slug)
+        # An external circle sends no email at all, so it gets none.
+        if not row.is_external:
+            CircleEmailScheduleModel(self.db).create_defaults(row.slug)
         return row.to_dict()
 
     def update(self, slug, circle_data):
@@ -70,6 +72,10 @@ class CircleModel:
             setattr(row, key, value)
         row.updated_at = datetime.now(timezone.utc)
         self.db.commit()
+        # A circle created as external has no schedule rows; if it is switched to a
+        # normal circle it needs the defaults (existing slots are left alone).
+        if not row.is_external:
+            CircleEmailScheduleModel(self.db).create_defaults(slug)
         return row.to_dict()
 
 

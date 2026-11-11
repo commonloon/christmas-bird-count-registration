@@ -1626,6 +1626,16 @@ def _require_circle_manage_access(slug):
     return None
 
 
+EXTERNAL_CIRCLE_MESSAGE = ('This is an external count - its registration is managed elsewhere, '
+                           'so it has no areas, email content or email schedule here.')
+
+
+def _external_circle_refusal(slug):
+    """Redirect for the area/email pages, which are meaningless for an external circle."""
+    flash(EXTERNAL_CIRCLE_MESSAGE, 'info')
+    return redirect(url_for('admin.edit_circle', slug=slug))
+
+
 def _circle_form_data(form):
     """Extract and sanitize circle config fields from a submitted form."""
     map_medium_from, map_high_from, _ = parse_thresholds(
@@ -1964,6 +1974,9 @@ def circle_email_content(slug):
         flash('Circle not found.', 'error')
         return redirect(url_for('main.index'))
 
+    if circle.get('is_external'):
+        return _external_circle_refusal(slug)
+
     model = EmailContentModel(g.db)
     updated_by = get_current_user()['email']
 
@@ -2026,6 +2039,9 @@ def circle_email_content_preview(slug, email_type):
     if not circle:
         flash('Circle not found.', 'error')
         return redirect(url_for('main.index'))
+
+    if circle.get('is_external'):
+        return _external_circle_refusal(slug)
 
     if email_type == 'registration_confirmation':
         variant = 'unassigned' if request.args.get('variant') == 'unassigned' else 'assigned'
@@ -2090,6 +2106,9 @@ def circle_email_schedule(slug):
         flash('Circle not found.', 'error')
         return redirect(url_for('main.index'))
 
+    if circle.get('is_external'):
+        return _external_circle_refusal(slug)
+
     model = CircleEmailScheduleModel(g.db)
 
     if request.method == 'POST':
@@ -2143,7 +2162,7 @@ def scheduler_console():
     """Super-admin view of scheduled-email health: recent runs across every
     circle, the failure-alert sender setting, and (tucked away) the manual
     recovery run."""
-    circles = CircleModel(g.db).get_all()
+    circles = [c for c in CircleModel(g.db).get_all() if not c.get('is_external')]
     now = datetime.now(timezone.utc)
     circle_rows = [
         {'circle': circle,
@@ -2217,6 +2236,9 @@ def circle_areas_manage(slug):
         flash('Circle not found.', 'error')
         return redirect(url_for('main.index'))
 
+    if circle.get('is_external'):
+        return _external_circle_refusal(slug)
+
     area_model = CircleAreaModel(g.db)
     areas = area_model.get_areas_for_circle(slug)
     return render_template('admin/circle_areas.html', circle=circle, areas=areas, current_user=get_current_user())
@@ -2242,6 +2264,9 @@ def circle_areas_edit(slug):
     circle = CircleModel(g.db).get_by_slug(slug)
     if not circle:
         return jsonify({'success': False, 'message': 'Circle not found.'}), 404
+
+    if circle.get('is_external'):
+        return jsonify({'success': False, 'message': EXTERNAL_CIRCLE_MESSAGE}), 400
 
     data = request.get_json(silent=True)
     if not data:
@@ -2289,6 +2314,9 @@ def circle_areas_import_kml(slug):
     if not circle:
         flash('Circle not found.', 'error')
         return redirect(url_for('main.index'))
+
+    if circle.get('is_external'):
+        return _external_circle_refusal(slug)
 
     upload = request.files.get('kml_file')
     if not upload or not upload.filename:
