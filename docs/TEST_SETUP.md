@@ -74,7 +74,7 @@ cd tests && npm run test:email-validation && cd ..
 
 `tests/conftest.py`'s `pytest_sessionstart` hook runs before any fixture or test and hard-aborts the whole run (`pytest.exit`, nonzero exit code) unless:
 - `DATABASE_URL`'s host is `localhost`/`127.0.0.1`.
-- The resolved Selenium/API target (`tests.test_config.get_base_url()`) **and** `config.cloud.TEST_BASE_URL` both resolve to `localhost`/`127.0.0.1` or a `.test` hostname.
+- The resolved Selenium/API target (`tests.test_config.get_base_url()`) **and** `tests.test_config.TEST_BASE_URL` both resolve to `localhost`/`127.0.0.1` or a `.test` hostname.
 
 This is a structural guard, not just convention: production Postgres lives on a separate host reachable only by SSH, so a legitimate local run's `DATABASE_URL` host can never legitimately be anything else - even if the suite were somehow launched from a production app server. There is no environment variable or flag to bypass this; if you need to test against a real remote host, that is a deliberate, separate decision outside this guard's scope.
 

@@ -1,25 +1,27 @@
 # Test Configuration for Christmas Bird Count Registration System
 # Updated by Claude AI on 2025-10-18
+# Updated by Claude AI on 2026-10-27 (removed config/cloud.py and the GCP-era settings)
 
 """
 Test configuration for functional workflow testing against cloud environments.
 Updated for maintainable functional test suite with page object model.
-Credentials are stored in Google Secret Manager for security.
-
-IMPORTANT: This file now imports from config/*.py for portability.
-Update config/cloud.py and config/admins.py instead of hardcoding values here.
+IMPORTANT: Account emails are imported from config/admins.py for portability.
 """
 
 import os
 from datetime import datetime
 
-# Import deployment configuration for portability
-from config.cloud import (
-    LOCAL_BASE_URL, TEST_BASE_URL, PRODUCTION_BASE_URL,
-    TEST_DATABASE, PRODUCTION_DATABASE,
-    GCP_PROJECT_ID, GCP_LOCATION
-)
+import pytest
+
 from config.admins import TEST_ADMIN_EMAILS, TEST_LEADER_EMAILS
+
+# Local dev server (FLASK_APP=app.py flask run --host 127.0.0.1 --port 8080), reached
+# via the dedicated 'test' circle over the IANA-reserved .test TLD rather than a raw
+# IP (see .env.example for the required hosts-file entry) - this is a multi-circle
+# platform and the app requires a real Host-header-resolvable circle for every
+# request, with no default/fallback circle (see app.py's resolve_circle()).
+LOCAL_BASE_URL = 'http://test.cbc.test:8080'
+TEST_BASE_URL = LOCAL_BASE_URL
 
 # The circle every test targets - a dedicated circle (created once, locally) rather
 # than any real circle's data. This is a multi-circle platform with no default/
@@ -39,18 +41,11 @@ TEST_CIRCLE_SLUG_2 = 'test2'
 
 # Environment Configuration
 TEST_CONFIG = {
-    # Target URLs for testing (imported from config/cloud.py). 'local_url'/'test_url'
-    # both point at the local dev server via the dedicated 'test' circle's *.test
-    # hostname (see .env.example) - post-FullHost-migration there's no separate test
-    # environment to distinguish. 'production_url' is never navigated to (see
-    # tests/conftest.py's pytest_sessionstart guard).
+    # Target URL for testing. 'local_url'/'test_url' both point at the local dev
+    # server via the dedicated 'test' circle's *.test hostname (see .env.example) -
+    # there is no separate test or production environment to target.
     'local_url': LOCAL_BASE_URL,
     'test_url': TEST_BASE_URL,
-    'production_url': PRODUCTION_BASE_URL,
-
-    # Database names (imported from config/cloud.py)
-    'test_database': TEST_DATABASE,
-    'production_database': PRODUCTION_DATABASE,
 
     # Year strategy
     'current_year': datetime.now().year,
@@ -102,46 +97,29 @@ TEST_ACCOUNTS = {
     }
 }
 
-# Google Cloud Configuration (imported from config/cloud.py)
-GCP_CONFIG = {
-    'project_id': GCP_PROJECT_ID,
-    'region': GCP_LOCATION,
-    'secret_manager_enabled': True
-}
-
 # Test Environment Detection
 def get_target_environment():
     """Determine which environment to test against based on settings.
 
-    Defaults to 'local' (the FLASK_APP=app.py dev server) since that's the only
-    target that actually works post-FullHost-migration - 'test'/'production'
-    point at decommissioned Cloud Run services and are kept only for reference.
+    Only 'local' (the FLASK_APP=app.py dev server) is supported; 'production' is
+    refused by get_base_url().
     """
-    return os.getenv('TEST_TARGET', 'local')  # 'local', 'test', or 'production'
+    return os.getenv('TEST_TARGET', 'local')
 
 def get_base_url():
     """Get the base URL for the target test environment."""
-    env = get_target_environment()
-    if env == 'production':
-        return TEST_CONFIG['production_url']
-    if env == 'test':
-        return TEST_CONFIG['test_url']
+    if get_target_environment() == 'production':
+        pytest.exit("Refusing to run: TEST_TARGET=production is not supported - "
+                    "this suite must only run against the local dev server.", returncode=1)
     return TEST_CONFIG['local_url']
 
 def get_database_name():
     """Get a label for the target environment's data store, for log messages only.
 
-    Postgres (this app's actual DB since the FullHost migration) doesn't have
-    separate named databases per environment the way Firestore did - it's one
-    shared 'cbc'/'cbc_dev' database with every circle's data scoped by
-    circle_slug. This just labels which environment's data a test run is
-    touching; nothing resolves it to an actual connection anymore.
+    Postgres (this app's actual DB) is one shared 'cbc'/'cbc_dev' database with
+    every circle's data scoped by circle_slug. This just labels which data a test
+    run is touching; nothing resolves it to an actual connection.
     """
-    env = get_target_environment()
-    if env == 'production':
-        return TEST_CONFIG['production_database']
-    if env == 'test':
-        return TEST_CONFIG['test_database']
     return 'cbc_dev (local Postgres)'
 
 # Test Data Paths

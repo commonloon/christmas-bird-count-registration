@@ -23,7 +23,7 @@ sys.path.insert(0, project_root)
 
 from tests.test_config import (
     TEST_CONFIG, TEST_ACCOUNTS, TEST_CIRCLE_SLUG, TEST_CIRCLE_SLUG_2,
-    get_base_url, get_database_name, LOGGING_CONFIG
+    get_base_url, get_database_name, LOGGING_CONFIG, TEST_CONFIG
 )
 
 # Configure logging
@@ -79,23 +79,17 @@ def pytest_sessionstart(session):
         )
 
     from urllib.parse import urlparse
-    from config.cloud import TEST_BASE_URL
 
     # Check get_base_url() (what get_base_url()-based tests actually navigate to) AND
-    # config.cloud.TEST_BASE_URL directly - tests/installation/*.py read TEST_BASE_URL
-    # straight from config/cloud.py, bypassing get_base_url()/TEST_TARGET entirely.
-    # That gap once let those tests silently send real browser traffic to a live
-    # legacy Cloud Run host (cbc-test.naturevancouver.ca) that looked decommissioned
-    # but wasn't - checking both constants here closes it structurally rather than
-    # trusting every test file to route through the one already-guarded function.
-    for url in (get_base_url(), TEST_BASE_URL):
+    # TEST_CONFIG['test_url'] (what tests/installation/*.py read via installation_config).
+    for url in (get_base_url(), TEST_CONFIG['test_url']):
         host = urlparse(url).hostname
         if not _is_safe_test_host(host):
             pytest.exit(
                 f"Refusing to run: test target '{url}' (host '{host}') is not "
                 "localhost/127.0.0.1 or a *.test hostname. This test suite submits real "
                 "registrations/emails and must never run against a remote server "
-                "(check TEST_TARGET / config/cloud.py).",
+                "(check TEST_TARGET / tests/test_config.py).",
                 returncode=1
             )
 

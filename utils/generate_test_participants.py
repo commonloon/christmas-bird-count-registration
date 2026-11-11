@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Updated by Claude AI on 2026-01-05
+Updated by Claude AI on 2026-10-27
 Test Participant Data Generator for Christmas Bird Count Registration
 
 This script generates test participants by submitting data to the registration endpoint.
@@ -32,18 +32,27 @@ from datetime import datetime
 from faker import Faker
 from bs4 import BeautifulSoup
 
+MIGRATION_NOTICE = (
+    "generate_test_participants.py has not been updated for the multi-circle environment "
+    "and needs to be modified before it can be used. It no longer generates any participants."
+)
+print(MIGRATION_NOTICE)
+sys.exit(1)
+
+# Everything below is unreachable until the script is modified to work with the
+# multi-circle environment.
+
 # Add parent directory to path to import config modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from config.cloud import TEST_BASE_URL
 from config.organization import get_organization_variables
 from config.areas import get_all_areas
 
-# Configuration - dynamically loaded from config files
-BASE_URL = TEST_BASE_URL  # Automatically uses correct test URL from config/cloud.py
+# Configuration
+BASE_URL = 'http://test.cbc.test:8080'  # the dedicated 'test' circle on the local dev server
 REGISTRATION_URL = f"{BASE_URL}/register"
 
-# TEST_BASE_URL is hardcoded to the dedicated 'test' circle (config/cloud.py) - this
+# BASE_URL is hardcoded to the dedicated 'test' circle - this
 # script has only ever generated data for that one circle. get_organization_variables()/
 # get_all_areas() below are circle-specific (this is a multi-circle platform with no
 # default/fallback circle - see app.py's resolve_circle()), so a real request context
@@ -57,7 +66,7 @@ try:
     EMAIL_DOMAIN = org_vars['count_contact'].split('@')[1]  # Extract domain from count contact email
 
     # Dynamically load all areas from config (server validates which are open for registration)
-    # Note: admin_assignment_only status is now managed in Firestore and validated on registration
+    # Note: admin_assignment_only status is managed in the database and validated on registration
     ALL_AREAS = get_all_areas()
 finally:
     _ctx.pop()

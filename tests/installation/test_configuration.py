@@ -11,39 +11,16 @@ No hardcoded values - all validation is dynamic based on config/*.py files.
 
 import pytest
 import json
-import re
 from datetime import datetime
 
 from config.areas import AREA_CONFIG
 from config.organization import get_organization_variables
-from config.cloud import (
-    TEST_BASE_URL, PRODUCTION_BASE_URL,
-    TEST_DATABASE, PRODUCTION_DATABASE,
-    GCP_PROJECT_ID, GCP_LOCATION
-)
 
 
 @pytest.mark.smoke
 @pytest.mark.installation
 class TestConfigurationFiles:
     """Validate that all required configuration files exist and are complete."""
-
-    def test_cloud_config_complete(self, installation_config):
-        """Verify config/cloud.py has all required settings."""
-        cloud_settings = {
-            'GCP_PROJECT_ID': installation_config['gcp_project'],
-            'GCP_LOCATION': installation_config['gcp_location'],
-            'TEST_DATABASE': installation_config['test_db'],
-            'PRODUCTION_DATABASE': installation_config['prod_db'],
-            'TEST_BASE_URL': installation_config['test_url'],
-            'PRODUCTION_BASE_URL': installation_config['prod_url'],
-        }
-
-        for setting_name, value in cloud_settings.items():
-            assert value, (
-                f"Missing or empty value for {setting_name} in config/cloud.py\n"
-                f"Edit config/cloud.py to set this value for your GCP project."
-            )
 
     def test_organization_config_complete(self, installation_config):
         """Verify config/organization.py has all required settings."""
@@ -191,7 +168,6 @@ class TestConfigurationValidity:
         """Verify all URLs in configuration are properly formatted."""
         urls_to_check = {
             'test_url': installation_config['test_url'],
-            'prod_url': installation_config['prod_url'],
             'organization_website': installation_config['org_vars'].get('organization_website'),
             'count_info_url': installation_config['org_vars'].get('count_info_url'),
         }
@@ -270,65 +246,6 @@ class TestConfigurationValidity:
 class TestConfigurationConsistency:
     """Validate consistency across different configuration files."""
 
-    def test_database_names_not_empty(self, installation_config):
-        """Verify TEST_DATABASE and PRODUCTION_DATABASE are configured."""
-        test_db = installation_config['test_db']
-        prod_db = installation_config['prod_db']
-
-        assert test_db, (
-            "TEST_DATABASE is empty in config/cloud.py\n"
-            "Set TEST_DATABASE to your test Firestore database name\n"
-            "(e.g., 'cbc-test', 'ladner-cbc-test')"
-        )
-
-        assert prod_db, (
-            "PRODUCTION_DATABASE is empty in config/cloud.py\n"
-            "Set PRODUCTION_DATABASE to your production Firestore database name\n"
-            "(e.g., 'cbc-register', 'ladner-cbc-register')"
-        )
-
-    def test_gcp_project_id_set(self, installation_config):
-        """Verify GCP_PROJECT_ID is configured."""
-        project_id = installation_config['gcp_project']
-
-        assert project_id, (
-            "GCP_PROJECT_ID is empty in config/cloud.py\n"
-            "Set GCP_PROJECT_ID to your Google Cloud Platform project ID"
-        )
-
-        # Check format (GCP project IDs have specific constraints)
-        assert re.match(r'^[a-z][a-z0-9-]{4,28}[a-z0-9]$', project_id), (
-            f"Invalid GCP project ID format: {project_id}\n"
-            f"Project IDs must:\n"
-            f"  - Start with a lowercase letter\n"
-            f"  - Contain only lowercase letters, numbers, and hyphens\n"
-            f"  - Be between 6 and 30 characters\n"
-            f"  - End with a letter or number\n"
-            f"Update GCP_PROJECT_ID in config/cloud.py"
-        )
-
-    def test_databases_different_names(self, installation_config):
-        """Verify test and production databases have different names."""
-        test_db = installation_config['test_db']
-        prod_db = installation_config['prod_db']
-
-        assert test_db != prod_db, (
-            f"TEST_DATABASE and PRODUCTION_DATABASE have the same name: {test_db}\n"
-            f"Test and production databases must be separate to prevent accidental data mixing.\n"
-            f"Update config/cloud.py to use different database names."
-        )
-
-    def test_test_and_prod_urls_different(self, installation_config):
-        """Verify test and production URLs are different."""
-        test_url = installation_config['test_url']
-        prod_url = installation_config['prod_url']
-
-        assert test_url != prod_url, (
-            f"TEST_BASE_URL and PRODUCTION_BASE_URL are the same: {test_url}\n"
-            f"Test and production environments must have separate URLs.\n"
-            f"Update config/cloud.py to use different service names or domains."
-        )
-
     def test_public_areas_subset_of_all_areas(self, installation_config):
         """Verify get_public_areas() returns a subset of get_all_areas()."""
         all_areas = set(installation_config['all_areas'])
@@ -387,21 +304,4 @@ class TestConfigurationConsistency:
             f"Map center longitude out of range: {lon}\n"
             f"Longitude must be between -180 and 180.\n"
             f"Re-run: python utils/parse_area_boundaries.py <your-kml-file.kml>"
-        )
-
-    def test_base_domain_in_urls(self, installation_config):
-        """Verify BASE_DOMAIN appears in PRODUCTION_BASE_URL.
-
-        TEST_BASE_URL is deliberately NOT built from BASE_DOMAIN - it points at the
-        local dev server's dedicated test circle (see config/cloud.py, .env.example)
-        so real Selenium traffic never reaches a real external host. PRODUCTION_BASE_URL
-        is never navigated to (see tests/conftest.py's pytest_sessionstart guard) but
-        should still be constructed correctly.
-        """
-        base_domain = installation_config['base_domain']
-        prod_url = installation_config['prod_url']
-
-        assert base_domain in prod_url, (
-            f"BASE_DOMAIN '{base_domain}' not found in PRODUCTION_BASE_URL '{prod_url}'\n"
-            f"Check URL construction in config/cloud.py"
         )

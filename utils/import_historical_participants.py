@@ -1,16 +1,12 @@
 # utils/import_historical_participants.py
-# Updated by Claude AI on 2026-09-02
+# Updated by Claude AI on 2026-10-27
 #
 # One-off importer for historical participant/leader data into the Postgres-backed
 # multi-circle schema. Leadership fields live directly on the participant row (no
 # separate area-leaders table), so this single importer covers both.
 #
-# Two sources:
-#   --csv-dir DIR   Import every *.csv in DIR (see utils/participant-csv-dumps/<slug>/).
-#                   Each row's own `year` column is authoritative, not the filename.
-#   --firestore     Read a Firestore collection directly. Used for circles whose CSV
-#                   export is missing or wasn't produced - see the named-database
-#                   gotcha below.
+# Source: --csv-dir DIR imports every *.csv in DIR (see utils/participant-csv-dumps/<slug>/).
+# Each row's own `year` column is authoritative, not the filename.
 #
 # The target circle (and its areas) must already exist in Postgres - create it via
 # /bigbird/circles/new and import its area boundaries (KML upload) first. This script
@@ -20,17 +16,8 @@
 #   python utils/import_historical_participants.py --circle vancouver --csv-dir utils/participant-csv-dumps/vancouver
 #   python utils/import_historical_participants.py --circle ladner --csv-dir utils/participant-csv-dumps/ladner
 #   python utils/import_historical_participants.py --circle comox-spring --csv-dir utils/participant-csv-dumps/comox-spring
-#   python utils/import_historical_participants.py --circle nanaimo --firestore \
-#       --project nanaimo-cbc --database nanaimo-cbc --collection participants_2025 --year 2025
-#
 # Add --dry-run to preview counts/warnings without writing anything.
 #
-# Firestore gotcha: a project created with a *named* database (not "(default)") makes
-# google.cloud.firestore.Client() fail with a 404 that reads like "no data" rather than
-# "wrong database" unless database=... is passed explicitly. nanaimo-cbc uses a database
-# named "nanaimo-cbc" (prod) / "nanaimo-test" (test) - run `gcloud firestore databases
-# list --project=<project>` if unsure what a given project's database is named.
-
 import argparse
 import csv
 import glob
@@ -52,8 +39,8 @@ def parse_csv_bool(value):
 
 def parse_csv_timestamp(value):
     """CSV timestamps are naive 'YYYY-MM-DD HH:MM[:SS]' strings. Confirmed against a
-    live Firestore read that the source data is stored in UTC, so naive strings here
-    are interpreted as UTC."""
+    the original source data that it is stored in UTC, so naive strings here are
+    interpreted as UTC."""
     value = (value or '').strip()
     if not value:
         return None
@@ -95,49 +82,11 @@ def normalize_csv_row(row):
     }
 
 
-def normalize_firestore_doc(doc_dict, fallback_year):
-    return {
-        'first_name': sanitize_name(doc_dict.get('first_name') or ''),
-        'last_name': sanitize_name(doc_dict.get('last_name') or ''),
-        'email': sanitize_email(doc_dict.get('email') or ''),
-        'phone': sanitize_phone(doc_dict.get('phone') or ''),
-        'phone2': sanitize_phone(doc_dict.get('phone2') or ''),
-        'skill_level': doc_dict.get('skill_level') or None,
-        'experience': doc_dict.get('experience') or None,
-        'preferred_area': doc_dict.get('preferred_area') or None,
-        'participation_type': doc_dict.get('participation_type') or 'regular',
-        'has_binoculars': bool(doc_dict.get('has_binoculars')),
-        'spotting_scope': bool(doc_dict.get('spotting_scope')),
-        'interested_in_leadership': bool(doc_dict.get('interested_in_leadership')),
-        'notes_to_organizers': sanitize_notes(doc_dict.get('notes_to_organizers') or ''),
-        'is_leader': bool(doc_dict.get('is_leader')),
-        'assigned_area_leader': doc_dict.get('assigned_area_leader') or None,
-        'assigned_by': doc_dict.get('assigned_by') or None,
-        'assigned_at': doc_dict.get('assigned_at'),
-        'leadership_assigned_by': doc_dict.get('leadership_assigned_by') or None,
-        'leadership_assigned_at': doc_dict.get('leadership_assigned_at'),
-        'leadership_removed_by': doc_dict.get('leadership_removed_by') or None,
-        'leadership_removed_at': doc_dict.get('leadership_removed_at'),
-        'created_at': doc_dict.get('created_at'),
-        'updated_at': doc_dict.get('updated_at'),
-        'year': int(doc_dict.get('year') or fallback_year),
-        'status': doc_dict.get('status') or 'active',
-    }
-
-
 def iter_csv_rows(csv_dir):
     for path in sorted(glob.glob(os.path.join(csv_dir, '*.csv'))):
         with open(path, encoding='utf-8') as f:
             for row in csv.DictReader(f):
                 yield path, normalize_csv_row(row)
-
-
-def iter_firestore_docs(project, database, collection, year):
-    from google.cloud import firestore
-
-    client = firestore.Client(project=project, database=database)
-    for doc in client.collection(collection).stream():
-        yield f"{project}/{database}/{collection}/{doc.id}", normalize_firestore_doc(doc.to_dict(), year)
 
 
 def import_data(session, circle_slug, source_label, records, dry_run):
@@ -238,29 +187,14 @@ def main():
     parser.add_argument('--circle', required=True, help='circle_slug to import into (must already exist)')
     parser.add_argument('--dry-run', action='store_true', help='preview without writing')
 
-    source = parser.add_mutually_exclusive_group(required=True)
-    source.add_argument('--csv-dir', help='directory of *.csv files to import (one per year)')
-    source.add_argument('--firestore', action='store_true', help='read from Firestore instead of CSV')
-
-    fs = parser.add_argument_group('firestore options')
-    fs.add_argument('--project', help='GCP project ID')
-    fs.add_argument('--database', help='Firestore database ID (not "(default)" for named-database projects)')
-    fs.add_argument('--collection', help='Firestore collection name, e.g. participants_2025')
-    fs.add_argument('--year', type=int, help='fallback year if a document has no year field')
+    parser.add_argument('--csv-dir', required=True, help='directory of *.csv files to import (one per year)')
 
     args = parser.parse_args()
 
-    if args.firestore and not (args.project and args.database and args.collection and args.year):
-        parser.error('--firestore requires --project, --database, --collection, and --year')
-
     session = get_db_session()
     try:
-        if args.csv_dir:
-            records = list(iter_csv_rows(args.csv_dir))
-            label = f"CSV import from {args.csv_dir}"
-        else:
-            records = list(iter_firestore_docs(args.project, args.database, args.collection, args.year))
-            label = f"Firestore import from {args.project}/{args.database}/{args.collection}"
+        records = list(iter_csv_rows(args.csv_dir))
+        label = f"CSV import from {args.csv_dir}"
 
         return import_data(session, args.circle, label, records, args.dry_run)
     finally:

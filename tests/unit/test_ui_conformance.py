@@ -1,4 +1,6 @@
 # Updated by Claude AI on 2025-12-03
+# Updated by Claude AI on 2026-10-27 (guide-link tests set show_counter_guides themselves)
+# Updated by Claude AI on 2026-10-27 (guide-links test sets show_counter_guides itself)
 """
 UI Conformance Tests - Verify rendered HTML templates match specification.
 
@@ -383,8 +385,27 @@ class TestRegistrationFormUI:
         area_select = soup.find('select', {'name': 'preferred_area'})
         assert area_select.get('required') is not None, "Area should be required"
 
-    def test_guide_links_present(self, client):
-        """Verify guide links for field counters and feeder counters are present."""
+    @pytest.fixture
+    def set_counter_guides(self):
+        """Return a setter for the test circle's show_counter_guides; restores the original on teardown."""
+        from config.database import get_db_session
+        from models.circle import CircleModel
+        from tests.test_config import TEST_CIRCLE_SLUG
+
+        db = get_db_session()
+        circle_model = CircleModel(db)
+        original = circle_model.get_by_slug(TEST_CIRCLE_SLUG)['show_counter_guides']
+
+        def _set(value):
+            db.rollback()
+            circle_model.update(TEST_CIRCLE_SLUG, {'show_counter_guides': value})
+
+        yield _set
+        _set(original)
+
+    def test_guide_links_present(self, client, set_counter_guides):
+        """With show_counter_guides on, field and feeder counter guide links are shown."""
+        set_counter_guides(True)
         response = client.get('/')
         soup = BeautifulSoup(response.data, 'html.parser')
 
@@ -398,6 +419,15 @@ class TestRegistrationFormUI:
         # Verify they open in new tab
         assert field_guide.get('target') == '_blank', "Field guide should open in new tab"
         assert feeder_guide.get('target') == '_blank', "Feeder guide should open in new tab"
+
+    def test_guide_links_absent_when_setting_off(self, client, set_counter_guides):
+        """With show_counter_guides off, neither guide link is rendered."""
+        set_counter_guides(False)
+        response = client.get('/')
+        soup = BeautifulSoup(response.data, 'html.parser')
+
+        assert soup.find('a', href=lambda x: x and 'field-counters-guide' in x.lower()) is None,             "Field Counters guide link should be hidden when show_counter_guides is off"
+        assert soup.find('a', href=lambda x: x and 'feeder-counters-guide' in x.lower()) is None,             "Feeder Counters guide link should be hidden when show_counter_guides is off"
 
     def test_privacy_section_present(self, client):
         """Verify privacy information section is present per regulations."""

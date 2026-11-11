@@ -2,6 +2,7 @@
 Pytest fixtures for installation validation tests.
 Updated by Claude AI on 2025-12-02
 Updated by Claude AI on 2026-09-08 (area data is DB-backed per circle now, not a static file)
+Updated by Claude AI on 2026-10-27 (removed GCP config values)
 """
 
 import pytest
@@ -18,16 +19,10 @@ def installation_config():
     """
     from config.areas import AREA_CONFIG
     from config.organization import get_organization_variables
-    from config.cloud import (
-        TEST_BASE_URL, PRODUCTION_BASE_URL,
-        TEST_DATABASE, PRODUCTION_DATABASE,
-        GCP_PROJECT_ID, GCP_LOCATION,
-        BASE_DOMAIN, TEST_SERVICE, PRODUCTION_SERVICE
-    )
     from config.database import get_db_session
     from models.area_signup_type import AreaSignupTypeModel
     from models.circle import CircleAreaModel
-    from tests.test_config import TEST_CIRCLE_SLUG
+    from tests.test_config import TEST_CIRCLE_SLUG, TEST_BASE_URL
 
     # config.areas.get_all_areas()/get_organization_variables() both raise when no
     # circle is resolved (this is a multi-circle platform with no default circle -
@@ -56,16 +51,8 @@ def installation_config():
         # Organization configuration
         'org_vars': org_vars,
 
-        # Cloud configuration
+        # Test target
         'test_url': TEST_BASE_URL,
-        'prod_url': PRODUCTION_BASE_URL,
-        'test_db': TEST_DATABASE,
-        'prod_db': PRODUCTION_DATABASE,
-        'gcp_project': GCP_PROJECT_ID,
-        'gcp_location': GCP_LOCATION,
-        'base_domain': BASE_DOMAIN,
-        'test_service': TEST_SERVICE,
-        'prod_service': PRODUCTION_SERVICE,
 
         # Runtime information
         'current_year': datetime.now().year
