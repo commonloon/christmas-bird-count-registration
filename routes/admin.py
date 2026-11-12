@@ -87,6 +87,12 @@ def load_db():
         return redirect(url_for('admin.list_circles'))
 
 
+def _leader_sort_key(leader):
+    """Sort leaders by assigned area, then first name (case-insensitive)."""
+    return ((leader.get('assigned_area_leader') or ''),
+            (leader.get('first_name') or '').lower())
+
+
 def _is_historical_year(year):
     """True if year is before the current calendar year - CLAUDE.md documents
     historical years as read-only, but until now that was UI-enforced only
@@ -493,8 +499,8 @@ def leaders():
     # Normalize leader data to ensure all fields are present (single-table design uses participant fields)
     normalized_leaders = [normalize_participant_record(leader) for leader in all_leaders]
 
-    # Sort current leaders by area code then by first name
-    normalized_leaders.sort(key=lambda x: (x.get('assigned_area_leader', ''), x.get('first_name', '')))
+    # Sort current leaders by area code then by first name (case-insensitive)
+    normalized_leaders.sort(key=_leader_sort_key)
 
     # Sort potential leaders by area preference then by first name
     leadership_interested.sort(key=lambda x: (x.get('preferred_area', ''), x.get('first_name', '')))
@@ -513,7 +519,7 @@ def leaders():
             writer.writerow(fieldnames)
 
             # Sort leaders by area, then by first name
-            sorted_leaders = sorted(normalized_leaders, key=lambda x: (x.get('assigned_area_leader', ''), x.get('first_name', '')))
+            sorted_leaders = sorted(normalized_leaders, key=_leader_sort_key)
 
             # Write leader data
             for leader in sorted_leaders:

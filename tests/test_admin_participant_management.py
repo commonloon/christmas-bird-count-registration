@@ -119,7 +119,7 @@ class TestParticipantViewing:
                 logger.warning(f"Could not create test participant {i}: {e}")
 
         if not test_participants:
-            pytest.skip("Could not create test participants for display testing")
+            pytest.fail("Could not create test participants for display testing")
 
         # Navigate to participants page (already authenticated)
         base_url = get_base_url()
@@ -232,7 +232,7 @@ class TestParticipantOperations:
 
         participant_id = participant_model.add_participant(participant_record)
         if not participant_id:
-            pytest.skip("Could not create test participant for deletion")
+            pytest.fail("Could not create test participant for deletion")
 
         participant_email = participant_record['email']
 
@@ -310,7 +310,7 @@ class TestParticipantOperations:
         try:
             participant_id = participant_model.add_participant(participant_record)
             if not participant_id:
-                pytest.skip("Could not create test participant for assignment")
+                pytest.fail("Could not create test participant for assignment")
 
             participant_email = participant_record['email']
             target_area = participant_data.get('reassignment_target_area', 'B')
@@ -387,7 +387,7 @@ class TestLeadershipManagement:
         try:
             participant_id = participant_model.add_participant(participant_record)
             if not participant_id:
-                pytest.skip("Could not create test participant for promotion")
+                pytest.fail("Could not create test participant for promotion")
 
             participant_email = participant_record['email']
             promotion_area = participant_data.get('promotion_target_area', participant_record['preferred_area'])
@@ -472,7 +472,7 @@ class TestLeadershipManagement:
         try:
             participant_id = participant_model.add_participant(participant_record)
             if not participant_id:
-                pytest.skip("Could not create test leader for demotion")
+                pytest.fail("Could not create test leader for demotion")
 
             participant_email = participant_record['email']
 
@@ -553,7 +553,7 @@ class TestLeadershipManagement:
         try:
             participant_id = participant_model.add_participant(participant_record)
             if not participant_id:
-                pytest.skip("Could not create test participant for consistency check")
+                pytest.fail("Could not create test participant for consistency check")
 
             # Verify participant is properly stored as leader
             stored_participant = participant_model.get_participant(participant_id)

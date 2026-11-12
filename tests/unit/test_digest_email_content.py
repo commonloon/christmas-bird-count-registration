@@ -193,7 +193,7 @@ class TestAdminDigestRecipients:
 
     def test_circle_without_admins_sends_nothing(self, db_session, unassigned_participant):
         if CircleAdminModel(db_session).get_admins_for_circle(TEST_CIRCLE_SLUG):
-            pytest.skip('test circle unexpectedly has circle admins configured')
+            pytest.fail('test circle unexpectedly has circle admins configured')
 
         results, captured = self._run_digest()
 

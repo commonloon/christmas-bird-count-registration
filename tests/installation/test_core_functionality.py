@@ -26,7 +26,6 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 
 
-@pytest.mark.installation
 @pytest.fixture
 def seeded_participant():
     """One current-year participant in the test circle. The admin participants page only renders
@@ -620,7 +619,7 @@ class TestMapFunctionality:
     def test_map_center_within_bounds(self, browser, installation_config, area_boundaries_data):
         """Verify map center point is reasonable for configured areas."""
         if not area_boundaries_data:
-            pytest.skip("area_boundaries.json not available")
+            pytest.fail("area_boundaries.json not available")
 
         url = installation_config['test_url']
         browser.get(url)
@@ -749,7 +748,7 @@ class TestMapFunctionality:
     def test_map_zoom_and_bounds_reasonable(self, browser, installation_config, area_boundaries_data):
         """Verify map zoom level and bounds are reasonable for the areas."""
         if not area_boundaries_data:
-            pytest.skip("area_boundaries.json not available")
+            pytest.fail("area_boundaries.json not available")
 
         map_config = area_boundaries_data.get('map_config', {})
         zoom = map_config.get('zoom')

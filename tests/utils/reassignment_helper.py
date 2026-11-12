@@ -1,4 +1,4 @@
-# Updated by Claude AI on 2025-10-26
+# Updated by Claude AI on 2026-11-12
 """
 Utility functions for performing participant reassignments via Selenium UI.
 
@@ -11,6 +11,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 import pytest
+from selenium.common.exceptions import TimeoutException
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,8 @@ def reassign_participant_via_ui(browser, base_url, participant_email, new_area, 
         Tuple of (participant_name, original_area_code) extracted from the reassignment
 
     Raises:
-        pytest.skip: If required elements not found or critical operations fail
+        pytest.fail: If the participant or setup preconditions are not found
+        pytest.fail: If a UI step (click, select, confirm, reload) fails
     """
 
     # Navigate to participants page
@@ -56,7 +58,7 @@ def reassign_participant_via_ui(browser, base_url, participant_email, new_area, 
         logger.info("✓ Participants table loaded")
     except Exception as e:
         logger.error(f"Failed to load participants table: {e}")
-        pytest.skip(f"Could not load participants table: {e}")
+        pytest.fail(f"Could not load participants table: {e}")
 
     time.sleep(1)
 
@@ -92,22 +94,23 @@ def reassign_participant_via_ui(browser, base_url, participant_email, new_area, 
 
     if not reassign_row:
         logger.error(f"Could not find participant {participant_email} on participants page")
-        pytest.skip(f"Participant {participant_email} not found in any area section")
+        pytest.fail(f"Participant {participant_email} not found in any area section")
 
     if not participant_name:
         logger.error("Could not extract participant name from row")
-        pytest.skip("Could not extract participant name from UI")
+        pytest.fail("Could not extract participant name from UI")
 
     # Click the reassign button
     try:
         reassign_button = reassign_row.find_element(By.CSS_SELECTOR, "button.btn-reassign")
-        browser.execute_script("arguments[0].scrollIntoView(true);", reassign_button)
+        browser.execute_script("arguments[0].scrollIntoView({block: 'center'});", reassign_button)
+        WebDriverWait(browser, 10).until(EC.element_to_be_clickable(reassign_button))
         time.sleep(0.3)
         reassign_button.click()
         logger.info(f"✓ Clicked reassign button for {participant_name}")
     except Exception as e:
         logger.error(f"Failed to click reassign button: {e}")
-        pytest.skip(f"Failed to click reassign button: {e}")
+        pytest.fail(f"Failed to click reassign button: {e}")
 
     # Wait for reassign controls to appear
     time.sleep(0.5)
@@ -119,7 +122,7 @@ def reassign_participant_via_ui(browser, base_url, participant_email, new_area, 
         logger.info("✓ Reassign controls visible")
     except Exception as e:
         logger.error(f"Could not find reassign controls: {e}")
-        pytest.skip(f"Could not find reassign controls: {e}")
+        pytest.fail(f"Could not find reassign controls: {e}")
 
     # Select new area from dropdown
     try:
@@ -129,7 +132,7 @@ def reassign_participant_via_ui(browser, base_url, participant_email, new_area, 
         logger.info(f"✓ Selected Area {new_area} in reassignment dropdown")
     except Exception as e:
         logger.error(f"Failed to select Area {new_area}: {e}")
-        pytest.skip(f"Failed to select Area {new_area} from dropdown: {e}")
+        pytest.fail(f"Failed to select Area {new_area} from dropdown: {e}")
 
     # Click confirm button
     try:
@@ -139,7 +142,7 @@ def reassign_participant_via_ui(browser, base_url, participant_email, new_area, 
         time.sleep(2)  # Wait for reassignment to complete
     except Exception as e:
         logger.error(f"Failed to click confirm reassign button: {e}")
-        pytest.skip(f"Failed to click confirm reassign button: {e}")
+        pytest.fail(f"Failed to click confirm reassign button: {e}")
 
     # Handle leadership role modal if this is a leader
     if is_leader:
@@ -158,22 +161,23 @@ def reassign_participant_via_ui(browser, base_url, participant_email, new_area, 
         except Exception as e:
             logger.warning(f"Leadership role modal not found or already dismissed: {e}")
 
-    # Dismiss success modal/alert
-    # The modal's OK button click triggers the page reload via JavaScript
+    # Dismiss the success alert. The non-leader path ends with a native
+    # browser alert() followed by window.location.reload(); accept it
+    # explicitly so the driver's automatic dismissal doesn't race with the
+    # reload (which left the next click blocked by a half-loaded page).
+    # The leader path reloads without an alert, so no alert is not an error.
     try:
-        WebDriverWait(browser, 5).until(
-            EC.presence_of_element_located((By.XPATH, "//button[contains(text(), 'OK')]"))
-        )
-        browser.execute_script("document.querySelector('button:contains(\"OK\")').click();")
-        logger.info("Clicked OK on reassignment success modal")
-    except Exception as e:
-        # Fallback: try to handle as browser alert
-        try:
-            alert = WebDriverWait(browser, 2).until(EC.alert_is_present())
-            alert.dismiss()
-            logger.info("Dismissed browser alert")
-        except:
-            logger.warning(f"Could not dismiss alert: {e}")
+        alert = WebDriverWait(browser, 5).until(EC.alert_is_present())
+        logger.info(f"Accepting browser alert: {alert.text}")
+        alert.accept()
+    except TimeoutException:
+        logger.info("No browser alert appeared (leader path reloads without one)")
+
+    # Wait for the old row to go stale, proving the page really reloaded
+    try:
+        WebDriverWait(browser, 10).until(EC.staleness_of(reassign_row))
+    except TimeoutException:
+        logger.warning("Old participant row never went stale; page may not have reloaded")
 
     # Wait for page to reload after modal dismissal
     logger.info("Waiting for page to reload after reassignment")
@@ -185,7 +189,7 @@ def reassign_participant_via_ui(browser, base_url, participant_email, new_area, 
         logger.info(f"✓ Page reloaded after reassignment")
     except Exception as e:
         logger.error(f"Page did not reload properly: {e}")
-        pytest.skip(f"Page did not reload after reassignment: {e}")
+        pytest.fail(f"Page did not reload after reassignment: {e}")
 
     logger.info(f"✓ Successfully reassigned {participant_name} from Area {original_area} to Area {new_area}")
     return participant_name, original_area

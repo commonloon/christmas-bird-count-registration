@@ -278,11 +278,11 @@ class TestEmailNotifications:
                 area_c_section = authenticated_browser.find_element(By.ID, "area-C")
                 rows = area_c_section.find_elements(By.CSS_SELECTOR, "table tbody tr")
                 if not rows:
-                    pytest.skip("No participants found in Area C")
+                    pytest.fail("No participants found in Area C")
 
                 cells = rows[0].find_elements(By.TAG_NAME, "td")
                 if len(cells) < 2:
-                    pytest.skip("Could not extract participant info from Area C")
+                    pytest.fail("Could not extract participant info from Area C")
 
                 participant_email = cells[1].text.strip()
 
@@ -515,7 +515,7 @@ class TestEmailNotifications:
             area_d_section = authenticated_browser.find_element(By.ID, "area-D")
             rows_d = area_d_section.find_elements(By.CSS_SELECTOR, "table tbody tr")
             if not rows_d:
-                pytest.skip("No participants found in Area D")
+                pytest.fail("No participants found in Area D")
 
             cells = rows_d[0].find_elements(By.TAG_NAME, "td")
             participant_email = cells[1].text.strip()
@@ -661,7 +661,7 @@ class TestEmailNotifications:
                 logger.info("✓ Found Area F section")
             except Exception as e:
                 logger.error(f"Could not find Area F section: {e}")
-                pytest.skip(f"Area F section not found: {e}")
+                pytest.fail(f"Area F section not found: {e}")
 
             rows_f = area_f_section.find_elements(By.CSS_SELECTOR, "table tbody tr")
             logger.info(f"Found {len(rows_f)} participants in Area F")
@@ -671,7 +671,7 @@ class TestEmailNotifications:
                 with open("tests/tmp/roundtrip_area_f_error.html", "w", encoding='utf-8') as f:
                     f.write(page_source)
                 logger.error("Saved error page to tests/tmp/roundtrip_area_f_error.html")
-                pytest.skip("No participants found in Area F")
+                pytest.fail("No participants found in Area F")
 
             # Find a regular participant (not a leader)
             participant_email = None
@@ -694,7 +694,7 @@ class TestEmailNotifications:
                 break
 
             if not participant_email:
-                pytest.skip("No regular (non-leader) participants found in Area F")
+                pytest.fail("No regular (non-leader) participants found in Area F")
 
             # First reassignment: F → G
             participant_name, _ = reassign_participant_via_ui(
@@ -805,7 +805,7 @@ class TestEmailNotifications:
             # Query database to find a leader in Area K (unambiguous)
             leaders_in_k = participant_model_module.get_leaders_by_area('K')
             if not leaders_in_k:
-                pytest.skip("No leaders found in Area K in database")
+                pytest.fail("No leaders found in Area K in database")
 
             # Get the first leader's info
             leader_data = leaders_in_k[0]

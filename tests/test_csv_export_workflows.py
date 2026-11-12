@@ -1,5 +1,5 @@
 # CSV Export Workflow Tests
-# Updated by Claude AI on 2025-10-09
+# Updated by Claude AI on 2026-11-12
 
 """
 CSV export workflow tests for the Christmas Bird Count system.
@@ -388,13 +388,13 @@ class TestCSVExport:
         csv_content = self._get_csv_export_content(dashboard, base_url)
 
         if not csv_content:
-            pytest.skip("Could not retrieve CSV export content for validation tests")
+            pytest.fail("Could not retrieve CSV export content for validation tests")
 
         # Parse CSV content
         csv_data = self._parse_csv_content(csv_content)
 
         if not csv_data:
-            pytest.skip("Could not parse CSV content for validation tests")
+            pytest.fail("Could not parse CSV content for validation tests")
 
         logger.info(f"✓ CSV downloaded and parsed: {len(csv_data)} rows")
         logger.info("=" * 60)
@@ -596,7 +596,7 @@ class TestCSVExport:
         csv_data = csv_export_data['parsed']
 
         if len(csv_data) < 2:
-            pytest.skip("Insufficient CSV data for sorting validation")
+            pytest.fail("Insufficient CSV data for sorting validation")
 
         headers = csv_data[0]
         data_rows = csv_data[1:]
@@ -1107,7 +1107,7 @@ class TestCSVExport:
         logger.info(f"Database contains {len(db_leaders)} leaders")
 
         if len(db_leaders) == 0:
-            pytest.skip("No leaders in database to validate CSV export")
+            pytest.fail("No leaders in database to validate CSV export")
 
         # Download leaders CSV
         csv_content = self._get_leaders_csv_content(authenticated_browser, base_url)
@@ -1131,15 +1131,18 @@ class TestCSVExport:
         col_map = {}
         for i, header in enumerate(headers):
             header_lower = header.lower()
-            if 'first' in header_lower and 'name' in header_lower:
+            # Exact header names: substring matching on 'leader' also hit
+            # assigned_area_leader and leadership_* columns, so the area was
+            # never mapped and the sort check compared the wrong data.
+            if header_lower == 'first_name':
                 col_map['first_name'] = i
-            elif 'last' in header_lower and 'name' in header_lower:
+            elif header_lower == 'last_name':
                 col_map['last_name'] = i
-            elif 'email' in header_lower:
+            elif header_lower == 'email':
                 col_map['email'] = i
-            elif 'is_leader' in header_lower or 'leader' in header_lower:
+            elif header_lower == 'is_leader':
                 col_map['is_leader'] = i
-            elif 'assigned_area_leader' in header_lower or ('assigned' in header_lower and 'area' in header_lower):
+            elif header_lower == 'assigned_area_leader':
                 col_map['assigned_area_leader'] = i
 
         logger.info(f"Column mapping: {col_map}")
@@ -1235,10 +1238,8 @@ class TestCSVExport:
                         logger.error(f"Sorting error in area {curr_area}: {prev_name} comes before {curr_name}")
                         break
 
-            if is_sorted:
-                logger.info("✓ Leaders CSV is correctly sorted by area → first name")
-            else:
-                logger.warning("Leaders CSV sorting may not be correct")
+            assert is_sorted, "Leaders CSV is not sorted by area → first name (see logged sorting error)"
+            logger.info("✓ Leaders CSV is correctly sorted by area → first name")
 
         # TEST 4: Verify all participant fields are present
         logger.info("=" * 60)

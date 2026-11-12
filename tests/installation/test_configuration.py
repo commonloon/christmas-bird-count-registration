@@ -281,7 +281,7 @@ class TestConfigurationConsistency:
     def test_map_center_reasonable(self, area_boundaries_data):
         """Verify map center coordinates are reasonable values."""
         if area_boundaries_data is None or 'map_config' not in area_boundaries_data:
-            pytest.skip("area_boundaries.json or map_config not available")
+            pytest.fail("area_boundaries.json or map_config not available")
 
         center = area_boundaries_data['map_config']['center']
 

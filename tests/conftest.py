@@ -672,6 +672,6 @@ def pytest_runtest_setup(item):
                     cache_manager = DriverCacheManager(valid_range=30)
                     ChromeDriverManager(cache_manager=cache_manager).install()
         except Exception as e:
-            pytest.skip(f"{browser_type.title()} browser not available for testing: {e}")
+            pytest.fail(f"{browser_type.title()} browser not available for testing: {e}")
 
     # Note: Admin tests use get_test_password() for credentials, so no skip needed

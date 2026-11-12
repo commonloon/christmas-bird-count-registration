@@ -455,5 +455,5 @@ class TestAdminCoreFunctionality:
                 if "404" not in authenticated_browser.page_source:
                     assert True
                 else:
-                    # Can't find export functionality, but don't fail the test
-                    pytest.skip("CSV export functionality not found in UI")
+                    # Export functionality missing from the UI is a broken precondition
+                    pytest.fail("CSV export functionality not found in UI")

@@ -106,13 +106,13 @@ def admin_login_for_test(browser, base_url, credentials):
         credentials: Dict with an 'email' key (see tests.test_config.TEST_ACCOUNTS)
 
     Raises:
-        pytest.skip: If authentication fails
+        pytest.fail: If authentication fails
     """
     try:
         login_as_test_user(browser, base_url, credentials['email'])
     except AuthenticationError as e:
         import pytest
-        pytest.skip(f"Authentication failed for {credentials['email']}: {e}")
+        pytest.fail(f"Authentication failed for {credentials['email']}: {e}")
 
 
 def logout(driver, base_url):

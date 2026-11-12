@@ -352,7 +352,7 @@ class TestAdminEmailValidation:
                 EC.presence_of_element_located((By.CSS_SELECTOR, 'table tbody tr[data-participant-id] .btn-edit'))
             ).find_element(By.XPATH, './ancestor::tr')
         except:
-            pytest.skip("No participants found in database to test editing")
+            pytest.fail("No participants found in database to test editing")
 
         # Click edit button - use JavaScript to avoid scroll issues
         edit_button = participant_row.find_element(By.CSS_SELECTOR, '.btn-edit')
@@ -396,7 +396,7 @@ class TestAdminEmailValidation:
         try:
             leader_rows = authenticated_browser.find_elements(By.CSS_SELECTOR, 'table tbody tr[data-leader-id]')
             if len(leader_rows) == 0:
-                pytest.skip("No existing leaders to test inline edit")
+                pytest.fail("No existing leaders to test inline edit")
 
             # Click edit on first leader
             first_row = leader_rows[0]
@@ -426,7 +426,7 @@ class TestAdminEmailValidation:
                 assert first_row.find_element(By.CSS_SELECTOR, '.email-input').is_displayed(), \
                     "Should still be in edit mode after validation failure"
         except TimeoutException:
-            pytest.skip("No leader table found on page")
+            pytest.fail("No leader table found on page")
 
 
     def test_admin_manual_leader_add_validates_email(self, authenticated_browser, db, test_cleanup):

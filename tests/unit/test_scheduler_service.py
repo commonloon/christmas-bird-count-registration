@@ -582,7 +582,7 @@ class TestAdminlessCirclesDigest:
         slugs = [c['slug'] for c in find_adminless_circles(db)]
         assert TEST_CIRCLE_SLUG not in slugs
         if not slugs:
-            pytest.skip('every circle in the test DB has an admin')
+            pytest.fail('every circle in the test DB has an admin')
 
         result = run_adminless_circles_digest(db, ADMINLESS_DUE_NOW)
 
