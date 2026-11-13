@@ -1,4 +1,4 @@
-{# Updated by Claude AI on 2026-10-25 #}
+{# Updated by Claude AI on 2026-11-12 #}
 {% extends "base.html" %}
 
 {% block content %}
@@ -140,7 +140,7 @@
                     <option value="UNASSIGNED">Wherever I'm needed most</option>
                     <optgroup label="Count Areas">
                         {% for area_code in public_areas %}
-                        <option value="{{ area_code }}">{{ area_code }} - {{ get_area_info(area_code).name.split(' - ', 1)[1] if ' - ' in get_area_info(area_code).name else get_area_info(area_code).name }}</option>
+                        <option value="{{ area_code }}">{{ area_code }} - {{ get_area_info(area_code).name|e }}</option>
                         {% endfor %}
                     </optgroup>
                 </select>
